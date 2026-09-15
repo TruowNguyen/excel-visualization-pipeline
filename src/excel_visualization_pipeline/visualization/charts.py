@@ -247,16 +247,19 @@ def build_metric_average_chart(
 
 def build_metric_box_plot(
     data: pd.DataFrame,
+    metric: str,
     start_date=None,
     end_date=None,
 ) -> Figure:
-    """Render count-metric distributions as box plots, separated by unit."""
+    """Render one count metric as box plots, separated by unit."""
+    if metric not in {"Tổng số", "Báo sai/Lỗi"}:
+        raise ValueError("Box plot chỉ hỗ trợ Tổng số hoặc Báo sai/Lỗi.")
     frame = chartable(data)
-    frame = frame[frame["metric_normalized"].isin(["Tổng số", "Báo sai/Lỗi"])].copy()
+    frame = frame[frame["metric_normalized"] == metric].copy()
     if start_date is not None and end_date is not None:
-        title = f"Phân phối dữ liệu — {pd.Timestamp(start_date):%d/%m/%Y} đến {pd.Timestamp(end_date):%d/%m/%Y}"
+        title = f"Phân phối {metric} — {pd.Timestamp(start_date):%d/%m/%Y} đến {pd.Timestamp(end_date):%d/%m/%Y}"
     else:
-        title = "Phân phối dữ liệu trong khoảng đã chọn"
+        title = f"Phân phối {metric} trong khoảng đã chọn"
     if frame.empty:
         return px.box(title=title)
 
@@ -272,20 +275,19 @@ def build_metric_box_plot(
         frame,
         x="entity_display",
         y="chart_value",
-        color="metric_normalized",
+        color="entity_display",
         facet_col="effective_unit" if frame["effective_unit"].nunique() > 1 else None,
         points="all",
         title=title,
         labels={
             "entity_display": "Entity",
-            "chart_value": "Giá trị",
-            "metric_normalized": "Metric",
+            "chart_value": metric,
             "effective_unit": "Effective Unit",
         },
-        color_discrete_map={"Tổng số": "#8ecae6", "Báo sai/Lỗi": "#d1495b"},
+        color_discrete_sequence=px.colors.qualitative.Safe,
     )
     figure.update_traces(hoverinfo="skip", hovertemplate=None)
-    figure.update_layout(margin={"t": 100}, hovermode=False)
+    figure.update_layout(margin={"t": 100}, hovermode=False, showlegend=False)
     figure.for_each_yaxis(lambda axis: axis.update(matches=None, rangemode="tozero"))
     return figure
 

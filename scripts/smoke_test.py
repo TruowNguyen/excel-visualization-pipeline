@@ -40,7 +40,8 @@ def main() -> int:
     combo_entity_id = candidates.idxmax()
     build_metric_combo_chart(combo_source[combo_source["entity_id"] == combo_entity_id])
     build_metric_average_chart(combo_source)
-    build_metric_box_plot(combo_source)
+    build_metric_box_plot(combo_source, "Tổng số")
+    build_metric_box_plot(combo_source, "Báo sai/Lỗi")
     eligible = result.data[
         (result.data["metric_normalized"] == "Báo sai/Lỗi")
         & result.data["effective_unit"].notna()

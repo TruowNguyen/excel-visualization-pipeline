@@ -24,7 +24,7 @@ charts:
       - standard_deviation
     charts:
       - average_bar
-      - box_plot
+      - box_plot_per_metric
   metric_combo:
     type: bar_line_secondary_y
     bar_mode: group

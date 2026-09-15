@@ -197,10 +197,17 @@ if not descriptive_data.empty:
             use_container_width=True,
         )
     with box_plot_tab:
-        st.plotly_chart(
-            build_metric_box_plot(range_data, start_date, end_date),
-            use_container_width=True,
-        )
+        total_box_tab, error_box_tab = st.tabs(["Tổng số", "Báo sai/Lỗi"])
+        with total_box_tab:
+            st.plotly_chart(
+                build_metric_box_plot(range_data, "Tổng số", start_date, end_date),
+                use_container_width=True,
+            )
+        with error_box_tab:
+            st.plotly_chart(
+                build_metric_box_plot(range_data, "Báo sai/Lỗi", start_date, end_date),
+                use_container_width=True,
+            )
     with st.expander("Xem bảng thống kê mô tả"):
         statistics_table = descriptive_data[
             [
