@@ -12,6 +12,13 @@ charts:
     separate_by:
       - entity_id
       - effective_unit
+  multi_entity_combo:
+    type: grouped_bar_line_secondary_y
+    max_entities: 3
+    require_same:
+      - project_id
+      - effective_unit
+      - entity_depth
   trend:
     type: line
     x: date

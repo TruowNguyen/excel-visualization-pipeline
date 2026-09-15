@@ -12,6 +12,7 @@ from excel_visualization_pipeline.visualization import (  # noqa: E402
     build_bar_chart,
     build_line_chart,
     build_metric_combo_chart,
+    build_multi_entity_combo_chart,
 )
 
 
@@ -36,6 +37,20 @@ def main() -> int:
     assert not candidates.empty and candidates.max() == len(combo_metrics)
     combo_entity_id = candidates.idxmax()
     build_metric_combo_chart(combo_source[combo_source["entity_id"] == combo_entity_id])
+    eligible_ids = set(candidates[candidates == len(combo_metrics)].index)
+    eligible = combo_source[
+        combo_source["entity_id"].isin(eligible_ids)
+        & combo_source["effective_unit"].notna()
+        & combo_source["chart_value"].notna()
+    ]
+    compatible_groups = eligible[
+        ["project_id", "effective_unit", "entity_depth", "entity_id"]
+    ].drop_duplicates().groupby(
+        ["project_id", "effective_unit", "entity_depth"]
+    )["entity_id"].apply(list)
+    comparison_ids = next((ids[:3] for ids in compatible_groups if len(ids) >= 2), None)
+    assert comparison_ids is not None
+    build_multi_entity_combo_chart(eligible[eligible["entity_id"].isin(comparison_ids)])
     print("SMOKE TEST PASSED")
     print(result.manifest)
     return 0

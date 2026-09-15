@@ -7,6 +7,9 @@ from plotly.graph_objects import Figure
 from plotly.subplots import make_subplots
 
 
+ENTITY_COLORS = ["#0077b6", "#e76f51", "#2a9d8f"]
+
+
 def _formatted_number(value: float) -> str:
     if float(value).is_integer():
         return f"{value:,.0f}"
@@ -214,6 +217,98 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         hovermode=False,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
         margin={"t": 110},
+        xaxis_title="Ngày",
+    )
+    figure.update_yaxes(title_text=f"Số lượng ({unit})", rangemode="tozero", secondary_y=False)
+    figure.update_yaxes(
+        title_text="% báo sai",
+        rangemode="tozero",
+        tickformat=".1f",
+        ticksuffix="%",
+        secondary_y=True,
+    )
+    return figure
+
+
+def build_multi_entity_combo_chart(data: pd.DataFrame, title: str | None = None) -> Figure:
+    """Compare up to three compatible entities on one grouped-bar/line chart."""
+    frame = chartable(data)
+    if frame.empty:
+        return make_subplots(specs=[[{"secondary_y": True}]])
+
+    entity_ids = list(frame["entity_id"].dropna().unique())
+    if len(entity_ids) > 3:
+        raise ValueError("Chỉ được so sánh tối đa 3 entity.")
+
+    units = frame["effective_unit"].dropna().unique()
+    if frame["effective_unit"].isna().any() or len(units) != 1:
+        raise ValueError("Các entity so sánh phải có cùng một effective unit đã xác định.")
+
+    if "entity_depth" in frame.columns and frame["entity_depth"].nunique() != 1:
+        raise ValueError("Các entity so sánh phải cùng cấp hierarchy.")
+
+    unit = str(units[0])
+    figure = make_subplots(specs=[[{"secondary_y": True}]])
+    for color_index, entity_id in enumerate(entity_ids):
+        entity_data = frame[frame["entity_id"] == entity_id]
+        entity_label = str(entity_data["entity_label"].iloc[0])
+        color = ENTITY_COLORS[color_index]
+
+        for metric, opacity, pattern in [
+            ("Tổng số", 0.9, ""),
+            ("Báo sai/Lỗi", 0.5, "/"),
+        ]:
+            metric_data = entity_data[
+                entity_data["metric_normalized"] == metric
+            ].sort_values("date")
+            if metric_data.empty:
+                continue
+            figure.add_trace(
+                go.Bar(
+                    x=metric_data["date"],
+                    y=metric_data["chart_value"],
+                    name=f"{entity_label} · {metric}",
+                    legendgroup=entity_id,
+                    marker={"color": color, "pattern": {"shape": pattern}},
+                    opacity=opacity,
+                    text=metric_data["display_value"],
+                    textposition="outside" if metric == "Báo sai/Lỗi" else "inside",
+                    cliponaxis=False,
+                    hoverinfo="skip",
+                ),
+                secondary_y=False,
+            )
+
+        rate_data = entity_data[
+            entity_data["metric_normalized"] == "% báo sai"
+        ].sort_values("date")
+        if not rate_data.empty:
+            figure.add_trace(
+                go.Scatter(
+                    x=rate_data["date"],
+                    y=rate_data["chart_value"],
+                    name=f"{entity_label} · % báo sai",
+                    legendgroup=entity_id,
+                    mode="lines+markers+text",
+                    line={"color": color, "width": 3},
+                    marker={"size": 8},
+                    text=rate_data["display_value"],
+                    textposition="top center",
+                    cliponaxis=False,
+                    connectgaps=False,
+                    hoverinfo="skip",
+                ),
+                secondary_y=True,
+            )
+
+    figure.update_layout(
+        title=title or f"So sánh entity — {unit}",
+        barmode="group",
+        bargap=0.25,
+        bargroupgap=0.08,
+        hovermode=False,
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
+        margin={"t": 130},
         xaxis_title="Ngày",
     )
     figure.update_yaxes(title_text=f"Số lượng ({unit})", rangemode="tozero", secondary_y=False)

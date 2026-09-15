@@ -1,10 +1,12 @@
 import pytest
+import pandas as pd
 
 from excel_visualization_pipeline.pipeline import run_pipeline
 from excel_visualization_pipeline.visualization import (
     build_bar_chart,
     build_line_chart,
     build_metric_combo_chart,
+    build_multi_entity_combo_chart,
     build_project_total_chart,
     prepare_project_totals,
     prepare_project_totals_range,
@@ -36,6 +38,49 @@ def test_combo_chart_rejects_multiple_entities(sample_workbook):
 
     with pytest.raises(ValueError, match="một entity"):
         build_metric_combo_chart(mixed_entities)
+
+
+def test_multi_entity_combo_renders_three_color_groups(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"].copy()
+    frames = []
+    for entity_id, label in [("camera-a", "Camera A"), ("camera-b", "Camera B"), ("camera-c", "Camera C")]:
+        clone = item_data.copy()
+        clone["entity_id"] = entity_id
+        clone["entity_label"] = label
+        frames.append(clone)
+
+    figure = build_multi_entity_combo_chart(pd.concat(frames, ignore_index=True))
+
+    assert len(figure.data) == 9
+    assert figure.layout.barmode == "group"
+    assert len({trace.legendgroup for trace in figure.data}) == 3
+    assert all(trace.hoverinfo == "skip" for trace in figure.data)
+    assert sum(trace.type == "scatter" for trace in figure.data) == 3
+
+
+def test_multi_entity_combo_enforces_limit_unit_and_depth(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"].copy()
+    frames = []
+    for index in range(4):
+        clone = item_data.copy()
+        clone["entity_id"] = f"entity-{index}"
+        clone["entity_label"] = f"Entity {index}"
+        frames.append(clone)
+
+    with pytest.raises(ValueError, match="tối đa 3"):
+        build_multi_entity_combo_chart(pd.concat(frames, ignore_index=True))
+
+    mixed_unit = pd.concat(frames[:2], ignore_index=True)
+    mixed_unit.loc[mixed_unit["entity_id"] == "entity-1", "effective_unit"] = "Unit khác"
+    with pytest.raises(ValueError, match="cùng một effective unit"):
+        build_multi_entity_combo_chart(mixed_unit)
+
+    mixed_depth = pd.concat(frames[:2], ignore_index=True)
+    mixed_depth.loc[mixed_depth["entity_id"] == "entity-1", "entity_depth"] = 99
+    with pytest.raises(ValueError, match="cùng cấp hierarchy"):
+        build_multi_entity_combo_chart(mixed_depth)
 
 
 def test_all_demo_charts_render(sample_workbook):

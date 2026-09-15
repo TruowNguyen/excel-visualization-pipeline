@@ -324,6 +324,7 @@ Dashboard hỗ trợ:
 - `Effective Unit` được cố định theo từng entity từ unit trực tiếp hoặc unit kế thừa từ parent, không có dropdown chọn unit;
 - biểu đồ chi tiết kết hợp ba metric: cột `Tổng số` và `Báo sai/Lỗi` đứng cạnh nhau, cùng đường `% báo sai` trên trục Y phụ;
 - mỗi entity/node được render thành một combo chart riêng để không trộn đối tượng hoặc unit;
+- có khu vực multi-select riêng để so sánh đồng thời tối đa 3 entity tương thích;
 - cùng một kiểu combo chart được dùng cho một ngày hoặc cả khoảng `Từ ngày`–`Đến ngày`;
 - mọi cột và marker luôn hiển thị trực tiếp `display_value`, không cần di chuột;
 - bảng dữ liệu chuẩn hóa;
@@ -354,8 +355,17 @@ Unit không phải là bộ lọc tùy chọn trên giao diện. Khi render, m�
 - Hai cột dùng chung trục Y trái vì đều là số lượng và phải có cùng `effective_unit`.
 - `Tổng số` và `Báo sai/Lỗi` được nhóm cạnh nhau theo từng ngày (`barmode=group`), không lồng hoặc cộng chồng hai giá trị.
 - `% báo sai` là đường trên trục Y phải vì khác đơn vị với số lượng.
-- Chart builder từ chối đầu vào chứa nhiều `entity_id` hoặc nhiều `effective_unit`. Dashboard chịu trách nhiệm tách thành từng biểu đồ riêng và tự gắn unit cố định của entity.
+- Combo chart chi tiết từ chối đầu vào chứa nhiều `entity_id` hoặc nhiều `effective_unit`. Dashboard chịu trách nhiệm tách thành từng biểu đồ riêng và tự gắn unit cố định của entity.
 - Nếu một node thiếu một trong ba metric, dashboard vẫn vẽ phần dữ liệu có sẵn và ghi rõ metric bị thiếu bên dưới biểu đồ.
+
+### 8.4. So sánh nhiều entity
+
+- Khu vực `So sánh nhiều entity` có multi-select riêng, không thay đổi Hierarchy Navigator của biểu đồ chi tiết.
+- Người dùng chọn ít nhất 2 và tối đa 3 entity.
+- Các entity phải thuộc cùng Project, có cùng `effective_unit` và cùng `entity_depth`.
+- Mỗi entity dùng một nhóm màu riêng. Trong nhóm đó, `Tổng số` là cột màu đậm, `Báo sai/Lỗi` là cột màu nhạt có pattern và `% báo sai` là đường cùng màu.
+- Hai metric số lượng dùng trục Y trái; các đường phần trăm dùng chung trục Y phải.
+- Nếu lựa chọn không tương thích, dashboard không render chart và hiển thị điều kiện cần sửa.
 
 ## 9. Yêu cầu môi trường
 
@@ -711,6 +721,7 @@ Kiểm tra `raw_value` và `number_format`:
 - [x] Có line/bar cơ bản và combo chart ba metric.
 - [x] Combo chart tách riêng theo entity/unit và hiển thị `display_value` trực tiếp.
 - [x] Effective Unit cố định theo entity, không yêu cầu người dùng chọn.
+- [x] Multi-select so sánh tối đa 3 entity cùng Project, unit và cấp hierarchy.
 - [x] Có dashboard filter và upload file.
 - [x] Có normalized CSV, entities CSV và manifest.
 - [x] Có unit test và smoke test với workbook thật.

@@ -19,6 +19,7 @@ from excel_visualization_pipeline.date_ranges import (  # noqa: E402
 )
 from excel_visualization_pipeline.visualization import (  # noqa: E402
     build_metric_combo_chart,
+    build_multi_entity_combo_chart,
 )
 
 
@@ -185,6 +186,68 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
 )
+
+st.divider()
+st.subheader("So sánh nhiều entity")
+st.caption(
+    "Chọn từ 2 đến 3 entity cùng cấp hierarchy và cùng Effective Unit. "
+    "Mỗi entity có một nhóm màu riêng trên cùng biểu đồ."
+)
+comparison_dates = pd.to_datetime(project_data["date"]).dt.date
+comparison_source = project_data[
+    project_data["metric_normalized"].isin(combo_metrics)
+    & project_data["chart_value"].notna()
+    & (comparison_dates >= start_date)
+    & (comparison_dates <= end_date)
+].copy()
+comparison_candidate_ids = set(comparison_source["entity_id"])
+comparison_entities = project_entities[
+    project_entities["entity_id"].isin(comparison_candidate_ids)
+    & project_entities["effective_unit"].notna()
+].copy()
+comparison_lookup = comparison_entities.set_index("entity_id")
+comparison_ids = list(comparison_entities["entity_id"])
+selected_comparison_ids = st.multiselect(
+    "Entities so sánh",
+    comparison_ids,
+    max_selections=3,
+    format_func=lambda entity_id: hierarchy_label(comparison_lookup.loc[entity_id]),
+    key=f"comparison_entities::{selected_project}",
+)
+
+if len(selected_comparison_ids) < 2:
+    st.info("Chọn ít nhất 2 và tối đa 3 entity để tạo biểu đồ so sánh.")
+else:
+    selected_entities = comparison_lookup.loc[selected_comparison_ids]
+    selected_units = selected_entities["effective_unit"].dropna().unique()
+    selected_depths = selected_entities["entity_depth"].unique()
+    if len(selected_units) != 1:
+        st.error("Các entity được chọn phải có cùng Effective Unit.")
+    elif len(selected_depths) != 1:
+        st.error("Các entity được chọn phải cùng cấp hierarchy.")
+    else:
+        comparison_data = comparison_source[
+            comparison_source["entity_id"].isin(selected_comparison_ids)
+        ]
+        st.plotly_chart(
+            build_multi_entity_combo_chart(
+                comparison_data,
+                f"So sánh {len(selected_comparison_ids)} entity — {selected_units[0]}",
+            ),
+            use_container_width=True,
+        )
+        for entity_id in selected_comparison_ids:
+            entity_data = comparison_data[comparison_data["entity_id"] == entity_id]
+            missing_metrics = [
+                metric
+                for metric in combo_metrics
+                if metric not in set(entity_data["metric_normalized"])
+            ]
+            if missing_metrics:
+                st.caption(
+                    f"{comparison_lookup.loc[entity_id, 'entity_label']}: "
+                    f"thiếu {', '.join(missing_metrics)}"
+                )
 
 with st.expander(f"Cảnh báo chất lượng ({len(result.report.warnings)})"):
     st.dataframe(pd.DataFrame(issue.as_dict() for issue in result.report.warnings), use_container_width=True)
