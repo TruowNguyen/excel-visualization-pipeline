@@ -1,0 +1,47 @@
+header_search_rows: 20
+project_column: "Dự án"
+unit_column: "Đơn vị"
+result_header_patterns:
+  - "kết quả triển khai"
+hierarchy_rules:
+  - name: numbered_section
+    pattern: '^\s*\d+\.\d+[\.\s]'
+    entity_level: section
+    parent_strategy: project
+    strip_marker: false
+    confidence: high
+  - name: plus_subitem
+    pattern: '^\s*\+\s*'
+    entity_level: subitem
+    parent_strategy: previous_item_or_project
+    strip_marker: true
+    confidence: high
+  - name: dash_item
+    pattern: '^\s*-\s*'
+    entity_level: item
+    parent_strategy: section_or_project
+    strip_marker: true
+    confidence: high
+fallback_entity_level: item
+fallback_parent_strategy: project
+blank_markers:
+  - ""
+  - "\u00a0"
+missing_markers:
+  - "-"
+  - "n/a"
+  - "na"
+  - "unknown"
+metric_aliases:
+  "tổng số": "Tổng số"
+  "báo sai/lỗi": "Báo sai/Lỗi"
+  "báo sai/lỗi/ nghi ngờ gian lận": "Báo sai/Lỗi"
+  "báo sai/lỗi/nghi ngờ gian lận": "Báo sai/Lỗi"
+  "%": "% báo sai"
+  "% báo sai": "% báo sai"
+  "ghi chú": "Ghi chú"
+unit_aliases:
+  "cảnh báo": "alert_count"
+  "lượt": "event_count"
+  "lượt (ngày)": "daily_event_count"
+  "lượt (lũy kế)": "cumulative_event_count"

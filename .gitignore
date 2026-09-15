@@ -1,0 +1,47 @@
+# Source workbooks and generated datasets
+data/
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+*.csv
+*.parquet
+*.feather
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+secrets.toml
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local logs and temporary files
+*.log
+*.tmp
+~$*

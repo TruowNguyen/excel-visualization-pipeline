@@ -1,0 +1,23 @@
+default_level: item
+percentage_metrics:
+  - "% báo sai"
+charts:
+  metric_combo:
+    type: bar_line_secondary_y
+    bar_mode: group
+    bars:
+      - "Tổng số"
+      - "Báo sai/Lỗi"
+    line: "% báo sai"
+    separate_by:
+      - entity_id
+      - effective_unit
+  trend:
+    type: line
+    x: date
+    y: chart_value
+    color: entity_label
+  comparison:
+    type: bar
+    x: entity_label
+    y: chart_value
