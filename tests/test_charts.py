@@ -5,11 +5,13 @@ from excel_visualization_pipeline.pipeline import run_pipeline
 from excel_visualization_pipeline.visualization import (
     build_bar_chart,
     build_line_chart,
+    build_metric_average_chart,
     build_metric_combo_chart,
     build_multi_entity_metric_chart,
     build_project_total_chart,
     prepare_project_totals,
     prepare_project_totals_range,
+    prepare_metric_averages,
 )
 
 
@@ -38,6 +40,22 @@ def test_combo_chart_rejects_multiple_entities(sample_workbook):
 
     with pytest.raises(ValueError, match="một entity"):
         build_metric_combo_chart(mixed_entities)
+
+
+def test_metric_average_excludes_percentage_and_counts_data_dates(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"]
+
+    averages = prepare_metric_averages(item_data).set_index("metric_normalized")
+    figure = build_metric_average_chart(item_data, "2026-09-12", "2026-09-13")
+
+    assert set(averages.index) == {"Tổng số", "Báo sai/Lỗi"}
+    assert averages.loc["Tổng số", "average_value"] == 110
+    assert averages.loc["Báo sai/Lỗi", "average_value"] == 7
+    assert averages.loc["Tổng số", "data_date_count"] == 2
+    assert len(figure.data) == 2
+    assert all(trace.type == "bar" for trace in figure.data)
+    assert {trace.name for trace in figure.data} == {"Tổng số", "Báo sai/Lỗi"}
 
 
 def test_multi_entity_metric_chart_renders_three_bar_groups(sample_workbook):

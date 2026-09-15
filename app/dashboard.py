@@ -18,8 +18,10 @@ from excel_visualization_pipeline.date_ranges import (  # noqa: E402
     week_ranges,
 )
 from excel_visualization_pipeline.visualization import (  # noqa: E402
+    build_metric_average_chart,
     build_metric_combo_chart,
     build_multi_entity_metric_chart,
+    prepare_metric_averages,
 )
 
 
@@ -179,6 +181,24 @@ else:
         ]
         if missing_metrics:
             st.caption(f"Thiếu metric: {', '.join(missing_metrics)}")
+
+average_data = prepare_metric_averages(range_data)
+if not average_data.empty:
+    st.subheader("Trung bình trong khoảng đã chọn")
+    st.caption(
+        "Chỉ tính Tổng số và Báo sai/Lỗi trên số ngày thực sự có dữ liệu; "
+        "giá trị 0 được giữ lại, dữ liệu thiếu và % báo sai không tham gia."
+    )
+    st.plotly_chart(
+        build_metric_average_chart(range_data, start_date, end_date),
+        use_container_width=True,
+    )
+    with st.expander("Xem chi tiết cách tính trung bình"):
+        st.dataframe(
+            average_data.sort_values(["effective_unit", "entity_display", "metric_normalized"]),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 '''
 st.subheader("Dữ liệu chi tiết và truy vết")

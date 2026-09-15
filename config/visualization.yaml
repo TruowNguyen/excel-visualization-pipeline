@@ -2,6 +2,14 @@ default_level: item
 percentage_metrics:
   - "% báo sai"
 charts:
+  metric_average:
+    type: grouped_bar
+    metrics:
+      - "Tổng số"
+      - "Báo sai/Lỗi"
+    denominator: available_data_dates_per_metric
+    separate_by:
+      - effective_unit
   metric_combo:
     type: bar_line_secondary_y
     bar_mode: group

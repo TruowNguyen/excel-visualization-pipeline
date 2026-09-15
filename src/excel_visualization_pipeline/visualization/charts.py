@@ -119,6 +119,82 @@ def chartable(data: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def prepare_metric_averages(data: pd.DataFrame) -> pd.DataFrame:
+    """Average count metrics per entity over dates that contain source data."""
+    frame = chartable(data)
+    frame = frame[frame["metric_normalized"].isin(["Tổng số", "Báo sai/Lỗi"])].copy()
+    if frame.empty:
+        return pd.DataFrame()
+
+    frame["effective_unit"] = frame["effective_unit"].fillna("Chưa xác định từ Excel")
+    grouped = (
+        frame.groupby(
+            ["entity_id", "entity_label", "entity_level", "effective_unit", "metric_normalized"],
+            dropna=False,
+            as_index=False,
+        )
+        .agg(
+            average_value=("chart_value", "mean"),
+            data_date_count=("date", "nunique"),
+        )
+    )
+    grouped["display_value"] = grouped["average_value"].map(_formatted_number)
+    grouped["calculation_method"] = grouped.apply(
+        lambda row: f"Trung bình trên {row['data_date_count']} ngày có dữ liệu",
+        axis=1,
+    )
+    grouped["entity_display"] = grouped.apply(
+        lambda row: (
+            f"[{ENTITY_LEVEL_LABELS.get(str(row['entity_level']), str(row['entity_level']).title())}] "
+            f"{row['entity_label']}"
+        ),
+        axis=1,
+    )
+    return grouped
+
+
+def build_metric_average_chart(
+    data: pd.DataFrame,
+    start_date=None,
+    end_date=None,
+) -> Figure:
+    """Render average Total and Error values, separating incompatible units."""
+    frame = prepare_metric_averages(data)
+    if start_date is not None and end_date is not None:
+        title = f"Trung bình — {pd.Timestamp(start_date):%d/%m/%Y} đến {pd.Timestamp(end_date):%d/%m/%Y}"
+    else:
+        title = "Trung bình trong khoảng đã chọn"
+    if frame.empty:
+        return px.bar(title=title)
+
+    figure = px.bar(
+        frame,
+        x="entity_display",
+        y="average_value",
+        color="metric_normalized",
+        barmode="group",
+        facet_col="effective_unit" if frame["effective_unit"].nunique() > 1 else None,
+        text="display_value",
+        title=title,
+        labels={
+            "entity_display": "Entity",
+            "average_value": "Giá trị trung bình",
+            "metric_normalized": "Metric",
+            "effective_unit": "Effective Unit",
+        },
+        color_discrete_map={"Tổng số": "#8ecae6", "Báo sai/Lỗi": "#d1495b"},
+    )
+    figure.update_traces(
+        textposition="outside",
+        cliponaxis=False,
+        hoverinfo="skip",
+        hovertemplate=None,
+    )
+    figure.update_layout(margin={"t": 100}, hovermode=False)
+    figure.for_each_yaxis(lambda axis: axis.update(matches=None, rangemode="tozero"))
+    return figure
+
+
 def build_line_chart(data: pd.DataFrame, title: str = "Xu hướng theo thời gian") -> Figure:
     frame = chartable(data).sort_values("date")
     figure = px.line(
