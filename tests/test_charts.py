@@ -90,6 +90,8 @@ def test_descriptive_statistics_and_box_plot_exclude_percentage(sample_workbook)
     assert len(error_figure.data) == 1
     assert all(trace.type == "box" for trace in [*total_figure.data, *error_figure.data])
     assert all(trace.boxpoints == "all" for trace in [*total_figure.data, *error_figure.data])
+    assert all(trace.marker.color == "#8ecae6" for trace in total_figure.data)
+    assert all(trace.marker.color == "#d1495b" for trace in error_figure.data)
     assert "Tổng số" in total_figure.layout.title.text
     assert "Báo sai/Lỗi" in error_figure.layout.title.text
 

@@ -271,6 +271,7 @@ def build_metric_box_plot(
         ),
         axis=1,
     )
+    metric_color = "#d1495b" if metric == "Báo sai/Lỗi" else "#8ecae6"
     figure = px.box(
         frame,
         x="entity_display",
@@ -284,7 +285,7 @@ def build_metric_box_plot(
             "chart_value": metric,
             "effective_unit": "Effective Unit",
         },
-        color_discrete_sequence=px.colors.qualitative.Safe,
+        color_discrete_sequence=[metric_color],
     )
     figure.update_traces(hoverinfo="skip", hovertemplate=None)
     figure.update_layout(margin={"t": 100}, hovermode=False, showlegend=False)

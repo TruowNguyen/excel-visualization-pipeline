@@ -365,7 +365,7 @@ Unit không phải là bộ lọc tùy chọn trên giao diện. Khi render, m�
 - Chỉ tính hai metric số lượng `Tổng số` và `Báo sai/Lỗi`; `% báo sai` không tham gia tính năng này.
 - Mỗi metric được lấy trung bình trên số ngày thực sự có record của metric đó.
 - Giá trị `0` là dữ liệu hợp lệ và được tính; ô trống hoặc missing marker bị loại khỏi mẫu số.
-- Tab `Trung bình` dùng grouped bar chart. Tab `Box plot` tách tiếp thành hai tab độc lập `Tổng số` và `Báo sai/Lỗi`; mỗi biểu đồ thể hiện median, Q1, Q3, độ phân tán và toàn bộ điểm dữ liệu nguồn của đúng một metric.
+- Tab `Trung bình` dùng grouped bar chart. Tab `Box plot` tách tiếp thành hai tab độc lập: `Tổng số` dùng màu xanh và `Báo sai/Lỗi` dùng màu đỏ; mỗi biểu đồ thể hiện median, Q1, Q3, độ phân tán và toàn bộ điểm dữ liệu nguồn của đúng một metric.
 - Nếu phạm vi chứa nhiều Effective Unit, các biểu đồ tách thành panel riêng theo unit.
 - Bảng `Xem bảng thống kê mô tả` cung cấp số ngày, số điểm dữ liệu, mean, median, min, Q1, Q3, max và độ lệch chuẩn.
 
