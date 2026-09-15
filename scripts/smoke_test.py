@@ -12,7 +12,7 @@ from excel_visualization_pipeline.visualization import (  # noqa: E402
     build_bar_chart,
     build_line_chart,
     build_metric_combo_chart,
-    build_multi_entity_error_chart,
+    build_multi_entity_metric_chart,
 )
 
 
@@ -49,7 +49,10 @@ def main() -> int:
     )["entity_id"].apply(list)
     comparison_ids = next((ids[:3] for ids in compatible_groups if len(ids) >= 2), None)
     assert comparison_ids is not None
-    build_multi_entity_error_chart(eligible[eligible["entity_id"].isin(comparison_ids)])
+    build_multi_entity_metric_chart(
+        eligible[eligible["entity_id"].isin(comparison_ids)],
+        "Báo sai/Lỗi",
+    )
     print("SMOKE TEST PASSED")
     print(result.manifest)
     return 0

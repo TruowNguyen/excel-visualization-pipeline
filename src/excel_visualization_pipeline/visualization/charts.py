@@ -236,10 +236,14 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
     return figure
 
 
-def build_multi_entity_error_chart(data: pd.DataFrame, title: str | None = None) -> Figure:
-    """Compare the Error metric for up to three compatible entities."""
+def build_multi_entity_metric_chart(
+    data: pd.DataFrame,
+    metric: str,
+    title: str | None = None,
+) -> Figure:
+    """Compare one selected metric for up to three compatible entities."""
     frame = chartable(data)
-    frame = frame[frame["metric_normalized"] == "Báo sai/Lỗi"]
+    frame = frame[frame["metric_normalized"] == metric]
     if frame.empty:
         return go.Figure()
 
@@ -263,22 +267,40 @@ def build_multi_entity_error_chart(data: pd.DataFrame, title: str | None = None)
         level_label = ENTITY_LEVEL_LABELS.get(entity_level, entity_level.title())
         legend_label = f"[{level_label}] {entity_label}"
         color = ENTITY_COLORS[color_index]
-        figure.add_trace(
-            go.Bar(
-                x=entity_data["date"],
-                y=entity_data["chart_value"],
-                name=legend_label,
-                legendgroup=entity_id,
-                marker_color=color,
-                text=entity_data["display_value"],
-                textposition="outside",
-                cliponaxis=False,
-                hoverinfo="skip",
+        if metric == "% báo sai":
+            figure.add_trace(
+                go.Scatter(
+                    x=entity_data["date"],
+                    y=entity_data["chart_value"],
+                    name=legend_label,
+                    legendgroup=entity_id,
+                    mode="lines+markers+text",
+                    line={"color": color, "width": 3},
+                    marker={"size": 8},
+                    text=entity_data["display_value"],
+                    textposition="top center",
+                    cliponaxis=False,
+                    connectgaps=False,
+                    hoverinfo="skip",
+                )
             )
-        )
+        else:
+            figure.add_trace(
+                go.Bar(
+                    x=entity_data["date"],
+                    y=entity_data["chart_value"],
+                    name=legend_label,
+                    legendgroup=entity_id,
+                    marker_color=color,
+                    text=entity_data["display_value"],
+                    textposition="outside",
+                    cliponaxis=False,
+                    hoverinfo="skip",
+                )
+            )
 
     figure.update_layout(
-        title=title or f"So sánh Báo sai/Lỗi — {unit}",
+        title=title or f"So sánh {metric} — {unit}",
         barmode="group",
         bargap=0.25,
         bargroupgap=0.08,
@@ -286,7 +308,9 @@ def build_multi_entity_error_chart(data: pd.DataFrame, title: str | None = None)
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
         margin={"t": 110},
         xaxis_title="Ngày",
-        yaxis_title=f"Báo sai/Lỗi ({unit})",
+        yaxis_title="% báo sai" if metric == "% báo sai" else f"{metric} ({unit})",
         yaxis={"rangemode": "tozero"},
     )
+    if metric == "% báo sai":
+        figure.update_yaxes(tickformat=".1f", ticksuffix="%")
     return figure

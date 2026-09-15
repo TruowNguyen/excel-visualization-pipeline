@@ -363,10 +363,12 @@ Unit không phải là bộ lọc tùy chọn trên giao diện. Khi render, m�
 - Khu vực `So sánh nhiều entity` có multi-select riêng, không thay đổi Hierarchy Navigator của biểu đồ chi tiết.
 - Người dùng chọn ít nhất 2 và tối đa 3 entity.
 - Các entity phải thuộc cùng Project và có cùng `effective_unit`; có thể chọn lẫn Project, Section, Item hoặc Sub-item.
-- Phần multi-select chỉ sử dụng metric `Báo sai/Lỗi`; không thêm `Tổng số` hoặc `% báo sai` vào biểu đồ so sánh.
-- Mỗi entity là một series cột có màu riêng, với `display_value` luôn hiển thị trực tiếp trên cột.
+- `Metric so sánh` cho phép chọn một trong `Tổng số`, `Báo sai/Lỗi` hoặc `% báo sai`; mặc định là `Báo sai/Lỗi`.
+- Với `Tổng số` và `Báo sai/Lỗi`, mỗi entity là một series cột có màu riêng.
+- Với `% báo sai`, mỗi entity là một đường có màu riêng.
+- `display_value` luôn hiển thị trực tiếp trên cột hoặc marker.
 - Legend luôn thêm cấp hierarchy, ví dụ `[Project] VSO` hoặc `[Item] Camera`, để tránh nhầm dữ liệu cha và con.
-- Biểu đồ chỉ có một trục Y số lượng theo Effective Unit chung và không tính thêm tỷ lệ dẫn xuất.
+- Biểu đồ chỉ hiển thị metric đang chọn: số lượng dùng trục Y theo Effective Unit chung, phần trăm dùng trục Y có hậu tố `%`; không tính thêm tỷ lệ dẫn xuất.
 - Nếu lựa chọn không tương thích, dashboard không render chart và hiển thị điều kiện cần sửa.
 
 ## 9. Yêu cầu môi trường
@@ -517,7 +519,7 @@ Smoke test kiểm tra:
 - line chart render được;
 - bar chart render được;
 - combo chart ba metric render được cho đúng một entity;
-- biểu đồ multi-select chỉ render metric `Báo sai/Lỗi` cho 2–3 entity tương thích;
+- biểu đồ multi-select render metric được chọn cho 2–3 entity tương thích;
 
 Kết quả thành công:
 

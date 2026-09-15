@@ -6,7 +6,7 @@ from excel_visualization_pipeline.visualization import (
     build_bar_chart,
     build_line_chart,
     build_metric_combo_chart,
-    build_multi_entity_error_chart,
+    build_multi_entity_metric_chart,
     build_project_total_chart,
     prepare_project_totals,
     prepare_project_totals_range,
@@ -40,7 +40,7 @@ def test_combo_chart_rejects_multiple_entities(sample_workbook):
         build_metric_combo_chart(mixed_entities)
 
 
-def test_multi_entity_error_chart_renders_three_color_groups(sample_workbook):
+def test_multi_entity_metric_chart_renders_three_bar_groups(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"].copy()
     frames = []
@@ -50,7 +50,10 @@ def test_multi_entity_error_chart_renders_three_color_groups(sample_workbook):
         clone["entity_label"] = label
         frames.append(clone)
 
-    figure = build_multi_entity_error_chart(pd.concat(frames, ignore_index=True))
+    figure = build_multi_entity_metric_chart(
+        pd.concat(frames, ignore_index=True),
+        "Báo sai/Lỗi",
+    )
 
     assert len(figure.data) == 3
     assert figure.layout.barmode == "group"
@@ -61,7 +64,7 @@ def test_multi_entity_error_chart_renders_three_color_groups(sample_workbook):
     assert all(trace.name.startswith("[Item]") for trace in figure.data)
 
 
-def test_multi_entity_error_chart_enforces_limit_unit_and_project(sample_workbook):
+def test_multi_entity_metric_chart_enforces_limit_unit_and_project(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"].copy()
     frames = []
@@ -72,20 +75,20 @@ def test_multi_entity_error_chart_enforces_limit_unit_and_project(sample_workboo
         frames.append(clone)
 
     with pytest.raises(ValueError, match="tối đa 3"):
-        build_multi_entity_error_chart(pd.concat(frames, ignore_index=True))
+        build_multi_entity_metric_chart(pd.concat(frames, ignore_index=True), "Tổng số")
 
     mixed_unit = pd.concat(frames[:2], ignore_index=True)
     mixed_unit.loc[mixed_unit["entity_id"] == "entity-1", "effective_unit"] = "Unit khác"
     with pytest.raises(ValueError, match="cùng một effective unit"):
-        build_multi_entity_error_chart(mixed_unit)
+        build_multi_entity_metric_chart(mixed_unit, "Tổng số")
 
     mixed_project = pd.concat(frames[:2], ignore_index=True)
     mixed_project.loc[mixed_project["entity_id"] == "entity-1", "project_id"] = "project-khac"
     with pytest.raises(ValueError, match="cùng một Project"):
-        build_multi_entity_error_chart(mixed_project)
+        build_multi_entity_metric_chart(mixed_project, "Tổng số")
 
 
-def test_multi_entity_error_chart_allows_mixed_hierarchy_levels(sample_workbook):
+def test_multi_entity_metric_chart_allows_mixed_hierarchy_levels(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"].copy()
     parent = item_data.copy()
@@ -97,11 +100,32 @@ def test_multi_entity_error_chart_allows_mixed_hierarchy_levels(sample_workbook)
     child["entity_id"] = "child"
     child["entity_label"] = "Camera"
 
-    figure = build_multi_entity_error_chart(pd.concat([parent, child], ignore_index=True))
+    figure = build_multi_entity_metric_chart(
+        pd.concat([parent, child], ignore_index=True),
+        "Báo sai/Lỗi",
+    )
 
     assert len(figure.data) == 2
     assert any(trace.name.startswith("[Project] Alpha") for trace in figure.data)
     assert any(trace.name.startswith("[Item] Camera") for trace in figure.data)
+
+
+def test_multi_entity_percentage_metric_uses_lines(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"].copy()
+    second = item_data.copy()
+    second["entity_id"] = "camera-b"
+    second["entity_label"] = "Camera B"
+
+    figure = build_multi_entity_metric_chart(
+        pd.concat([item_data, second], ignore_index=True),
+        "% báo sai",
+    )
+
+    assert len(figure.data) == 2
+    assert all(trace.type == "scatter" for trace in figure.data)
+    assert all("text" in trace.mode for trace in figure.data)
+    assert figure.layout.yaxis.ticksuffix == "%"
 
 
 def test_all_demo_charts_render(sample_workbook):

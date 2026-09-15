@@ -19,7 +19,7 @@ from excel_visualization_pipeline.date_ranges import (  # noqa: E402
 )
 from excel_visualization_pipeline.visualization import (  # noqa: E402
     build_metric_combo_chart,
-    build_multi_entity_error_chart,
+    build_multi_entity_metric_chart,
 )
 
 
@@ -194,11 +194,16 @@ st.divider()
 st.subheader("So sánh nhiều entity")
 st.caption(
     "Chọn từ 2 đến 3 entity cùng Effective Unit. Có thể so sánh các cấp hierarchy khác nhau; "
-    "biểu đồ chỉ hiển thị metric Báo sai/Lỗi và mỗi entity có một màu riêng."
+    "chọn một metric cần xem và mỗi entity sẽ có một màu riêng."
+)
+comparison_metric = st.selectbox(
+    "Metric so sánh",
+    combo_metrics,
+    index=combo_metrics.index("Báo sai/Lỗi"),
 )
 comparison_dates = pd.to_datetime(project_data["date"]).dt.date
 comparison_source = project_data[
-    (project_data["metric_normalized"] == "Báo sai/Lỗi")
+    (project_data["metric_normalized"] == comparison_metric)
     & project_data["chart_value"].notna()
     & (comparison_dates >= start_date)
     & (comparison_dates <= end_date)
@@ -215,7 +220,7 @@ selected_comparison_ids = st.multiselect(
     comparison_ids,
     max_selections=3,
     format_func=lambda entity_id: hierarchy_label(comparison_lookup.loc[entity_id]),
-    key=f"comparison_entities::{selected_project}",
+    key=f"comparison_entities::{selected_project}::{comparison_metric}",
 )
 
 if len(selected_comparison_ids) < 2:
@@ -230,9 +235,10 @@ else:
             comparison_source["entity_id"].isin(selected_comparison_ids)
         ]
         st.plotly_chart(
-            build_multi_entity_error_chart(
+            build_multi_entity_metric_chart(
                 comparison_data,
-                f"So sánh Báo sai/Lỗi của {len(selected_comparison_ids)} entity — {selected_units[0]}",
+                comparison_metric,
+                f"So sánh {comparison_metric} của {len(selected_comparison_ids)} entity — {selected_units[0]}",
             ),
             use_container_width=True,
         )

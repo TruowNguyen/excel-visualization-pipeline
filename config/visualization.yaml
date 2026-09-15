@@ -13,8 +13,13 @@ charts:
       - entity_id
       - effective_unit
   multi_entity_comparison:
-    type: grouped_bar
-    metric: "Báo sai/Lỗi"
+    type: selected_metric
+    metrics:
+      - "Tổng số"
+      - "Báo sai/Lỗi"
+      - "% báo sai"
+    count_chart: grouped_bar
+    percentage_chart: line
     max_entities: 3
     require_same:
       - project_id
