@@ -6,12 +6,14 @@ from excel_visualization_pipeline.visualization import (
     build_bar_chart,
     build_line_chart,
     build_metric_average_chart,
+    build_metric_box_plot,
     build_metric_combo_chart,
     build_multi_entity_metric_chart,
     build_project_total_chart,
     prepare_project_totals,
     prepare_project_totals_range,
     prepare_metric_averages,
+    prepare_descriptive_statistics,
 )
 
 
@@ -56,6 +58,26 @@ def test_metric_average_excludes_percentage_and_counts_data_dates(sample_workboo
     assert len(figure.data) == 2
     assert all(trace.type == "bar" for trace in figure.data)
     assert {trace.name for trace in figure.data} == {"Tổng số", "Báo sai/Lỗi"}
+
+
+def test_descriptive_statistics_and_box_plot_exclude_percentage(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"]
+
+    statistics = prepare_descriptive_statistics(item_data).set_index("metric_normalized")
+    figure = build_metric_box_plot(item_data, "2026-09-12", "2026-09-13")
+
+    assert set(statistics.index) == {"Tổng số", "Báo sai/Lỗi"}
+    assert statistics.loc["Tổng số", "mean"] == 110
+    assert statistics.loc["Tổng số", "median"] == 110
+    assert statistics.loc["Tổng số", "minimum"] == 100
+    assert statistics.loc["Tổng số", "q1"] == 105
+    assert statistics.loc["Tổng số", "q3"] == 115
+    assert statistics.loc["Tổng số", "maximum"] == 120
+    assert statistics.loc["Tổng số", "data_date_count"] == 2
+    assert len(figure.data) == 2
+    assert all(trace.type == "box" for trace in figure.data)
+    assert all(trace.boxpoints == "all" for trace in figure.data)
 
 
 def test_multi_entity_metric_chart_renders_three_bar_groups(sample_workbook):

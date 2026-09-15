@@ -19,9 +19,10 @@ from excel_visualization_pipeline.date_ranges import (  # noqa: E402
 )
 from excel_visualization_pipeline.visualization import (  # noqa: E402
     build_metric_average_chart,
+    build_metric_box_plot,
     build_metric_combo_chart,
     build_multi_entity_metric_chart,
-    prepare_metric_averages,
+    prepare_descriptive_statistics,
 )
 
 
@@ -182,20 +183,58 @@ else:
         if missing_metrics:
             st.caption(f"Thiếu metric: {', '.join(missing_metrics)}")
 
-average_data = prepare_metric_averages(range_data)
-if not average_data.empty:
-    st.subheader("Trung bình trong khoảng đã chọn")
+descriptive_data = prepare_descriptive_statistics(range_data)
+if not descriptive_data.empty:
+    st.subheader("Thống kê mô tả trong khoảng đã chọn")
     st.caption(
-        "Chỉ tính Tổng số và Báo sai/Lỗi trên số ngày thực sự có dữ liệu; "
+        "Phân tích Tổng số và Báo sai/Lỗi trên các ngày thực sự có dữ liệu; "
         "giá trị 0 được giữ lại, dữ liệu thiếu và % báo sai không tham gia."
     )
-    st.plotly_chart(
-        build_metric_average_chart(range_data, start_date, end_date),
-        use_container_width=True,
-    )
-    with st.expander("Xem chi tiết cách tính trung bình"):
+    average_tab, box_plot_tab = st.tabs(["Trung bình", "Box plot"])
+    with average_tab:
+        st.plotly_chart(
+            build_metric_average_chart(range_data, start_date, end_date),
+            use_container_width=True,
+        )
+    with box_plot_tab:
+        st.plotly_chart(
+            build_metric_box_plot(range_data, start_date, end_date),
+            use_container_width=True,
+        )
+    with st.expander("Xem bảng thống kê mô tả"):
+        statistics_table = descriptive_data[
+            [
+                "entity_display",
+                "effective_unit",
+                "metric_normalized",
+                "data_date_count",
+                "data_point_count",
+                "display_mean",
+                "display_median",
+                "display_minimum",
+                "display_q1",
+                "display_q3",
+                "display_maximum",
+                "display_standard_deviation",
+            ]
+        ].rename(
+            columns={
+                "entity_display": "Entity",
+                "effective_unit": "Effective Unit",
+                "metric_normalized": "Metric",
+                "data_date_count": "Số ngày dữ liệu",
+                "data_point_count": "Số điểm dữ liệu",
+                "display_mean": "Trung bình",
+                "display_median": "Trung vị",
+                "display_minimum": "Nhỏ nhất",
+                "display_q1": "Q1",
+                "display_q3": "Q3",
+                "display_maximum": "Lớn nhất",
+                "display_standard_deviation": "Độ lệch chuẩn",
+            }
+        )
         st.dataframe(
-            average_data.sort_values(["effective_unit", "entity_display", "metric_normalized"]),
+            statistics_table.sort_values(["Effective Unit", "Entity", "Metric"]),
             use_container_width=True,
             hide_index=True,
         )

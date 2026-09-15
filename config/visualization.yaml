@@ -10,6 +10,21 @@ charts:
     denominator: available_data_dates_per_metric
     separate_by:
       - effective_unit
+  descriptive_statistics:
+    metrics:
+      - "Tổng số"
+      - "Báo sai/Lỗi"
+    measures:
+      - mean
+      - median
+      - minimum
+      - q1
+      - q3
+      - maximum
+      - standard_deviation
+    charts:
+      - average_bar
+      - box_plot
   metric_combo:
     type: bar_line_secondary_y
     bar_mode: group
