@@ -180,18 +180,21 @@ else:
         if missing_metrics:
             st.caption(f"Thiếu metric: {', '.join(missing_metrics)}")
 
+'''
 st.subheader("Dữ liệu chi tiết và truy vết")
 st.dataframe(
     range_data.sort_values(["entity_label", "date", "metric_normalized"]),
     use_container_width=True,
     hide_index=True,
 )
+'''
+
 
 st.divider()
 st.subheader("So sánh nhiều entity")
 st.caption(
-    "Chọn từ 2 đến 3 entity cùng cấp hierarchy và cùng Effective Unit. "
-    "Mỗi entity có một nhóm màu riêng trên cùng biểu đồ."
+    "Chọn từ 2 đến 3 entity cùng Effective Unit. Có thể so sánh các cấp hierarchy khác nhau; "
+    "mỗi entity có một nhóm màu riêng trên cùng biểu đồ."
 )
 comparison_dates = pd.to_datetime(project_data["date"]).dt.date
 comparison_source = project_data[
@@ -220,11 +223,8 @@ if len(selected_comparison_ids) < 2:
 else:
     selected_entities = comparison_lookup.loc[selected_comparison_ids]
     selected_units = selected_entities["effective_unit"].dropna().unique()
-    selected_depths = selected_entities["entity_depth"].unique()
     if len(selected_units) != 1:
         st.error("Các entity được chọn phải có cùng Effective Unit.")
-    elif len(selected_depths) != 1:
-        st.error("Các entity được chọn phải cùng cấp hierarchy.")
     else:
         comparison_data = comparison_source[
             comparison_source["entity_id"].isin(selected_comparison_ids)

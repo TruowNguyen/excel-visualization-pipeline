@@ -8,6 +8,12 @@ from plotly.subplots import make_subplots
 
 
 ENTITY_COLORS = ["#0077b6", "#e76f51", "#2a9d8f"]
+ENTITY_LEVEL_LABELS = {
+    "project": "Project",
+    "section": "Section",
+    "item": "Item",
+    "subitem": "Sub-item",
+}
 
 
 def _formatted_number(value: float) -> str:
@@ -244,14 +250,17 @@ def build_multi_entity_combo_chart(data: pd.DataFrame, title: str | None = None)
     if frame["effective_unit"].isna().any() or len(units) != 1:
         raise ValueError("Các entity so sánh phải có cùng một effective unit đã xác định.")
 
-    if "entity_depth" in frame.columns and frame["entity_depth"].nunique() != 1:
-        raise ValueError("Các entity so sánh phải cùng cấp hierarchy.")
+    if "project_id" in frame.columns and frame["project_id"].nunique() != 1:
+        raise ValueError("Các entity so sánh phải thuộc cùng một Project.")
 
     unit = str(units[0])
     figure = make_subplots(specs=[[{"secondary_y": True}]])
     for color_index, entity_id in enumerate(entity_ids):
         entity_data = frame[frame["entity_id"] == entity_id]
         entity_label = str(entity_data["entity_label"].iloc[0])
+        entity_level = str(entity_data["entity_level"].iloc[0])
+        level_label = ENTITY_LEVEL_LABELS.get(entity_level, entity_level.title())
+        legend_label = f"[{level_label}] {entity_label}"
         color = ENTITY_COLORS[color_index]
 
         for metric, opacity, pattern in [
@@ -267,7 +276,7 @@ def build_multi_entity_combo_chart(data: pd.DataFrame, title: str | None = None)
                 go.Bar(
                     x=metric_data["date"],
                     y=metric_data["chart_value"],
-                    name=f"{entity_label} · {metric}",
+                    name=f"{legend_label} · {metric}",
                     legendgroup=entity_id,
                     marker={"color": color, "pattern": {"shape": pattern}},
                     opacity=opacity,
@@ -287,7 +296,7 @@ def build_multi_entity_combo_chart(data: pd.DataFrame, title: str | None = None)
                 go.Scatter(
                     x=rate_data["date"],
                     y=rate_data["chart_value"],
-                    name=f"{entity_label} · % báo sai",
+                    name=f"{legend_label} · % báo sai",
                     legendgroup=entity_id,
                     mode="lines+markers+text",
                     line={"color": color, "width": 3},

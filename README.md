@@ -362,9 +362,11 @@ Unit không phải là bộ lọc tùy chọn trên giao diện. Khi render, m�
 
 - Khu vực `So sánh nhiều entity` có multi-select riêng, không thay đổi Hierarchy Navigator của biểu đồ chi tiết.
 - Người dùng chọn ít nhất 2 và tối đa 3 entity.
-- Các entity phải thuộc cùng Project, có cùng `effective_unit` và cùng `entity_depth`.
+- Các entity phải thuộc cùng Project và có cùng `effective_unit`; có thể chọn lẫn Project, Section, Item hoặc Sub-item.
 - Mỗi entity dùng một nhóm màu riêng. Trong nhóm đó, `Tổng số` là cột màu đậm, `Báo sai/Lỗi` là cột màu nhạt có pattern và `% báo sai` là đường cùng màu.
+- Legend luôn thêm cấp hierarchy, ví dụ `[Project] VSO · Tổng số` hoặc `[Item] Camera · Báo sai/Lỗi`, để tránh nhầm dữ liệu cha và con.
 - Hai metric số lượng dùng trục Y trái; các đường phần trăm dùng chung trục Y phải.
+- Dashboard chỉ so sánh các metric nguồn của từng entity, không tự tính `% lỗi của Item trên Tổng số của Parent`.
 - Nếu lựa chọn không tương thích, dashboard không render chart và hiển thị điều kiện cần sửa.
 
 ## 9. Yêu cầu môi trường
@@ -721,7 +723,7 @@ Kiểm tra `raw_value` và `number_format`:
 - [x] Có line/bar cơ bản và combo chart ba metric.
 - [x] Combo chart tách riêng theo entity/unit và hiển thị `display_value` trực tiếp.
 - [x] Effective Unit cố định theo entity, không yêu cầu người dùng chọn.
-- [x] Multi-select so sánh tối đa 3 entity cùng Project, unit và cấp hierarchy.
+- [x] Multi-select so sánh tối đa 3 entity cùng Project và unit, cho phép khác cấp hierarchy.
 - [x] Có dashboard filter và upload file.
 - [x] Có normalized CSV, entities CSV và manifest.
 - [x] Có unit test và smoke test với workbook thật.

@@ -57,9 +57,10 @@ def test_multi_entity_combo_renders_three_color_groups(sample_workbook):
     assert len({trace.legendgroup for trace in figure.data}) == 3
     assert all(trace.hoverinfo == "skip" for trace in figure.data)
     assert sum(trace.type == "scatter" for trace in figure.data) == 3
+    assert all(trace.name.startswith("[Item]") for trace in figure.data)
 
 
-def test_multi_entity_combo_enforces_limit_unit_and_depth(sample_workbook):
+def test_multi_entity_combo_enforces_limit_unit_and_project(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"].copy()
     frames = []
@@ -77,10 +78,29 @@ def test_multi_entity_combo_enforces_limit_unit_and_depth(sample_workbook):
     with pytest.raises(ValueError, match="cùng một effective unit"):
         build_multi_entity_combo_chart(mixed_unit)
 
-    mixed_depth = pd.concat(frames[:2], ignore_index=True)
-    mixed_depth.loc[mixed_depth["entity_id"] == "entity-1", "entity_depth"] = 99
-    with pytest.raises(ValueError, match="cùng cấp hierarchy"):
-        build_multi_entity_combo_chart(mixed_depth)
+    mixed_project = pd.concat(frames[:2], ignore_index=True)
+    mixed_project.loc[mixed_project["entity_id"] == "entity-1", "project_id"] = "project-khac"
+    with pytest.raises(ValueError, match="cùng một Project"):
+        build_multi_entity_combo_chart(mixed_project)
+
+
+def test_multi_entity_combo_allows_mixed_hierarchy_levels(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"].copy()
+    parent = item_data.copy()
+    parent["entity_id"] = "parent"
+    parent["entity_label"] = "Alpha"
+    parent["entity_level"] = "project"
+    parent["entity_depth"] = 0
+    child = item_data.copy()
+    child["entity_id"] = "child"
+    child["entity_label"] = "Camera"
+
+    figure = build_multi_entity_combo_chart(pd.concat([parent, child], ignore_index=True))
+
+    assert len(figure.data) == 6
+    assert any(trace.name.startswith("[Project] Alpha") for trace in figure.data)
+    assert any(trace.name.startswith("[Item] Camera") for trace in figure.data)
 
 
 def test_all_demo_charts_render(sample_workbook):

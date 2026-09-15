@@ -18,7 +18,6 @@ charts:
     require_same:
       - project_id
       - effective_unit
-      - entity_depth
   trend:
     type: line
     x: date

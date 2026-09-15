@@ -44,9 +44,9 @@ def main() -> int:
         & combo_source["chart_value"].notna()
     ]
     compatible_groups = eligible[
-        ["project_id", "effective_unit", "entity_depth", "entity_id"]
+        ["project_id", "effective_unit", "entity_id"]
     ].drop_duplicates().groupby(
-        ["project_id", "effective_unit", "entity_depth"]
+        ["project_id", "effective_unit"]
     )["entity_id"].apply(list)
     comparison_ids = next((ids[:3] for ids in compatible_groups if len(ids) >= 2), None)
     assert comparison_ids is not None
