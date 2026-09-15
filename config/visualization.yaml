@@ -12,8 +12,9 @@ charts:
     separate_by:
       - entity_id
       - effective_unit
-  multi_entity_combo:
-    type: grouped_bar_line_secondary_y
+  multi_entity_comparison:
+    type: grouped_bar
+    metric: "Báo sai/Lỗi"
     max_entities: 3
     require_same:
       - project_id

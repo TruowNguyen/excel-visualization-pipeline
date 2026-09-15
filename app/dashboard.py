@@ -19,7 +19,7 @@ from excel_visualization_pipeline.date_ranges import (  # noqa: E402
 )
 from excel_visualization_pipeline.visualization import (  # noqa: E402
     build_metric_combo_chart,
-    build_multi_entity_combo_chart,
+    build_multi_entity_error_chart,
 )
 
 
@@ -194,11 +194,11 @@ st.divider()
 st.subheader("So sánh nhiều entity")
 st.caption(
     "Chọn từ 2 đến 3 entity cùng Effective Unit. Có thể so sánh các cấp hierarchy khác nhau; "
-    "mỗi entity có một nhóm màu riêng trên cùng biểu đồ."
+    "biểu đồ chỉ hiển thị metric Báo sai/Lỗi và mỗi entity có một màu riêng."
 )
 comparison_dates = pd.to_datetime(project_data["date"]).dt.date
 comparison_source = project_data[
-    project_data["metric_normalized"].isin(combo_metrics)
+    (project_data["metric_normalized"] == "Báo sai/Lỗi")
     & project_data["chart_value"].notna()
     & (comparison_dates >= start_date)
     & (comparison_dates <= end_date)
@@ -230,24 +230,12 @@ else:
             comparison_source["entity_id"].isin(selected_comparison_ids)
         ]
         st.plotly_chart(
-            build_multi_entity_combo_chart(
+            build_multi_entity_error_chart(
                 comparison_data,
-                f"So sánh {len(selected_comparison_ids)} entity — {selected_units[0]}",
+                f"So sánh Báo sai/Lỗi của {len(selected_comparison_ids)} entity — {selected_units[0]}",
             ),
             use_container_width=True,
         )
-        for entity_id in selected_comparison_ids:
-            entity_data = comparison_data[comparison_data["entity_id"] == entity_id]
-            missing_metrics = [
-                metric
-                for metric in combo_metrics
-                if metric not in set(entity_data["metric_normalized"])
-            ]
-            if missing_metrics:
-                st.caption(
-                    f"{comparison_lookup.loc[entity_id, 'entity_label']}: "
-                    f"thiếu {', '.join(missing_metrics)}"
-                )
 
 with st.expander(f"Cảnh báo chất lượng ({len(result.report.warnings)})"):
     st.dataframe(pd.DataFrame(issue.as_dict() for issue in result.report.warnings), use_container_width=True)

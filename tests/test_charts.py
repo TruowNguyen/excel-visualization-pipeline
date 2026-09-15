@@ -6,7 +6,7 @@ from excel_visualization_pipeline.visualization import (
     build_bar_chart,
     build_line_chart,
     build_metric_combo_chart,
-    build_multi_entity_combo_chart,
+    build_multi_entity_error_chart,
     build_project_total_chart,
     prepare_project_totals,
     prepare_project_totals_range,
@@ -40,7 +40,7 @@ def test_combo_chart_rejects_multiple_entities(sample_workbook):
         build_metric_combo_chart(mixed_entities)
 
 
-def test_multi_entity_combo_renders_three_color_groups(sample_workbook):
+def test_multi_entity_error_chart_renders_three_color_groups(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"].copy()
     frames = []
@@ -50,17 +50,18 @@ def test_multi_entity_combo_renders_three_color_groups(sample_workbook):
         clone["entity_label"] = label
         frames.append(clone)
 
-    figure = build_multi_entity_combo_chart(pd.concat(frames, ignore_index=True))
+    figure = build_multi_entity_error_chart(pd.concat(frames, ignore_index=True))
 
-    assert len(figure.data) == 9
+    assert len(figure.data) == 3
     assert figure.layout.barmode == "group"
     assert len({trace.legendgroup for trace in figure.data}) == 3
     assert all(trace.hoverinfo == "skip" for trace in figure.data)
-    assert sum(trace.type == "scatter" for trace in figure.data) == 3
+    assert all(trace.type == "bar" for trace in figure.data)
+    assert all("% báo sai" not in trace.name and "Tổng số" not in trace.name for trace in figure.data)
     assert all(trace.name.startswith("[Item]") for trace in figure.data)
 
 
-def test_multi_entity_combo_enforces_limit_unit_and_project(sample_workbook):
+def test_multi_entity_error_chart_enforces_limit_unit_and_project(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"].copy()
     frames = []
@@ -71,20 +72,20 @@ def test_multi_entity_combo_enforces_limit_unit_and_project(sample_workbook):
         frames.append(clone)
 
     with pytest.raises(ValueError, match="tối đa 3"):
-        build_multi_entity_combo_chart(pd.concat(frames, ignore_index=True))
+        build_multi_entity_error_chart(pd.concat(frames, ignore_index=True))
 
     mixed_unit = pd.concat(frames[:2], ignore_index=True)
     mixed_unit.loc[mixed_unit["entity_id"] == "entity-1", "effective_unit"] = "Unit khác"
     with pytest.raises(ValueError, match="cùng một effective unit"):
-        build_multi_entity_combo_chart(mixed_unit)
+        build_multi_entity_error_chart(mixed_unit)
 
     mixed_project = pd.concat(frames[:2], ignore_index=True)
     mixed_project.loc[mixed_project["entity_id"] == "entity-1", "project_id"] = "project-khac"
     with pytest.raises(ValueError, match="cùng một Project"):
-        build_multi_entity_combo_chart(mixed_project)
+        build_multi_entity_error_chart(mixed_project)
 
 
-def test_multi_entity_combo_allows_mixed_hierarchy_levels(sample_workbook):
+def test_multi_entity_error_chart_allows_mixed_hierarchy_levels(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"].copy()
     parent = item_data.copy()
@@ -96,9 +97,9 @@ def test_multi_entity_combo_allows_mixed_hierarchy_levels(sample_workbook):
     child["entity_id"] = "child"
     child["entity_label"] = "Camera"
 
-    figure = build_multi_entity_combo_chart(pd.concat([parent, child], ignore_index=True))
+    figure = build_multi_entity_error_chart(pd.concat([parent, child], ignore_index=True))
 
-    assert len(figure.data) == 6
+    assert len(figure.data) == 2
     assert any(trace.name.startswith("[Project] Alpha") for trace in figure.data)
     assert any(trace.name.startswith("[Item] Camera") for trace in figure.data)
 
