@@ -226,7 +226,8 @@ with st.expander("Audit Table — dữ liệu nguồn"):
     st.caption(
         "Tooltip phục vụ đọc nhanh; bảng này giữ thông tin đầy đủ để truy vết về workbook và ô nguồn. "
         "not_recorded là ô trống/không ghi nhận trong ngày; source_marker là ký hiệu '-' hoặc N/A "
-        "được giữ nguyên để đánh dấu dữ liệu khác bản chất."
+        "được giữ nguyên để đánh dấu dữ liệu khác bản chất; default_zero_rate là % báo sai được "
+        "mặc định 0% khi không ghi nhận Báo sai/Lỗi hoặc số lỗi bằng 0."
     )
     st.dataframe(
         range_data[audit_columns].sort_values(["entity_path", "date", "metric_normalized"]),

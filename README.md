@@ -74,6 +74,10 @@ Text         → giữ để audit, không ép thành số
 
 `not_recorded` mô tả đúng nghiệp vụ rằng hệ thống không ghi nhận giá trị trong ngày, không hàm ý quy trình thu thập chưa diễn ra. `source_marker` chỉ bảo toàn ký hiệu do nguồn dùng cho dữ liệu khác bản chất, không tự diễn giải ký hiệu đó thành số hoặc trạng thái “không có dữ liệu”. Cả hai có `chart_value = null`, không tham gia biểu đồ hay phép tính trung bình, nhưng vẫn được giữ để Audit Table truy vết đúng địa chỉ ô.
 
+Riêng `% báo sai` trống được mặc định thành `0%` (`value_kind = default_zero_rate`) khi `Báo sai/Lỗi` cùng entity/ngày không ghi nhận hoặc có giá trị số `0`. Nếu số lỗi lớn hơn `0`, tỷ lệ trống vẫn là `not_recorded`; pipeline không tự tính tỷ lệ. Dấu `-` luôn giữ là `source_marker`, không được mặc định thành `0%`.
+
+Manifest ghi `default_zero_rate_count` để có thể kiểm toán số lượng tỷ lệ `0%` do quy tắc mặc định tạo ra, tách biệt với số 0 có sẵn trong Excel.
+
 ### 2.4. Không tổng hợp sai cấp dữ liệu
 
 Workbook thực tế có metric ở nhiều độ sâu hierarchy. Mỗi record được gắn:

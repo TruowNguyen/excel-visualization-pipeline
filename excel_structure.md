@@ -58,6 +58,7 @@ VOL
 - Workbook sử dụng ô trống thật, khoảng trắng không ngắt `NBSP` và dấu `-` cho các trạng thái khác nhau.
 - `NBSP` chỉ là dữ liệu trình bày và được coi là blank.
 - Dấu `-` được giữ thành record `source_marker` để đánh dấu dữ liệu khác bản chất, không đổi thành số 0 hoặc tự diễn giải thành “không có dữ liệu”.
+- Ô `% báo sai` trống chỉ được gán `default_zero_rate = 0%` khi `Báo sai/Lỗi` cùng entity/ngày không ghi nhận hoặc bằng 0; `raw_value` vẫn giữ nguyên để phân biệt với số 0 từ Excel.
 - Text xuất hiện trong một số ô metric được giữ để audit nhưng không đưa lên chart số.
 
 ## Kết quả baseline

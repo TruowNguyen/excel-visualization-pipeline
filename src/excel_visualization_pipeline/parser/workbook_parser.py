@@ -169,6 +169,34 @@ def _date_groups(ws, header_row: int, config: ParserConfig, epoch: datetime) -> 
     return groups
 
 
+def _apply_default_zero_rates(data: pd.DataFrame) -> pd.DataFrame:
+    """Default a blank error rate to 0% only when no error was recorded."""
+    if data.empty:
+        return data
+    group_columns = ["sheet_name", "entity_id", "date"]
+    errors = data[data["metric_normalized"] == "Báo sai/Lỗi"].copy()
+    if errors.empty:
+        return data
+    errors["no_recorded_error"] = errors["value_kind"].eq("not_recorded") | (
+        errors["chart_value"].notna() & errors["chart_value"].eq(0)
+    )
+    eligible_groups = errors.groupby(group_columns, dropna=False)["no_recorded_error"].all()
+    eligible_keys = eligible_groups[eligible_groups].index
+
+    rate_mask = (
+        data["metric_normalized"].eq("% báo sai")
+        & data["value_kind"].eq("not_recorded")
+    )
+    rate_indices = data.index[rate_mask]
+    rate_keys = pd.MultiIndex.from_frame(data.loc[rate_indices, group_columns])
+    default_indices = rate_indices[rate_keys.isin(eligible_keys)]
+    data.loc[
+        default_indices,
+        ["value_numeric", "chart_value", "display_value", "value_kind"],
+    ] = [0.0, 0.0, "0%", "default_zero_rate"]
+    return data
+
+
 def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> ParseResult:
     config = config or ParserConfig()
     records: list[dict[str, Any]] = []
@@ -285,6 +313,7 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
         entity_records.extend(node.as_dict() for node in tree.nodes)
 
     data = pd.DataFrame.from_records(records, columns=OUTPUT_COLUMNS)
+    data = _apply_default_zero_rates(data)
     entities = pd.DataFrame.from_records(entity_records, columns=ENTITY_COLUMNS)
     project_nodes = entities[entities["entity_level"] == "project"] if not entities.empty else entities
     section_nodes = entities[entities["entity_level"] == "section"] if not entities.empty else entities
@@ -303,6 +332,7 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
         "fallback_entity_count": int((entities["parser_rule"] == "fallback_entity").sum()) if not entities.empty else 0,
         "unknown_unit_count": int(entities["effective_unit"].isna().sum()) if not entities.empty else 0,
         "unit_count": int(entities["unit_normalized"].nunique()) if not entities.empty else 0,
+        "default_zero_rate_count": int(data["value_kind"].eq("default_zero_rate").sum()) if not data.empty else 0,
         "minimum_data_date": config.minimum_data_date,
         "date_count": len(detected_dates),
         "metric_count": len(detected_metrics),

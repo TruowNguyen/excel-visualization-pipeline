@@ -44,6 +44,26 @@ def test_keeps_zero_distinct_from_not_recorded_blank(sample_workbook):
     assert blank["display_value"] == ""
 
 
+def test_defaults_blank_rate_only_when_no_error_was_recorded(sample_workbook):
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(sample_workbook)
+    workbook.active["E7"] = None
+    workbook.active["F7"] = None
+    workbook.active["I7"] = None
+    workbook.save(sample_workbook)
+
+    result = run_pipeline(sample_workbook)
+    records = result.data.set_index("cell_address")
+
+    assert records.loc["F7", "value_kind"] == "default_zero_rate"
+    assert records.loc["F7", "chart_value"] == 0
+    assert records.loc["F7", "display_value"] == "0%"
+    assert pd.isna(records.loc["F7", "raw_value"])
+    assert records.loc["I7", "value_kind"] == "not_recorded"
+    assert pd.isna(records.loc["I7", "chart_value"])
+
+
 def test_filters_dates_before_configured_minimum(sample_workbook):
     result = parse_workbook(
         load_excel(sample_workbook),
