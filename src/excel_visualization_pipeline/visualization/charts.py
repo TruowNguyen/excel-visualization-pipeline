@@ -28,12 +28,13 @@ def _enable_unified_date_hover(figure: Figure) -> Figure:
     """Show every trace for the nearest date without requiring point-level hover."""
     figure.update_layout(
         hovermode="x unified",
-        hoverdistance=-1,
+        hoverdistance=20,
         hoverlabel={"namelength": -1},
     )
     figure.for_each_xaxis(
         lambda axis: axis.update(
-            unifiedhovertitle={"text": "<b>Ngày %{x|%d/%m/%Y}</b>"}
+            unifiedhovertitle={"text": "<b>Ngày %{x|%d/%m/%Y}</b>"},
+            showspikes=False,
         )
     )
     return figure

@@ -33,7 +33,8 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     assert list(figure.data[1].text) == ["", "6"]
     assert list(figure.data[2].text) == ["", "5.00%"]
     assert figure.layout.hovermode == "x unified"
-    assert figure.layout.hoverdistance == -1
+    assert figure.layout.hoverdistance == 20
+    assert figure.layout.xaxis.showspikes is False
     assert figure.layout.xaxis.unifiedhovertitle.text == "<b>Ngày %{x|%d/%m/%Y}</b>"
     assert "Tổng số/Cảnh báo" in figure.data[0].hovertemplate
     assert "Báo sai/Lỗi" in figure.data[1].hovertemplate
