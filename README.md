@@ -557,6 +557,7 @@ File cấu hình: `config/parser.yaml`.
 header_search_rows: 20
 project_column: "Dự án"
 unit_column: "Đơn vị"
+minimum_data_date: "2026-08-01"
 result_header_patterns:
   - "kết quả triển khai"
 hierarchy_rules:
@@ -590,6 +591,8 @@ unit_aliases:
   "lượt (ngày)": "daily_event_count"
   "lượt (lũy kế)": "cumulative_event_count"
 ```
+
+`minimum_data_date` là mốc chất lượng dữ liệu toàn cục. Pipeline bỏ hoàn toàn các block ngày trước mốc này khỏi normalized data, validation, dashboard, Audit Table và CSV xuất ra. Cấu hình hiện tại bắt đầu từ `01/08/2026` vì dữ liệu cũ hơn chưa được chuẩn hóa.
 
 Khi workbook đổi tên metric, thêm alias tại `metric_aliases`:
 

@@ -155,6 +155,10 @@ def _date_groups(ws, header_row: int, config: ParserConfig, epoch: datetime) -> 
         parsed_date = extract_date(header, epoch)
         if parsed_date is None:
             continue
+        if config.minimum_data_date is not None:
+            minimum_data_date = pd.Timestamp(config.minimum_data_date).normalize()
+            if parsed_date < minimum_data_date:
+                continue
         end_col = (meaningful_headers[index + 1][0] - 1) if index + 1 < len(meaningful_headers) else ws.max_column
         groups.append({"date": parsed_date, "start_col": start_col, "end_col": end_col, "header": header})
     return groups
@@ -288,6 +292,7 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
         "fallback_entity_count": int((entities["parser_rule"] == "fallback_entity").sum()) if not entities.empty else 0,
         "unknown_unit_count": int(entities["effective_unit"].isna().sum()) if not entities.empty else 0,
         "unit_count": int(entities["unit_normalized"].nunique()) if not entities.empty else 0,
+        "minimum_data_date": config.minimum_data_date,
         "date_count": len(detected_dates),
         "metric_count": len(detected_metrics),
         "projects": sorted(project_nodes["project_label"].unique()) if not entities.empty else [],

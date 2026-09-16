@@ -52,7 +52,7 @@ if result.report.errors:
     st.dataframe(pd.DataFrame(issue.as_dict() for issue in result.report.issues), use_container_width=True)
     st.stop()
 
-projects = sorted(result.entities["project_label"].dropna().unique())
+projects = sorted(data["project_label"].dropna().unique())
 selected_project = st.sidebar.selectbox("Project", projects)
 project_entities = result.entities[result.entities["project_label"] == selected_project].copy()
 project_entities = project_entities.sort_values(["source_row", "entity_depth"])

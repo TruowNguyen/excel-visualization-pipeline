@@ -1,3 +1,8 @@
+import pandas as pd
+
+from excel_visualization_pipeline.config import ParserConfig
+from excel_visualization_pipeline.ingestion import load_excel
+from excel_visualization_pipeline.parser import parse_workbook
 from excel_visualization_pipeline.pipeline import run_pipeline
 
 
@@ -33,3 +38,15 @@ def test_keeps_zero_distinct_from_blank(sample_workbook):
     assert "D7" in set(result.data["cell_address"])
     assert "E7" not in set(result.data["cell_address"])
     assert result.data.set_index("cell_address").loc["D7", "chart_value"] == 0
+
+
+def test_filters_dates_before_configured_minimum(sample_workbook):
+    result = parse_workbook(
+        load_excel(sample_workbook),
+        ParserConfig(minimum_data_date="2026-09-13"),
+    )
+
+    assert result.manifest["minimum_data_date"] == "2026-09-13"
+    assert result.manifest["date_count"] == 1
+    assert len(result.data) == 3
+    assert pd.to_datetime(result.data["date"]).min() == pd.Timestamp("2026-09-13")

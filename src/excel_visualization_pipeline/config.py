@@ -12,6 +12,7 @@ class ParserConfig:
     header_search_rows: int = 20
     project_column: str = "Dự án"
     unit_column: str = "Đơn vị"
+    minimum_data_date: str | None = None
     result_header_patterns: tuple[str, ...] = ("kết quả triển khai",)
     hierarchy_rules: tuple[dict[str, Any], ...] = (
         {
@@ -55,6 +56,11 @@ class ParserConfig:
             header_search_rows=int(payload.get("header_search_rows", 20)),
             project_column=str(payload.get("project_column", "Dự án")),
             unit_column=str(payload.get("unit_column", "Đơn vị")),
+            minimum_data_date=(
+                str(payload["minimum_data_date"])
+                if payload.get("minimum_data_date") is not None
+                else None
+            ),
             result_header_patterns=tuple(payload.get("result_header_patterns", ["kết quả triển khai"])),
             hierarchy_rules=tuple(payload.get("hierarchy_rules", cls.hierarchy_rules)),
             fallback_entity_level=str(payload.get("fallback_entity_level", "item")),

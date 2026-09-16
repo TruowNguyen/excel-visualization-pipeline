@@ -1,6 +1,7 @@
 header_search_rows: 20
 project_column: "Dự án"
 unit_column: "Đơn vị"
+minimum_data_date: "2026-08-01"
 result_header_patterns:
   - "kết quả triển khai"
 hierarchy_rules:

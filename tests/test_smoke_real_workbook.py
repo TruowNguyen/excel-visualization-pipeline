@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from excel_visualization_pipeline.pipeline import run_pipeline
@@ -13,7 +14,9 @@ def test_real_workbook_end_to_end():
     result = run_pipeline(REAL_WORKBOOK, Path(__file__).resolve().parents[1] / "config" / "parser.yaml")
     assert result.report.is_valid
     assert result.manifest["project_count"] == 6
-    assert result.manifest["date_count"] == 44
+    assert result.manifest["minimum_data_date"] == "2026-08-01"
+    assert result.manifest["date_count"] == 41
+    assert result.data["date"].min() >= pd.Timestamp("2026-08-01")
     assert result.manifest["record_count"] > 1000
     assert result.data["cell_address"].notna().all()
     assert result.data["source_hash"].nunique() == 1
