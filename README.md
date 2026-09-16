@@ -329,6 +329,7 @@ Dashboard hỗ trợ:
 - có khu vực multi-select riêng để so sánh đồng thời tối đa 3 entity tương thích;
 - cùng một kiểu combo chart được dùng cho một ngày hoặc cả khoảng `Từ ngày`–`Đến ngày`;
 - mọi cột và marker luôn hiển thị trực tiếp `display_value`, không cần di chuột;
+- toàn bộ ngày hiển thị trên trục và tiêu đề biểu đồ dùng định dạng `DD/MM`;
 - bảng dữ liệu chuẩn hóa;
 - xem warning chất lượng;
 - tải xuống normalized CSV.

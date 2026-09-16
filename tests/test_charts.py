@@ -27,6 +27,7 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     assert [trace.name for trace in figure.data] == ["Tổng số", "Báo sai/Lỗi", "% báo sai"]
     assert figure.layout.barmode == "overlay"
     assert figure.data[0].width > figure.data[1].width
+    assert figure.layout.xaxis.tickformat == "%d/%m"
     assert figure.data[2].yaxis == "y2"
     assert figure.layout.yaxis2.tickformat == ".1f"
     assert figure.layout.yaxis2.ticksuffix == "%"
@@ -186,6 +187,7 @@ def test_multi_entity_percentage_metric_uses_lines(sample_workbook):
     assert all(trace.type == "scatter" for trace in figure.data)
     assert all("text" in trace.mode for trace in figure.data)
     assert figure.layout.yaxis.ticksuffix == "%"
+    assert figure.layout.xaxis.tickformat == "%d/%m"
 
 
 def test_all_demo_charts_render(sample_workbook):
@@ -198,6 +200,7 @@ def test_all_demo_charts_render(sample_workbook):
     assert list(line.data[0].text) == ["8.00%", "5.00%"]
     assert list(bar.data[0].text) == ["5.00%"]
     assert "text" in line.data[0].mode
+    assert line.layout.xaxis.tickformat == "%d/%m"
     assert line.data[0].hoverinfo == "skip"
     assert bar.data[0].hoverinfo == "skip"
 
@@ -215,6 +218,7 @@ def test_project_overview_uses_item_fallback_without_mixing_levels(sample_workbo
     assert list(figure.data[0].text) == ["100"]
     assert "text" in figure.data[0].mode
     assert figure.data[0].hoverinfo == "skip"
+    assert figure.layout.xaxis.tickformat == "%d/%m"
 
 
 def test_project_overview_supports_from_and_to_dates(sample_workbook):

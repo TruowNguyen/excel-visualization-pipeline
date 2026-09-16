@@ -16,6 +16,14 @@ ENTITY_LEVEL_LABELS = {
 }
 
 
+def _format_date_axes(figure: Figure) -> Figure:
+    """Use the Vietnamese day/month display without changing datetime values."""
+    figure.for_each_xaxis(
+        lambda axis: axis.update(tickformat="%d/%m", hoverformat="%d/%m")
+    )
+    return figure
+
+
 def _formatted_number(value: float) -> str:
     if float(value).is_integer():
         return f"{value:,.0f}"
@@ -86,7 +94,7 @@ def build_project_total_chart(data: pd.DataFrame, start_date, end_date=None) -> 
     frame = prepare_project_totals_range(data, start_date, end_date)
     projects = sorted(data["project"].dropna().unique())
     scope = projects[0] if len(projects) == 1 else "các Project"
-    title = f"Tổng số — {scope} — {pd.Timestamp(start_date):%d/%m/%Y} đến {pd.Timestamp(end_date):%d/%m/%Y}"
+    title = f"Tổng số — {scope} — {pd.Timestamp(start_date):%d/%m} đến {pd.Timestamp(end_date):%d/%m}"
     if frame.empty:
         return px.line(title=title)
     figure = px.line(
@@ -110,7 +118,7 @@ def build_project_total_chart(data: pd.DataFrame, start_date, end_date=None) -> 
     )
     figure.update_layout(margin={"t": 90})
     figure.for_each_yaxis(lambda axis: axis.update(matches=None))
-    return figure
+    return _format_date_axes(figure)
 
 
 def chartable(data: pd.DataFrame) -> pd.DataFrame:
@@ -211,7 +219,7 @@ def build_metric_average_chart(
     """Render average Total and Error values, separating incompatible units."""
     frame = prepare_metric_averages(data)
     if start_date is not None and end_date is not None:
-        title = f"Trung bình — {pd.Timestamp(start_date):%d/%m/%Y} đến {pd.Timestamp(end_date):%d/%m/%Y}"
+        title = f"Trung bình — {pd.Timestamp(start_date):%d/%m} đến {pd.Timestamp(end_date):%d/%m}"
     else:
         title = "Trung bình trong khoảng đã chọn"
     if frame.empty:
@@ -257,7 +265,7 @@ def build_metric_box_plot(
     frame = chartable(data)
     frame = frame[frame["metric_normalized"] == metric].copy()
     if start_date is not None and end_date is not None:
-        title = f"Phân phối {metric} — {pd.Timestamp(start_date):%d/%m/%Y} đến {pd.Timestamp(end_date):%d/%m/%Y}"
+        title = f"Phân phối {metric} — {pd.Timestamp(start_date):%d/%m} đến {pd.Timestamp(end_date):%d/%m}"
     else:
         title = f"Phân phối {metric} trong khoảng đã chọn"
     if frame.empty:
@@ -308,7 +316,7 @@ def build_line_chart(data: pd.DataFrame, title: str = "Xu hướng theo thời g
         hovertemplate=None,
     )
     figure.update_layout(margin={"t": 90})
-    return figure
+    return _format_date_axes(figure)
 
 
 def build_bar_chart(data: pd.DataFrame, selected_date=None, title: str = "So sánh tại một ngày") -> Figure:
@@ -319,7 +327,7 @@ def build_bar_chart(data: pd.DataFrame, selected_date=None, title: str = "So sá
     frame = frame[frame["date"] == target_date].sort_values("chart_value", ascending=False)
     figure = px.bar(
         frame, x="entity_label", y="chart_value", color="entity_label", text="display_value",
-        title=f"{title} — {target_date:%d/%m/%Y}",
+        title=f"{title} — {target_date:%d/%m}",
         labels={"chart_value": "Giá trị", "entity_label": "Đối tượng"},
     )
     figure.update_traces(
@@ -328,7 +336,7 @@ def build_bar_chart(data: pd.DataFrame, selected_date=None, title: str = "So sá
         hoverinfo="skip",
         hovertemplate=None,
     )
-    return figure
+    return _format_date_axes(figure)
 
 
 def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Figure:
@@ -408,7 +416,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         ticksuffix="%",
         secondary_y=True,
     )
-    return figure
+    return _format_date_axes(figure)
 
 
 def build_multi_entity_metric_chart(
@@ -488,4 +496,4 @@ def build_multi_entity_metric_chart(
     )
     if metric == "% báo sai":
         figure.update_yaxes(tickformat=".1f", ticksuffix="%")
-    return figure
+    return _format_date_axes(figure)
