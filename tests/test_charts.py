@@ -21,8 +21,13 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
 
     figure = build_metric_combo_chart(item_data)
 
-    assert [trace.type for trace in figure.data] == ["bar", "bar", "scatter"]
-    assert [trace.name for trace in figure.data] == ["Tổng số", "Báo sai/Lỗi", "% báo sai"]
+    assert [trace.type for trace in figure.data] == ["bar", "bar", "scatter", "scatter"]
+    assert [trace.name for trace in figure.data] == [
+        "Tổng số",
+        "Báo sai/Lỗi",
+        "% báo sai",
+        "Chi tiết theo ngày",
+    ]
     assert figure.layout.barmode == "overlay"
     assert figure.data[0].width > figure.data[1].width
     assert figure.layout.xaxis.tickformat == "%d/%m"
@@ -39,6 +44,8 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     assert "Tổng số/Cảnh báo" in figure.data[0].hovertemplate
     assert "Báo sai/Lỗi" in figure.data[1].hovertemplate
     assert "% báo sai" in figure.data[2].hovertemplate
+    assert figure.data[3].showlegend is False
+    assert list(figure.data[3].customdata[0]) == ["Camera", "100", "8", "8.00%"]
 
 
 def test_combo_chart_rejects_multiple_entities(sample_workbook):
@@ -48,6 +55,33 @@ def test_combo_chart_rejects_multiple_entities(sample_workbook):
 
     with pytest.raises(ValueError, match="một entity"):
         build_metric_combo_chart(mixed_entities)
+
+
+def test_combo_hover_distinguishes_not_collected_and_missing_marker(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"].copy()
+    target_date = pd.to_datetime(item_data["date"]) == pd.Timestamp("2026-09-12")
+    not_collected = target_date & (item_data["metric_normalized"] == "Báo sai/Lỗi")
+    missing_marker = target_date & (item_data["metric_normalized"] == "% báo sai")
+    item_data.loc[not_collected, ["chart_value", "display_value", "value_kind"]] = [
+        None,
+        "",
+        "not_collected",
+    ]
+    item_data.loc[missing_marker, ["chart_value", "display_value", "value_kind"]] = [
+        None,
+        "-",
+        "missing_marker",
+    ]
+
+    figure = build_metric_combo_chart(item_data)
+
+    assert list(figure.data[-1].customdata[0]) == [
+        "Camera",
+        "100",
+        "Chưa thu thập",
+        "Không có dữ liệu",
+    ]
 
 
 def test_metric_average_excludes_percentage_and_counts_data_dates(sample_workbook):
@@ -168,16 +202,33 @@ def test_multi_entity_unified_hover_preserves_missing_values(sample_workbook):
     )
     item_data.loc[missing_error, "chart_value"] = None
     item_data.loc[missing_error, "display_value"] = ""
+    item_data.loc[missing_error, "value_kind"] = "not_collected"
 
     figure = build_multi_entity_metric_chart(item_data, "Tổng số")
 
     assert list(figure.data[0].customdata[0]) == [
         "Camera",
         "100",
-        "Không có dữ liệu",
+        "Chưa thu thập",
         "8.00%",
     ]
     assert "0" not in figure.data[0].customdata[0][2]
+
+
+def test_multi_entity_unified_hover_distinguishes_missing_marker(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"].copy()
+    missing_error = (
+        (item_data["metric_normalized"] == "Báo sai/Lỗi")
+        & (pd.to_datetime(item_data["date"]) == pd.Timestamp("2026-09-12"))
+    )
+    item_data.loc[missing_error, "chart_value"] = None
+    item_data.loc[missing_error, "display_value"] = "-"
+    item_data.loc[missing_error, "value_kind"] = "missing_marker"
+
+    figure = build_multi_entity_metric_chart(item_data, "Tổng số")
+
+    assert figure.data[0].customdata[0][2] == "Không có dữ liệu"
 
 
 def test_all_demo_charts_render(sample_workbook):

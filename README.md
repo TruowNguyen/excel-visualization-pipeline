@@ -66,11 +66,13 @@ number_format  = 0.00%
 ### 2.3. Phân biệt dữ liệu thiếu và số 0
 
 ```text
-Ô trống/NBSP → không tạo record
+Ô trống/NBSP → not_collected, hiển thị "Chưa thu thập"
 0            → số 0 hợp lệ và được vẽ
-- / N/A      → missing_marker, không biến thành 0
+- / N/A      → missing_marker, hiển thị "Không có dữ liệu"
 Text         → giữ để audit, không ép thành số
 ```
+
+`not_collected` và `missing_marker` đều có `chart_value = null`, không tham gia biểu đồ hay phép tính trung bình. Hai trạng thái vẫn được giữ thành record để Audit Table truy vết đúng địa chỉ ô; chúng tuyệt đối không được thay bằng `0`.
 
 ### 2.4. Không tổng hợp sai cấp dữ liệu
 

@@ -101,6 +101,11 @@ def _value_fields(cell: Cell, metric: str, config: ParserConfig) -> dict[str, An
     value = cell.value
     cleaned = clean_text(value)
     is_percent = "%" in cell.number_format or metric == "% báo sai"
+    if _is_blank(value, config):
+        return {
+            "value_numeric": None, "chart_value": None, "display_value": "",
+            "value_kind": "not_collected", "validation_status": "valid",
+        }
     if cleaned.casefold() in {marker.casefold() for marker in config.missing_markers}:
         return {
             "value_numeric": None, "chart_value": None, "display_value": cleaned,
@@ -208,6 +213,12 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
 
             section = _ancestor_label(node, "section", tree.by_id)
             legacy_item = node.entity_label if node.entity_level not in {"project", "section"} else None
+            row_has_result_data = any(
+                not _is_blank(ws.cell(row_idx, col_idx).value, config)
+                for group in groups
+                for col_idx in range(group["start_col"], group["end_col"] + 1)
+                if clean_text(ws.cell(metric_row, col_idx).value)
+            )
             for group in groups:
                 detected_dates.add(group["date"])
                 for col_idx in range(group["start_col"], group["end_col"] + 1):
@@ -215,7 +226,7 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
                     if not metric_original:
                         continue
                     cell = ws.cell(row_idx, col_idx)
-                    if _is_blank(cell.value, config):
+                    if _is_blank(cell.value, config) and not row_has_result_data:
                         continue
                     metric = normalize_metric(metric_original, config)
                     detected_metrics.add(metric)

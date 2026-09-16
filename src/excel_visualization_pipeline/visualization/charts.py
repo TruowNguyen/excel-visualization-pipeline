@@ -64,6 +64,51 @@ def _formatted_number(value: float) -> str:
     return f"{value:,.2f}".rstrip("0").rstrip(".")
 
 
+def _hover_display_value(row) -> str:
+    """Translate source completeness states without ever inventing zeroes."""
+    value_kind = getattr(row, "value_kind", None)
+    if value_kind == "not_collected":
+        return "Chưa thu thập"
+    if value_kind == "missing_marker":
+        return "Không có dữ liệu"
+    display_value = getattr(row, "display_value", None)
+    if pd.isna(display_value) or not str(display_value).strip():
+        return "Chưa thu thập"
+    return str(display_value)
+
+
+def _metric_hover_lookup(data: pd.DataFrame, entity_id: str) -> dict[tuple[pd.Timestamp, str], str]:
+    lookup: dict[tuple[pd.Timestamp, str], str] = {}
+    entity_data = data[data["entity_id"] == entity_id]
+    for row in entity_data.itertuples():
+        if row.metric_normalized not in {"Tổng số", "Báo sai/Lỗi", "% báo sai"}:
+            continue
+        lookup[(pd.Timestamp(row.date), row.metric_normalized)] = _hover_display_value(row)
+    return lookup
+
+
+def _hover_row(
+    lookup: dict[tuple[pd.Timestamp, str], str],
+    date,
+    entity_label: str,
+) -> list[str]:
+    target_date = pd.Timestamp(date)
+    return [
+        entity_label,
+        lookup.get((target_date, "Tổng số"), "Chưa thu thập"),
+        lookup.get((target_date, "Báo sai/Lỗi"), "Chưa thu thập"),
+        lookup.get((target_date, "% báo sai"), "Chưa thu thập"),
+    ]
+
+
+ENTITY_HOVER_TEMPLATE = (
+    "<b>%{customdata[0]}</b>"
+    "<br>Tổng số/Cảnh báo: %{customdata[1]}"
+    "<br>Báo sai/Lỗi: %{customdata[2]}"
+    "<br>% báo sai: %{customdata[3]}<extra></extra>"
+)
+
+
 def prepare_project_totals(data: pd.DataFrame, selected_date) -> pd.DataFrame:
     """Build one Total record per Project and Unit without mixing hierarchy levels.
 
@@ -298,6 +343,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         raise ValueError("Combo chart không được trộn nhiều effective unit.")
 
     entity_label = str(frame["entity_label"].iloc[0])
+    entity_id = str(entity_ids[0])
     unit = str(units[0]) if len(units) else "Không xác định"
     figure = make_subplots(specs=[[{"secondary_y": True}]])
     metric_specs = [
@@ -320,6 +366,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 textposition="outside" if metric == "Báo sai/Lỗi" else "inside",
                 cliponaxis=False,
                 customdata=metric_data[["display_value"]].to_numpy(),
+                hoverinfo="skip",
                 hovertemplate=(
                     f"<b>{'Tổng số/Cảnh báo' if metric == 'Tổng số' else name}</b>: "
                     "%{customdata[0]}<extra></extra>"
@@ -343,12 +390,37 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 cliponaxis=False,
                 connectgaps=False,
                 customdata=rate_data[["display_value"]].to_numpy(),
+                hoverinfo="skip",
                 hovertemplate=(
                     "<b>% báo sai</b>: %{customdata[0]}<extra></extra>"
                 ),
             ),
             secondary_y=True,
         )
+
+    hover_lookup = _metric_hover_lookup(data, entity_id)
+    hover_dates = sorted(
+        pd.to_datetime(
+            data.loc[
+                (data["entity_id"] == entity_id)
+                & data["metric_normalized"].isin(["Tổng số", "Báo sai/Lỗi", "% báo sai"]),
+                "date",
+            ]
+        ).unique()
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=hover_dates,
+            y=[0] * len(hover_dates),
+            name="Chi tiết theo ngày",
+            mode="markers",
+            marker={"size": 1, "opacity": 0},
+            showlegend=False,
+            customdata=[_hover_row(hover_lookup, date, entity_label) for date in hover_dates],
+            hovertemplate=ENTITY_HOVER_TEMPLATE,
+        ),
+        secondary_y=False,
+    )
 
     figure.update_layout(
         title=title or f"{entity_label} — {unit}",
@@ -403,30 +475,11 @@ def build_multi_entity_metric_chart(
         level_label = ENTITY_LEVEL_LABELS.get(entity_level, entity_level.title())
         legend_label = f"[{level_label}] {entity_label}"
         color = ENTITY_COLORS[color_index]
-        entity_hover_source = hover_source[hover_source["entity_id"] == entity_id]
-        hover_lookup: dict[tuple[pd.Timestamp, str], str] = {}
-        for row in entity_hover_source.itertuples():
-            if row.metric_normalized not in {"Tổng số", "Báo sai/Lỗi", "% báo sai"}:
-                continue
-            display_value = row.display_value
-            if pd.isna(display_value) or not str(display_value).strip():
-                display_value = "Không có dữ liệu"
-            hover_lookup[(pd.Timestamp(row.date), row.metric_normalized)] = str(display_value)
+        hover_lookup = _metric_hover_lookup(hover_source, entity_id)
         hover_rows = [
-            [
-                entity_label,
-                hover_lookup.get((pd.Timestamp(date), "Tổng số"), "Không có dữ liệu"),
-                hover_lookup.get((pd.Timestamp(date), "Báo sai/Lỗi"), "Không có dữ liệu"),
-                hover_lookup.get((pd.Timestamp(date), "% báo sai"), "Không có dữ liệu"),
-            ]
+            _hover_row(hover_lookup, date, entity_label)
             for date in entity_data["date"]
         ]
-        entity_hovertemplate = (
-            "<b>%{customdata[0]}</b>"
-            "<br>Tổng số/Cảnh báo: %{customdata[1]}"
-            "<br>Báo sai/Lỗi: %{customdata[2]}"
-            "<br>% báo sai: %{customdata[3]}<extra></extra>"
-        )
         if metric == "% báo sai":
             figure.add_trace(
                 go.Scatter(
@@ -442,7 +495,7 @@ def build_multi_entity_metric_chart(
                     cliponaxis=False,
                     connectgaps=False,
                     customdata=hover_rows,
-                    hovertemplate=entity_hovertemplate,
+                    hovertemplate=ENTITY_HOVER_TEMPLATE,
                 )
             )
         else:
@@ -457,7 +510,7 @@ def build_multi_entity_metric_chart(
                     textposition="outside",
                     cliponaxis=False,
                     customdata=hover_rows,
-                    hovertemplate=entity_hovertemplate,
+                    hovertemplate=ENTITY_HOVER_TEMPLATE,
                 )
             )
 
