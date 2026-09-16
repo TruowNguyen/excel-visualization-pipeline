@@ -324,7 +324,7 @@ Dashboard hỗ trợ:
 - `Effective Unit` được cố định theo từng entity từ unit trực tiếp hoặc unit kế thừa từ parent, không có dropdown chọn unit;
 - biểu đồ chi tiết kết hợp ba metric: cột `Tổng số` rộng làm nền, cột `Báo sai/Lỗi` hẹp nằm phía trước và đường `% báo sai` trên trục Y phụ;
 - mỗi entity/node được render thành một combo chart riêng để không trộn đối tượng hoặc unit;
-- khi hiển thị nhiều entity, dashboard xếp tối đa 3 combo chart trên mỗi hàng để tối ưu không gian;
+- khi hiển thị nhiều entity, dashboard xếp tối đa 2 combo chart trên mỗi hàng để tối ưu không gian và khả năng đọc nhãn;
 - tự động tạo khu vực thống kê mô tả với biểu đồ trung bình, box plot và bảng thống kê cho `Tổng số`, `Báo sai/Lỗi`;
 - có khu vực multi-select riêng để so sánh đồng thời tối đa 3 entity tương thích;
 - cùng một kiểu combo chart được dùng cho một ngày hoặc cả khoảng `Từ ngày`–`Đến ngày`;

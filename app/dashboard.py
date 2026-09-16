@@ -161,9 +161,9 @@ else:
         if not range_data[range_data["entity_id"] == entity_id].empty
     ]
     if len(chart_entity_ids) > 1:
-        st.caption("Các biểu đồ entity được xếp theo lưới, tối đa 3 biểu đồ trên mỗi hàng.")
-    for row_start in range(0, len(chart_entity_ids), 3):
-        row_entity_ids = chart_entity_ids[row_start : row_start + 3]
+        st.caption("Các biểu đồ entity được xếp theo lưới, tối đa 2 biểu đồ trên mỗi hàng.")
+    for row_start in range(0, len(chart_entity_ids), 2):
+        row_entity_ids = chart_entity_ids[row_start : row_start + 2]
         chart_columns = st.columns(len(row_entity_ids), gap="medium")
         for chart_column, entity_id in zip(chart_columns, row_entity_ids):
             with chart_column:
