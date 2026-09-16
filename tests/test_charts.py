@@ -17,7 +17,7 @@ from excel_visualization_pipeline.visualization import (
 )
 
 
-def test_combo_chart_groups_counts_and_uses_secondary_axis(sample_workbook):
+def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"]
 
@@ -25,7 +25,8 @@ def test_combo_chart_groups_counts_and_uses_secondary_axis(sample_workbook):
 
     assert [trace.type for trace in figure.data] == ["bar", "bar", "scatter"]
     assert [trace.name for trace in figure.data] == ["Tổng số", "Báo sai/Lỗi", "% báo sai"]
-    assert figure.layout.barmode == "group"
+    assert figure.layout.barmode == "overlay"
+    assert figure.data[0].width > figure.data[1].width
     assert figure.data[2].yaxis == "y2"
     assert figure.layout.yaxis2.tickformat == ".1f"
     assert figure.layout.yaxis2.ticksuffix == "%"

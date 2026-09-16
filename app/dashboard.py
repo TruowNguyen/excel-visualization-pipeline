@@ -122,7 +122,7 @@ st.subheader(f"Dashboard — {selected_project}")
 st.caption(
     "Dashboard mở trực tiếp entity cấp cao nhất trong cây. Có thể chuyển sang node khác hoặc xem các node con trực tiếp."
 )
-st.subheader("Chi tiết entity")
+st.subheader("Overview")
 entity_lookup = project_entities.set_index("entity_id")
 entity_ids = list(project_entities["entity_id"])
 combo_metrics = ["Tổng số", "Báo sai/Lỗi", "% báo sai"]
@@ -155,33 +155,42 @@ range_data = metric_data[(metric_dates >= start_date) & (metric_dates <= end_dat
 if range_data.empty:
     st.info("Không có dữ liệu cho ba metric trong khoảng ngày đã chọn.")
 else:
-    for entity_id in scope_ids:
-        entity_data = range_data[range_data["entity_id"] == entity_id]
-        if entity_data.empty:
-            continue
-        entity = entity_lookup.loc[entity_id]
-        entity_units = list(entity_data["effective_unit"].dropna().unique())
-        entity_unit = str(entity_units[0]) if entity_units else "Chưa xác định từ Excel"
-        st.markdown(
-            '<div style="font-size:14px;font-weight:600;margin-bottom:0.5rem">'
-            f"Effective Unit: {escape(entity_unit)}"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-        st.plotly_chart(
-            build_metric_combo_chart(
-                entity_data,
-                f"{entity['entity_label']} — {entity_unit}",
-            ),
-            use_container_width=True,
-        )
-        missing_metrics = [
-            metric
-            for metric in combo_metrics
-            if metric not in set(entity_data["metric_normalized"])
-        ]
-        if missing_metrics:
-            st.caption(f"Thiếu metric: {', '.join(missing_metrics)}")
+    chart_entity_ids = [
+        entity_id
+        for entity_id in scope_ids
+        if not range_data[range_data["entity_id"] == entity_id].empty
+    ]
+    if len(chart_entity_ids) > 1:
+        st.caption("Các biểu đồ entity được xếp theo lưới, tối đa 3 biểu đồ trên mỗi hàng.")
+    for row_start in range(0, len(chart_entity_ids), 3):
+        row_entity_ids = chart_entity_ids[row_start : row_start + 3]
+        chart_columns = st.columns(len(row_entity_ids), gap="medium")
+        for chart_column, entity_id in zip(chart_columns, row_entity_ids):
+            with chart_column:
+                entity_data = range_data[range_data["entity_id"] == entity_id]
+                entity = entity_lookup.loc[entity_id]
+                entity_units = list(entity_data["effective_unit"].dropna().unique())
+                entity_unit = str(entity_units[0]) if entity_units else "Chưa xác định từ Excel"
+                st.markdown(
+                    '<div style="font-size:14px;font-weight:600;margin-bottom:0.5rem">'
+                    f"Effective Unit: {escape(entity_unit)}"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+                st.plotly_chart(
+                    build_metric_combo_chart(
+                        entity_data,
+                        f"{entity['entity_label']} — {entity_unit}",
+                    ),
+                    use_container_width=True,
+                )
+                missing_metrics = [
+                    metric
+                    for metric in combo_metrics
+                    if metric not in set(entity_data["metric_normalized"])
+                ]
+                if missing_metrics:
+                    st.caption(f"Thiếu metric: {', '.join(missing_metrics)}")
 
 descriptive_data = prepare_descriptive_statistics(range_data)
 if not descriptive_data.empty:

@@ -322,8 +322,9 @@ Dashboard hỗ trợ:
 - điều hướng bằng Hierarchy Navigator thay cho dropdown Section/Item cố định;
 - chọn node hiện tại hoặc các node con trực tiếp;
 - `Effective Unit` được cố định theo từng entity từ unit trực tiếp hoặc unit kế thừa từ parent, không có dropdown chọn unit;
-- biểu đồ chi tiết kết hợp ba metric: cột `Tổng số` và `Báo sai/Lỗi` đứng cạnh nhau, cùng đường `% báo sai` trên trục Y phụ;
+- biểu đồ chi tiết kết hợp ba metric: cột `Tổng số` rộng làm nền, cột `Báo sai/Lỗi` hẹp nằm phía trước và đường `% báo sai` trên trục Y phụ;
 - mỗi entity/node được render thành một combo chart riêng để không trộn đối tượng hoặc unit;
+- khi hiển thị nhiều entity, dashboard xếp tối đa 3 combo chart trên mỗi hàng để tối ưu không gian;
 - tự động tạo khu vực thống kê mô tả với biểu đồ trung bình, box plot và bảng thống kê cho `Tổng số`, `Báo sai/Lỗi`;
 - có khu vực multi-select riêng để so sánh đồng thời tối đa 3 entity tương thích;
 - cùng một kiểu combo chart được dùng cho một ngày hoặc cả khoảng `Từ ngày`–`Đến ngày`;
@@ -354,7 +355,7 @@ Unit không phải là bộ lọc tùy chọn trên giao diện. Khi render, m�
 ### 8.3. Quy tắc combo chart
 
 - Hai cột dùng chung trục Y trái vì đều là số lượng và phải có cùng `effective_unit`.
-- `Tổng số` và `Báo sai/Lỗi` được nhóm cạnh nhau theo từng ngày (`barmode=group`), không lồng hoặc cộng chồng hai giá trị.
+- `Tổng số` là cột nền rộng và `Báo sai/Lỗi` là cột hẹp nằm phía trước (`barmode=overlay`); hai giá trị không bị cộng chồng.
 - `% báo sai` là đường trên trục Y phải vì khác đơn vị với số lượng.
 - Combo chart chi tiết từ chối đầu vào chứa nhiều `entity_id` hoặc nhiều `effective_unit`. Dashboard chịu trách nhiệm tách thành từng biểu đồ riêng và tự gắn unit cố định của entity.
 - Nếu một node thiếu một trong ba metric, dashboard vẫn vẽ phần dữ liệu có sẵn và ghi rõ metric bị thiếu bên dưới biểu đồ.

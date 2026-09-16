@@ -332,7 +332,7 @@ def build_bar_chart(data: pd.DataFrame, selected_date=None, title: str = "So sá
 
 
 def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Figure:
-    """Render Total/Error as grouped bars and Error Rate on a secondary Y axis."""
+    """Render Error inside Total bars and Error Rate on a secondary Y axis."""
     frame = chartable(data)
     if frame.empty:
         return make_subplots(specs=[[{"secondary_y": True}]])
@@ -348,10 +348,10 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
     unit = str(units[0]) if len(units) else "Không xác định"
     figure = make_subplots(specs=[[{"secondary_y": True}]])
     metric_specs = [
-        ("Tổng số", "Tổng số", "#8ecae6", 0.85),
-        ("Báo sai/Lỗi", "Báo sai/Lỗi", "#d1495b", 0.95),
+        ("Tổng số", "Tổng số", "#8ecae6", 0.72, 18 * 60 * 60 * 1000),
+        ("Báo sai/Lỗi", "Báo sai/Lỗi", "#d1495b", 0.95, 9 * 60 * 60 * 1000),
     ]
-    for metric, name, color, opacity in metric_specs:
+    for metric, name, color, opacity, width in metric_specs:
         metric_data = frame[frame["metric_normalized"] == metric].sort_values("date")
         if metric_data.empty:
             continue
@@ -362,6 +362,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 name=name,
                 marker_color=color,
                 opacity=opacity,
+                width=width,
                 text=metric_data["display_value"],
                 textposition="outside" if metric == "Báo sai/Lỗi" else "inside",
                 cliponaxis=False,
@@ -391,7 +392,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
 
     figure.update_layout(
         title=title or f"{entity_label} — {unit}",
-        barmode="group",
+        barmode="overlay",
         bargap=0.25,
         bargroupgap=0.08,
         hovermode=False,

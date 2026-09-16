@@ -27,7 +27,8 @@ charts:
       - box_plot_per_metric
   metric_combo:
     type: bar_line_secondary_y
-    bar_mode: group
+    bar_mode: overlay
+    dashboard_grid_columns: 3
     bars:
       - "Tổng số"
       - "Báo sai/Lỗi"
