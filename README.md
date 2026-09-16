@@ -348,7 +348,7 @@ Dashboard áp dụng mô hình `Unified Hover + Latest Label + Audit Table`:
 - Khoảng bắt hover được giới hạn quanh ngày có dữ liệu, nên vùng trống không tự động hiển thị ngày gần nhất; tooltip không vẽ đường spike dọc xuyên biểu đồ.
 - Tooltip dùng tiêu đề ngày `DD/MM/YYYY` và hiển thị đồng thời tất cả metric có dữ liệu tại ngày đó.
 - Combo chart dùng duy nhất một tooltip tổng hợp cho mỗi ngày; các trace cột/đường không tạo thêm nội dung lặp.
-- Tooltip combo không lặp tên entity hoặc tiêu đề nội bộ. Dưới tiêu đề ngày, mỗi metric hiển thị riêng `Giá trị` và `Mô tả`; mô tả bình thường dùng `—`, còn trạng thái nghiệp vụ lấy từ `data_note`. Trường hợp `% báo sai > 0` nhưng `Báo sai/Lỗi` không ghi nhận được gắn nhãn `⚠ Không nhất quán`.
+- Tooltip combo không lặp tên entity hoặc tiêu đề nội bộ. Mỗi metric có ký hiệu giống legend (`■` xanh cho Tổng số/Cảnh báo, `■` đỏ cho Báo sai/Lỗi, `━●━` cam cho % báo sai), kèm `Giá trị` và `Mô tả`; mô tả bình thường dùng `—`, còn trạng thái nghiệp vụ lấy từ `data_note`. Trường hợp `% báo sai > 0` nhưng `Báo sai/Lỗi` không ghi nhận được gắn nhãn `⚠ Không nhất quán`.
 - Giá trị dùng `display_value` gốc để giữ đúng định dạng phần trăm; dữ liệu thiếu không được thay bằng `0`.
 - Trong biểu đồ multi-select, mỗi entity là một nhóm gồm `Tổng số/Cảnh báo`, `Báo sai/Lỗi` và `% báo sai` của cùng ngày.
 - Latest Label chỉ giữ nhãn tại ngày mới nhất của từng series để giảm chồng lấn.

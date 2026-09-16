@@ -49,6 +49,9 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     assert "Tổng số/Cảnh báo" in figure.data[3].hovertemplate
     assert "Báo sai/Lỗi" in figure.data[3].hovertemplate
     assert "% báo sai" in figure.data[3].hovertemplate
+    assert "color:#8ecae6'>■" in figure.data[3].hovertemplate
+    assert "color:#d1495b'>■" in figure.data[3].hovertemplate
+    assert "color:#ff9f1c'>━●━" in figure.data[3].hovertemplate
     assert list(figure.data[3].customdata[0]) == [
         "Camera", "100", "8", "8.00%", "—", "—", "—",
     ]

@@ -128,20 +128,20 @@ def _hover_row(
 
 ENTITY_HOVER_TEMPLATE = (
     "<b>%{customdata[0]}</b>"
-    "<br>Tổng số/Cảnh báo: %{customdata[1]}"
+    "<br><span style='color:#8ecae6'>■</span> Tổng số/Cảnh báo: %{customdata[1]}"
     "<br><i>Mô tả: %{customdata[4]}</i>"
-    "<br>Báo sai/Lỗi: %{customdata[2]}"
+    "<br><span style='color:#d1495b'>■</span> Báo sai/Lỗi: %{customdata[2]}"
     "<br><i>Mô tả: %{customdata[5]}</i>"
-    "<br>% báo sai: %{customdata[3]}"
+    "<br><span style='color:#ff9f1c'>━●━</span> % báo sai: %{customdata[3]}"
     "<br><i>Mô tả: %{customdata[6]}</i><extra></extra>"
 )
 
 COMBO_HOVER_TEMPLATE = (
-    "Tổng số/Cảnh báo: %{customdata[1]}"
+    "<span style='color:#8ecae6'>■</span> Tổng số/Cảnh báo: %{customdata[1]}"
     "<br><i>Mô tả: %{customdata[4]}</i>"
-    "<br>Báo sai/Lỗi: %{customdata[2]}"
+    "<br><span style='color:#d1495b'>■</span> Báo sai/Lỗi: %{customdata[2]}"
     "<br><i>Mô tả: %{customdata[5]}</i>"
-    "<br>% báo sai: %{customdata[3]}"
+    "<br><span style='color:#ff9f1c'>━●━</span> % báo sai: %{customdata[3]}"
     "<br><i>Mô tả: %{customdata[6]}</i><extra></extra>"
 )
 
