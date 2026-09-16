@@ -31,10 +31,10 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     assert figure.data[2].yaxis == "y2"
     assert figure.layout.yaxis2.tickformat == ".1f"
     assert figure.layout.yaxis2.ticksuffix == "%"
-    assert list(figure.data[0].text) == ["100", "120"]
-    assert list(figure.data[1].text) == ["8", "6"]
-    assert list(figure.data[2].text) == ["8.00%", "5.00%"]
-    assert all(trace.hoverinfo == "skip" for trace in figure.data)
+    assert list(figure.data[0].text) == ["", "120"]
+    assert list(figure.data[1].text) == ["", "6"]
+    assert list(figure.data[2].text) == ["", "5.00%"]
+    assert all("Giá trị" in trace.hovertemplate for trace in figure.data)
 
 
 def test_combo_chart_rejects_multiple_entities(sample_workbook):
@@ -119,7 +119,7 @@ def test_multi_entity_metric_chart_renders_three_bar_groups(sample_workbook):
     assert len(figure.data) == 3
     assert figure.layout.barmode == "group"
     assert len({trace.legendgroup for trace in figure.data}) == 3
-    assert all(trace.hoverinfo == "skip" for trace in figure.data)
+    assert all("Giá trị" in trace.hovertemplate for trace in figure.data)
     assert all(trace.type == "bar" for trace in figure.data)
     assert all("% báo sai" not in trace.name and "Tổng số" not in trace.name for trace in figure.data)
     assert all(trace.name.startswith("[Item]") for trace in figure.data)
@@ -197,12 +197,12 @@ def test_all_demo_charts_render(sample_workbook):
     bar = build_bar_chart(data)
     assert len(line.data) > 0
     assert len(bar.data) > 0
-    assert list(line.data[0].text) == ["8.00%", "5.00%"]
+    assert list(line.data[0].text) == ["", "5.00%"]
     assert list(bar.data[0].text) == ["5.00%"]
     assert "text" in line.data[0].mode
     assert line.layout.xaxis.tickformat == "%d/%m"
-    assert line.data[0].hoverinfo == "skip"
-    assert bar.data[0].hoverinfo == "skip"
+    assert "Giá trị" in line.data[0].hovertemplate
+    assert "Giá trị" in bar.data[0].hovertemplate
 
 
 def test_project_overview_uses_item_fallback_without_mixing_levels(sample_workbook):
@@ -217,7 +217,7 @@ def test_project_overview_uses_item_fallback_without_mixing_levels(sample_workbo
     assert len(figure.data) > 0
     assert list(figure.data[0].text) == ["100"]
     assert "text" in figure.data[0].mode
-    assert figure.data[0].hoverinfo == "skip"
+    assert "Giá trị" in figure.data[0].hovertemplate
     assert figure.layout.xaxis.tickformat == "%d/%m"
 
 

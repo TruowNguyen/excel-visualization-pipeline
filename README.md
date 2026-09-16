@@ -328,13 +328,18 @@ Dashboard hỗ trợ:
 - tự động tạo khu vực thống kê mô tả với biểu đồ trung bình, box plot và bảng thống kê cho `Tổng số`, `Báo sai/Lỗi`;
 - có khu vực multi-select riêng để so sánh đồng thời tối đa 3 entity tương thích;
 - cùng một kiểu combo chart được dùng cho một ngày hoặc cả khoảng `Từ ngày`–`Đến ngày`;
-- mọi cột và marker luôn hiển thị trực tiếp `display_value`, không cần di chuột;
+- biểu đồ thời gian chỉ gắn `display_value` tại điểm mới nhất của mỗi series; các điểm còn lại đọc qua tooltip;
 - toàn bộ ngày hiển thị trên trục và tiêu đề biểu đồ dùng định dạng `DD/MM`;
 - bảng dữ liệu chuẩn hóa;
 - xem warning chất lượng;
 - tải xuống normalized CSV.
 
-Hover trên biểu đồ được tắt theo yêu cầu. Thông tin đầy đủ như entity path, level, effective unit, parser rule, metric gốc, sheet và địa chỉ ô vẫn có trong bảng dữ liệu chi tiết để truy vết.
+Dashboard áp dụng mô hình `Tooltip + Latest Label + Audit Table`:
+
+- Tooltip hiển thị nhanh ngày, metric, giá trị thân thiện và unit khi phù hợp.
+- Latest Label chỉ giữ nhãn tại ngày mới nhất của từng series để giảm chồng lấn.
+- Biểu đồ tổng hợp ít điểm vẫn hiển thị nhãn trực tiếp trên từng cột.
+- `Audit Table — dữ liệu nguồn` cung cấp entity path, metric gốc/chuẩn hóa, raw/display/chart value, sheet, địa chỉ ô, number format, parser rule và validation status.
 
 ### 8.1. Quy tắc chọn thời gian
 
@@ -379,7 +384,7 @@ Unit không phải là bộ lọc tùy chọn trên giao diện. Khi render, m�
 - `Metric so sánh` cho phép chọn một trong `Tổng số`, `Báo sai/Lỗi` hoặc `% báo sai`; mặc định là `Báo sai/Lỗi`.
 - Với `Tổng số` và `Báo sai/Lỗi`, mỗi entity là một series cột có màu riêng.
 - Với `% báo sai`, mỗi entity là một đường có màu riêng.
-- `display_value` luôn hiển thị trực tiếp trên cột hoặc marker.
+- Mỗi series chỉ hiển thị trực tiếp `display_value` mới nhất; mọi điểm vẫn đọc được qua tooltip.
 - Legend luôn thêm cấp hierarchy, ví dụ `[Project] VSO` hoặc `[Item] Camera`, để tránh nhầm dữ liệu cha và con.
 - Biểu đồ chỉ hiển thị metric đang chọn: số lượng dùng trục Y theo Effective Unit chung, phần trăm dùng trục Y có hậu tố `%`; không tính thêm tỷ lệ dẫn xuất.
 - Nếu lựa chọn không tương thích, dashboard không render chart và hiển thị điều kiện cần sửa.
@@ -738,7 +743,7 @@ Kiểm tra `raw_value` và `number_format`:
 - [x] Có validation report và quality gate.
 - [x] Mở trực tiếp entity nông nhất có dữ liệu và tự động fallback xuống cấp dưới.
 - [x] Có line/bar cơ bản và combo chart ba metric.
-- [x] Combo chart tách riêng theo entity/unit và hiển thị `display_value` trực tiếp.
+- [x] Combo chart tách riêng theo entity/unit với Tooltip, Latest Label và Audit Table.
 - [x] Có thống kê mô tả, biểu đồ trung bình và box plot tự động theo khoảng thời gian đang chọn.
 - [x] Effective Unit cố định theo entity, không yêu cầu người dùng chọn.
 - [x] Multi-select so sánh tối đa 3 entity cùng Project và unit, cho phép khác cấp hierarchy.

@@ -255,14 +255,33 @@ if not descriptive_data.empty:
             hide_index=True,
         )
 
-'''
-st.subheader("Dữ liệu chi tiết và truy vết")
-st.dataframe(
-    range_data.sort_values(["entity_label", "date", "metric_normalized"]),
-    use_container_width=True,
-    hide_index=True,
-)
-'''
+audit_columns = [
+    "date",
+    "project_label",
+    "entity_path",
+    "entity_level",
+    "effective_unit",
+    "metric_original",
+    "metric_normalized",
+    "raw_value",
+    "display_value",
+    "chart_value",
+    "sheet_name",
+    "cell_address",
+    "number_format",
+    "parser_rule",
+    "parser_confidence",
+    "validation_status",
+]
+with st.expander("Audit Table — dữ liệu nguồn"):
+    st.caption(
+        "Tooltip phục vụ đọc nhanh; bảng này giữ thông tin đầy đủ để truy vết về workbook và ô nguồn."
+    )
+    st.dataframe(
+        range_data[audit_columns].sort_values(["entity_path", "date", "metric_normalized"]),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 st.divider()

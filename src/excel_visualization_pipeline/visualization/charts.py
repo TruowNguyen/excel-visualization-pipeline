@@ -24,6 +24,24 @@ def _format_date_axes(figure: Figure) -> Figure:
     return figure
 
 
+def _latest_labels(values) -> list[str]:
+    """Keep only the last visible label while preserving every chart point."""
+    value_list = list(values)
+    labels = ["" for _ in value_list]
+    if labels:
+        labels[-1] = str(value_list[-1])
+    return labels
+
+
+def _keep_latest_trace_labels(figure: Figure) -> Figure:
+    for trace in figure.data:
+        if trace.text is None:
+            continue
+        text_values = list(trace.text)
+        trace.text = _latest_labels(text_values)
+    return figure
+
+
 def _formatted_number(value: float) -> str:
     if float(value).is_integer():
         return f"{value:,.0f}"
@@ -105,6 +123,7 @@ def build_project_total_chart(data: pd.DataFrame, start_date, end_date=None) -> 
         facet_col="unit" if frame["unit"].nunique() > 1 else None,
         markers=True,
         text="display_value",
+        custom_data=["display_value"],
         title=title,
         labels={"project": "Project", "chart_value": "Tổng số", "unit": "Đơn vị", "date": "Ngày"},
     )
@@ -113,12 +132,11 @@ def build_project_total_chart(data: pd.DataFrame, start_date, end_date=None) -> 
         textposition="top center",
         textfont_size=11,
         cliponaxis=False,
-        hoverinfo="skip",
-        hovertemplate=None,
+        hovertemplate="Ngày: %{x|%d/%m}<br>Giá trị: %{customdata[0]}<extra></extra>",
     )
     figure.update_layout(margin={"t": 90})
     figure.for_each_yaxis(lambda axis: axis.update(matches=None))
-    return _format_date_axes(figure)
+    return _format_date_axes(_keep_latest_trace_labels(figure))
 
 
 def chartable(data: pd.DataFrame) -> pd.DataFrame:
@@ -233,6 +251,7 @@ def build_metric_average_chart(
         barmode="group",
         facet_col="effective_unit" if frame["effective_unit"].nunique() > 1 else None,
         text="display_value",
+        custom_data=["display_value", "data_date_count"],
         title=title,
         labels={
             "entity_display": "Entity",
@@ -245,10 +264,12 @@ def build_metric_average_chart(
     figure.update_traces(
         textposition="outside",
         cliponaxis=False,
-        hoverinfo="skip",
-        hovertemplate=None,
+        hovertemplate=(
+            "Entity: %{x}<br>Trung bình: %{customdata[0]}"
+            "<br>Số ngày dữ liệu: %{customdata[1]}<extra></extra>"
+        ),
     )
-    figure.update_layout(margin={"t": 100}, hovermode=False)
+    figure.update_layout(margin={"t": 100}, hovermode="closest")
     figure.for_each_yaxis(lambda axis: axis.update(matches=None, rangemode="tozero"))
     return figure
 
@@ -295,8 +316,7 @@ def build_metric_box_plot(
         },
         color_discrete_sequence=[metric_color],
     )
-    figure.update_traces(hoverinfo="skip", hovertemplate=None)
-    figure.update_layout(margin={"t": 100}, hovermode=False, showlegend=False)
+    figure.update_layout(margin={"t": 100}, hovermode="closest", showlegend=False)
     figure.for_each_yaxis(lambda axis: axis.update(matches=None, rangemode="tozero"))
     return figure
 
@@ -305,6 +325,7 @@ def build_line_chart(data: pd.DataFrame, title: str = "Xu hướng theo thời g
     frame = chartable(data).sort_values("date")
     figure = px.line(
         frame, x="date", y="chart_value", color="entity_label", markers=True, text="display_value",
+        custom_data=["display_value", "metric_normalized", "effective_unit"],
         title=title, labels={"chart_value": "Giá trị", "date": "Ngày", "entity_label": "Đối tượng"},
     )
     figure.update_traces(
@@ -312,11 +333,13 @@ def build_line_chart(data: pd.DataFrame, title: str = "Xu hướng theo thời g
         textposition="top center",
         textfont_size=10,
         cliponaxis=False,
-        hoverinfo="skip",
-        hovertemplate=None,
+        hovertemplate=(
+            "Ngày: %{x|%d/%m}<br>Metric: %{customdata[1]}"
+            "<br>Giá trị: %{customdata[0]}<br>Unit: %{customdata[2]}<extra></extra>"
+        ),
     )
     figure.update_layout(margin={"t": 90})
-    return _format_date_axes(figure)
+    return _format_date_axes(_keep_latest_trace_labels(figure))
 
 
 def build_bar_chart(data: pd.DataFrame, selected_date=None, title: str = "So sánh tại một ngày") -> Figure:
@@ -327,14 +350,17 @@ def build_bar_chart(data: pd.DataFrame, selected_date=None, title: str = "So sá
     frame = frame[frame["date"] == target_date].sort_values("chart_value", ascending=False)
     figure = px.bar(
         frame, x="entity_label", y="chart_value", color="entity_label", text="display_value",
+        custom_data=["display_value", "metric_normalized", "effective_unit"],
         title=f"{title} — {target_date:%d/%m}",
         labels={"chart_value": "Giá trị", "entity_label": "Đối tượng"},
     )
     figure.update_traces(
         textposition="outside",
         cliponaxis=False,
-        hoverinfo="skip",
-        hovertemplate=None,
+        hovertemplate=(
+            "Entity: %{x}<br>Metric: %{customdata[1]}"
+            "<br>Giá trị: %{customdata[0]}<br>Unit: %{customdata[2]}<extra></extra>"
+        ),
     )
     return _format_date_axes(figure)
 
@@ -371,10 +397,14 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 marker_color=color,
                 opacity=opacity,
                 width=width,
-                text=metric_data["display_value"],
+                text=_latest_labels(metric_data["display_value"]),
                 textposition="outside" if metric == "Báo sai/Lỗi" else "inside",
                 cliponaxis=False,
-                hoverinfo="skip",
+                customdata=metric_data[["display_value"]].to_numpy(),
+                hovertemplate=(
+                    f"Ngày: %{{x|%d/%m}}<br>Metric: {name}"
+                    "<br>Giá trị: %{customdata[0]}<extra></extra>"
+                ),
             ),
             secondary_y=False,
         )
@@ -389,11 +419,15 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 mode="lines+markers+text",
                 line={"color": "#ff9f1c", "width": 3},
                 marker={"size": 8},
-                text=rate_data["display_value"],
+                text=_latest_labels(rate_data["display_value"]),
                 textposition="top center",
                 cliponaxis=False,
                 connectgaps=False,
-                hoverinfo="skip",
+                customdata=rate_data[["display_value"]].to_numpy(),
+                hovertemplate=(
+                    "Ngày: %{x|%d/%m}<br>Metric: % báo sai"
+                    "<br>Giá trị: %{customdata[0]}<extra></extra>"
+                ),
             ),
             secondary_y=True,
         )
@@ -403,7 +437,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         barmode="overlay",
         bargap=0.25,
         bargroupgap=0.08,
-        hovermode=False,
+        hovermode="closest",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
         margin={"t": 110},
         xaxis_title="Ngày",
@@ -460,11 +494,15 @@ def build_multi_entity_metric_chart(
                     mode="lines+markers+text",
                     line={"color": color, "width": 3},
                     marker={"size": 8},
-                    text=entity_data["display_value"],
+                    text=_latest_labels(entity_data["display_value"]),
                     textposition="top center",
                     cliponaxis=False,
                     connectgaps=False,
-                    hoverinfo="skip",
+                    customdata=entity_data[["display_value"]].to_numpy(),
+                    hovertemplate=(
+                        "Ngày: %{x|%d/%m}<br>Giá trị: %{customdata[0]}"
+                        "<extra></extra>"
+                    ),
                 )
             )
         else:
@@ -475,10 +513,14 @@ def build_multi_entity_metric_chart(
                     name=legend_label,
                     legendgroup=entity_id,
                     marker_color=color,
-                    text=entity_data["display_value"],
+                    text=_latest_labels(entity_data["display_value"]),
                     textposition="outside",
                     cliponaxis=False,
-                    hoverinfo="skip",
+                    customdata=entity_data[["display_value"]].to_numpy(),
+                    hovertemplate=(
+                        "Ngày: %{x|%d/%m}<br>Giá trị: %{customdata[0]}"
+                        "<extra></extra>"
+                    ),
                 )
             )
 
@@ -487,7 +529,7 @@ def build_multi_entity_metric_chart(
         barmode="group",
         bargap=0.25,
         bargroupgap=0.08,
-        hovermode=False,
+        hovermode="closest",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
         margin={"t": 110},
         xaxis_title="Ngày",
