@@ -12,7 +12,6 @@ from excel_visualization_pipeline.visualization import (  # noqa: E402
     build_bar_chart,
     build_line_chart,
     build_metric_average_chart,
-    build_metric_box_plot,
     build_metric_combo_chart,
     build_multi_entity_metric_chart,
 )
@@ -40,8 +39,6 @@ def main() -> int:
     combo_entity_id = candidates.idxmax()
     build_metric_combo_chart(combo_source[combo_source["entity_id"] == combo_entity_id])
     build_metric_average_chart(combo_source)
-    build_metric_box_plot(combo_source, "Tổng số")
-    build_metric_box_plot(combo_source, "Báo sai/Lỗi")
     eligible = result.data[
         (result.data["metric_normalized"] == "Báo sai/Lỗi")
         & result.data["effective_unit"].notna()

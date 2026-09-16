@@ -179,56 +179,6 @@ def prepare_metric_averages(data: pd.DataFrame) -> pd.DataFrame:
     return grouped
 
 
-def prepare_descriptive_statistics(data: pd.DataFrame) -> pd.DataFrame:
-    """Describe the distribution of count metrics without aggregating percentages."""
-    frame = chartable(data)
-    frame = frame[frame["metric_normalized"].isin(["Tổng số", "Báo sai/Lỗi"])].copy()
-    if frame.empty:
-        return pd.DataFrame()
-
-    frame["effective_unit"] = frame["effective_unit"].fillna("Chưa xác định từ Excel")
-    group_columns = [
-        "entity_id",
-        "entity_label",
-        "entity_level",
-        "effective_unit",
-        "metric_normalized",
-    ]
-    grouped = (
-        frame.groupby(group_columns, dropna=False)["chart_value"]
-        .agg(
-            data_point_count="count",
-            mean="mean",
-            median="median",
-            minimum="min",
-            q1=lambda values: values.quantile(0.25),
-            q3=lambda values: values.quantile(0.75),
-            maximum="max",
-            standard_deviation="std",
-        )
-        .reset_index()
-    )
-    date_counts = (
-        frame.groupby(group_columns, dropna=False)["date"]
-        .nunique()
-        .rename("data_date_count")
-        .reset_index()
-    )
-    grouped = grouped.merge(date_counts, on=group_columns, how="left")
-    grouped["entity_display"] = grouped.apply(
-        lambda row: (
-            f"[{ENTITY_LEVEL_LABELS.get(str(row['entity_level']), str(row['entity_level']).title())}] "
-            f"{row['entity_label']}"
-        ),
-        axis=1,
-    )
-    for column in ["mean", "median", "minimum", "q1", "q3", "maximum", "standard_deviation"]:
-        grouped[f"display_{column}"] = grouped[column].map(
-            lambda value: _formatted_number(value) if pd.notna(value) else "N/A"
-        )
-    return grouped
-
-
 def build_metric_average_chart(
     data: pd.DataFrame,
     start_date=None,
@@ -270,53 +220,6 @@ def build_metric_average_chart(
         ),
     )
     figure.update_layout(margin={"t": 100}, hovermode="closest")
-    figure.for_each_yaxis(lambda axis: axis.update(matches=None, rangemode="tozero"))
-    return figure
-
-
-def build_metric_box_plot(
-    data: pd.DataFrame,
-    metric: str,
-    start_date=None,
-    end_date=None,
-) -> Figure:
-    """Render one count metric as box plots, separated by unit."""
-    if metric not in {"Tổng số", "Báo sai/Lỗi"}:
-        raise ValueError("Box plot chỉ hỗ trợ Tổng số hoặc Báo sai/Lỗi.")
-    frame = chartable(data)
-    frame = frame[frame["metric_normalized"] == metric].copy()
-    if start_date is not None and end_date is not None:
-        title = f"Phân phối {metric} — {pd.Timestamp(start_date):%d/%m} đến {pd.Timestamp(end_date):%d/%m}"
-    else:
-        title = f"Phân phối {metric} trong khoảng đã chọn"
-    if frame.empty:
-        return px.box(title=title)
-
-    frame["effective_unit"] = frame["effective_unit"].fillna("Chưa xác định từ Excel")
-    frame["entity_display"] = frame.apply(
-        lambda row: (
-            f"[{ENTITY_LEVEL_LABELS.get(str(row['entity_level']), str(row['entity_level']).title())}] "
-            f"{row['entity_label']}"
-        ),
-        axis=1,
-    )
-    metric_color = "#d1495b" if metric == "Báo sai/Lỗi" else "#8ecae6"
-    figure = px.box(
-        frame,
-        x="entity_display",
-        y="chart_value",
-        color="entity_display",
-        facet_col="effective_unit" if frame["effective_unit"].nunique() > 1 else None,
-        points="all",
-        title=title,
-        labels={
-            "entity_display": "Entity",
-            "chart_value": metric,
-            "effective_unit": "Effective Unit",
-        },
-        color_discrete_sequence=[metric_color],
-    )
-    figure.update_layout(margin={"t": 100}, hovermode="closest", showlegend=False)
     figure.for_each_yaxis(lambda axis: axis.update(matches=None, rangemode="tozero"))
     return figure
 

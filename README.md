@@ -325,7 +325,7 @@ Dashboard hỗ trợ:
 - biểu đồ chi tiết kết hợp ba metric: cột `Tổng số` rộng làm nền, cột `Báo sai/Lỗi` hẹp nằm phía trước và đường `% báo sai` trên trục Y phụ;
 - mỗi entity/node được render thành một combo chart riêng để không trộn đối tượng hoặc unit;
 - khi hiển thị nhiều entity, dashboard xếp tối đa 2 combo chart trên mỗi hàng để tối ưu không gian và khả năng đọc nhãn;
-- tự động tạo khu vực thống kê mô tả với biểu đồ trung bình, box plot và bảng thống kê cho `Tổng số`, `Báo sai/Lỗi`;
+- tự động tạo biểu đồ trung bình cho `Tổng số` và `Báo sai/Lỗi` trong khoảng thời gian đang chọn;
 - có khu vực multi-select riêng để so sánh đồng thời tối đa 3 entity tương thích;
 - cùng một kiểu combo chart được dùng cho một ngày hoặc cả khoảng `Từ ngày`–`Đến ngày`;
 - biểu đồ thời gian chỉ gắn `display_value` tại điểm mới nhất của mỗi series; các điểm còn lại đọc qua tooltip;
@@ -366,15 +366,14 @@ Unit không phải là bộ lọc tùy chọn trên giao diện. Khi render, m�
 - Combo chart chi tiết từ chối đầu vào chứa nhiều `entity_id` hoặc nhiều `effective_unit`. Dashboard chịu trách nhiệm tách thành từng biểu đồ riêng và tự gắn unit cố định của entity.
 - Nếu một node thiếu một trong ba metric, dashboard vẫn vẽ phần dữ liệu có sẵn và ghi rõ metric bị thiếu bên dưới biểu đồ.
 
-### 8.4. Thống kê mô tả
+### 8.4. Biểu đồ trung bình
 
 - Khu vực tự động dùng chính khoảng thời gian đang chọn ở sidebar: 10 ngày gần nhất, một tuần, một tháng hoặc khoảng tùy chỉnh.
 - Chỉ tính hai metric số lượng `Tổng số` và `Báo sai/Lỗi`; `% báo sai` không tham gia tính năng này.
 - Mỗi metric được lấy trung bình trên số ngày thực sự có record của metric đó.
 - Giá trị `0` là dữ liệu hợp lệ và được tính; ô trống hoặc missing marker bị loại khỏi mẫu số.
-- Tab `Trung bình` dùng grouped bar chart. Tab `Box plot` tách tiếp thành hai tab độc lập: `Tổng số` dùng màu xanh và `Báo sai/Lỗi` dùng màu đỏ; mỗi biểu đồ thể hiện median, Q1, Q3, độ phân tán và toàn bộ điểm dữ liệu nguồn của đúng một metric.
+- Biểu đồ dùng grouped bar chart để so sánh trực tiếp giá trị trung bình của hai metric.
 - Nếu phạm vi chứa nhiều Effective Unit, các biểu đồ tách thành panel riêng theo unit.
-- Bảng `Xem bảng thống kê mô tả` cung cấp số ngày, số điểm dữ liệu, mean, median, min, Q1, Q3, max và độ lệch chuẩn.
 
 ### 8.5. So sánh nhiều entity
 
@@ -744,7 +743,7 @@ Kiểm tra `raw_value` và `number_format`:
 - [x] Mở trực tiếp entity nông nhất có dữ liệu và tự động fallback xuống cấp dưới.
 - [x] Có line/bar cơ bản và combo chart ba metric.
 - [x] Combo chart tách riêng theo entity/unit với Tooltip, Latest Label và Audit Table.
-- [x] Có thống kê mô tả, biểu đồ trung bình và box plot tự động theo khoảng thời gian đang chọn.
+- [x] Có biểu đồ trung bình tự động theo khoảng thời gian đang chọn.
 - [x] Effective Unit cố định theo entity, không yêu cầu người dùng chọn.
 - [x] Multi-select so sánh tối đa 3 entity cùng Project và unit, cho phép khác cấp hierarchy.
 - [x] Có dashboard filter và upload file.
