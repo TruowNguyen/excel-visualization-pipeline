@@ -26,7 +26,7 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
         "Tổng số",
         "Báo sai/Lỗi",
         "% báo sai",
-        "Chi tiết theo ngày",
+        "",
     ]
     assert figure.layout.barmode == "overlay"
     assert figure.data[0].width > figure.data[1].width
@@ -44,6 +44,8 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     assert all(trace.hoverinfo == "skip" for trace in figure.data[:3])
     assert all(trace.hovertemplate is None for trace in figure.data[:3])
     assert figure.data[3].showlegend is False
+    assert "Camera" not in figure.data[3].hovertemplate
+    assert "<b>" not in figure.data[3].hovertemplate
     assert "Tổng số/Cảnh báo" in figure.data[3].hovertemplate
     assert "Báo sai/Lỗi" in figure.data[3].hovertemplate
     assert "% báo sai" in figure.data[3].hovertemplate
@@ -57,6 +59,23 @@ def test_combo_chart_rejects_multiple_entities(sample_workbook):
 
     with pytest.raises(ValueError, match="một entity"):
         build_metric_combo_chart(mixed_entities)
+
+
+def test_combo_hover_labels_inconsistent_positive_rate(sample_workbook):
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(sample_workbook)
+    workbook.active["E7"] = None
+    workbook.save(sample_workbook)
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"]
+
+    figure = build_metric_combo_chart(item_data)
+
+    assert figure.data[-1].customdata[0][2] == (
+        "Không ghi nhận trong ngày ⚠ Không nhất quán"
+    )
+    assert figure.data[-1].customdata[0][3] == "8.00% ⚠ Không nhất quán"
 
 
 def test_combo_hover_distinguishes_not_recorded_and_source_marker(sample_workbook):

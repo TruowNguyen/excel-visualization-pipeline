@@ -215,6 +215,7 @@ audit_columns = [
     "display_value",
     "chart_value",
     "value_kind",
+    "data_note",
     "sheet_name",
     "cell_address",
     "number_format",

@@ -78,6 +78,8 @@ Riêng `% báo sai` trống được mặc định thành `0%` (`value_kind = de
 
 Manifest ghi `default_zero_rate_count` để có thể kiểm toán số lượng tỷ lệ `0%` do quy tắc mặc định tạo ra, tách biệt với số 0 có sẵn trong Excel.
 
+Mỗi record có thêm `data_note` mô tả trạng thái nghiệp vụ. Trường hợp tỷ lệ dương nhưng số lỗi không ghi nhận tạo warning `INCONSISTENT_ERROR_METRICS` và được đếm trong manifest bằng `inconsistent_error_metric_count`.
+
 ### 2.4. Không tổng hợp sai cấp dữ liệu
 
 Workbook thực tế có metric ở nhiều độ sâu hierarchy. Mỗi record được gắn:
@@ -346,6 +348,7 @@ Dashboard áp dụng mô hình `Unified Hover + Latest Label + Audit Table`:
 - Khoảng bắt hover được giới hạn quanh ngày có dữ liệu, nên vùng trống không tự động hiển thị ngày gần nhất; tooltip không vẽ đường spike dọc xuyên biểu đồ.
 - Tooltip dùng tiêu đề ngày `DD/MM/YYYY` và hiển thị đồng thời tất cả metric có dữ liệu tại ngày đó.
 - Combo chart dùng duy nhất một tooltip tổng hợp cho mỗi ngày; các trace cột/đường không tạo thêm nội dung lặp.
+- Tooltip combo không lặp tên entity hoặc tiêu đề nội bộ; dưới tiêu đề ngày chỉ hiển thị ba dòng metric. Trường hợp `% báo sai > 0` nhưng `Báo sai/Lỗi` không ghi nhận được gắn nhãn `⚠ Không nhất quán`.
 - Giá trị dùng `display_value` gốc để giữ đúng định dạng phần trăm; dữ liệu thiếu không được thay bằng `0`.
 - Trong biểu đồ multi-select, mỗi entity là một nhóm gồm `Tổng số/Cảnh báo`, `Báo sai/Lỗi` và `% báo sai` của cùng ngày.
 - Latest Label chỉ giữ nhãn tại ngày mới nhất của từng series để giảm chồng lấn.

@@ -24,8 +24,10 @@ OUTPUT_COLUMNS = [
     "unit_source_level", "unit_source_entity_id", "parser_rule", "parser_confidence",
     "project", "section", "item", "unit", "date", "metric_original", "metric_normalized", "raw_value",
     "value_numeric", "chart_value", "display_value", "number_format",
-    "value_kind", "validation_status",
+    "value_kind", "data_note", "validation_status",
 ]
+
+INCONSISTENT_ERROR_NOTE = "% báo sai > 0 nhưng Báo sai/Lỗi không ghi nhận trong ngày"
 
 
 def _ancestor_label(node: EntityNode, level: str, nodes: dict[str, EntityNode]) -> str | None:
@@ -194,6 +196,33 @@ def _apply_default_zero_rates(data: pd.DataFrame) -> pd.DataFrame:
         default_indices,
         ["value_numeric", "chart_value", "display_value", "value_kind"],
     ] = [0.0, 0.0, "0%", "default_zero_rate"]
+
+    data["data_note"] = ""
+    data.loc[data["value_kind"].eq("not_recorded"), "data_note"] = "Không ghi nhận trong ngày"
+    data.loc[data["value_kind"].eq("source_marker"), "data_note"] = "Đánh dấu dữ liệu khác bản chất từ nguồn"
+    data.loc[data["value_kind"].eq("default_zero_rate"), "data_note"] = (
+        "Mặc định 0% vì Báo sai/Lỗi không ghi nhận hoặc bằng 0"
+    )
+
+    positive_rates = data[
+        data["metric_normalized"].eq("% báo sai")
+        & data["chart_value"].gt(0)
+    ]
+    positive_rate_keys = pd.MultiIndex.from_frame(positive_rates[group_columns])
+    unrecorded_errors = data[
+        data["metric_normalized"].eq("Báo sai/Lỗi")
+        & data["value_kind"].eq("not_recorded")
+    ]
+    error_keys = pd.MultiIndex.from_frame(unrecorded_errors[group_columns])
+    inconsistent_error_indices = unrecorded_errors.index[error_keys.isin(positive_rate_keys)]
+    if len(inconsistent_error_indices):
+        inconsistent_keys = pd.MultiIndex.from_frame(data.loc[inconsistent_error_indices, group_columns])
+        all_keys = pd.MultiIndex.from_frame(data[group_columns])
+        inconsistent_rows = all_keys.isin(inconsistent_keys) & data["metric_normalized"].isin(
+            ["Báo sai/Lỗi", "% báo sai"]
+        )
+        data.loc[inconsistent_rows, "data_note"] = INCONSISTENT_ERROR_NOTE
+        data.loc[inconsistent_rows, "validation_status"] = "warning"
     return data
 
 
@@ -314,6 +343,18 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
 
     data = pd.DataFrame.from_records(records, columns=OUTPUT_COLUMNS)
     data = _apply_default_zero_rates(data)
+    inconsistent_errors = data[
+        data["metric_normalized"].eq("Báo sai/Lỗi")
+        & data["data_note"].eq(INCONSISTENT_ERROR_NOTE)
+    ]
+    for row in inconsistent_errors.itertuples():
+        issues.append(ValidationIssue(
+            "warning",
+            "INCONSISTENT_ERROR_METRICS",
+            INCONSISTENT_ERROR_NOTE,
+            row.sheet_name,
+            row.cell_address,
+        ))
     entities = pd.DataFrame.from_records(entity_records, columns=ENTITY_COLUMNS)
     project_nodes = entities[entities["entity_level"] == "project"] if not entities.empty else entities
     section_nodes = entities[entities["entity_level"] == "section"] if not entities.empty else entities
@@ -333,6 +374,7 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
         "unknown_unit_count": int(entities["effective_unit"].isna().sum()) if not entities.empty else 0,
         "unit_count": int(entities["unit_normalized"].nunique()) if not entities.empty else 0,
         "default_zero_rate_count": int(data["value_kind"].eq("default_zero_rate").sum()) if not data.empty else 0,
+        "inconsistent_error_metric_count": len(inconsistent_errors),
         "minimum_data_date": config.minimum_data_date,
         "date_count": len(detected_dates),
         "metric_count": len(detected_metrics),

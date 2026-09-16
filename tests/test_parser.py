@@ -42,6 +42,12 @@ def test_keeps_zero_distinct_from_not_recorded_blank(sample_workbook):
     assert blank["value_kind"] == "not_recorded"
     assert pd.isna(blank["chart_value"])
     assert blank["display_value"] == ""
+    assert "% báo sai > 0" in blank["data_note"]
+    assert result.manifest["inconsistent_error_metric_count"] == 1
+    assert any(
+        issue.code == "INCONSISTENT_ERROR_METRICS"
+        for issue in result.report.warnings
+    )
 
 
 def test_defaults_blank_rate_only_when_no_error_was_recorded(sample_workbook):

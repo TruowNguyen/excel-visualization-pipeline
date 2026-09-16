@@ -68,15 +68,24 @@ def _hover_display_value(row) -> str:
     """Translate source completeness states without ever inventing zeroes."""
     value_kind = getattr(row, "value_kind", None)
     if value_kind == "not_recorded":
+        data_note = getattr(row, "data_note", None)
+        if pd.notna(data_note) and "nhưng Báo sai/Lỗi" in str(data_note):
+            return "Không ghi nhận trong ngày ⚠ Không nhất quán"
         return "Không ghi nhận trong ngày"
     if value_kind == "source_marker":
         display_value = getattr(row, "display_value", None)
         marker = str(display_value).strip() if pd.notna(display_value) else "-"
         return f"Đánh dấu từ nguồn: {marker or '-'}"
+    if value_kind == "default_zero_rate":
+        return "0% (mặc định)"
     display_value = getattr(row, "display_value", None)
     if pd.isna(display_value) or not str(display_value).strip():
         return "Không ghi nhận trong ngày"
-    return str(display_value)
+    result = str(display_value)
+    data_note = getattr(row, "data_note", None)
+    if pd.notna(data_note) and "nhưng Báo sai/Lỗi" in str(data_note):
+        return f"{result} ⚠ Không nhất quán"
+    return result
 
 
 def _metric_hover_lookup(data: pd.DataFrame, entity_id: str) -> dict[tuple[pd.Timestamp, str], str]:
@@ -106,6 +115,12 @@ def _hover_row(
 ENTITY_HOVER_TEMPLATE = (
     "<b>%{customdata[0]}</b>"
     "<br>Tổng số/Cảnh báo: %{customdata[1]}"
+    "<br>Báo sai/Lỗi: %{customdata[2]}"
+    "<br>% báo sai: %{customdata[3]}<extra></extra>"
+)
+
+COMBO_HOVER_TEMPLATE = (
+    "Tổng số/Cảnh báo: %{customdata[1]}"
     "<br>Báo sai/Lỗi: %{customdata[2]}"
     "<br>% báo sai: %{customdata[3]}<extra></extra>"
 )
@@ -405,12 +420,12 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         go.Scatter(
             x=hover_dates,
             y=[0] * len(hover_dates),
-            name="Chi tiết theo ngày",
+            name="",
             mode="markers",
             marker={"size": 1, "opacity": 0},
             showlegend=False,
             customdata=[_hover_row(hover_lookup, date, entity_label) for date in hover_dates],
-            hovertemplate=ENTITY_HOVER_TEMPLATE,
+            hovertemplate=COMBO_HOVER_TEMPLATE,
         ),
         secondary_y=False,
     )
