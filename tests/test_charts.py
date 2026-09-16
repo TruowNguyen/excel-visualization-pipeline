@@ -59,21 +59,21 @@ def test_combo_chart_rejects_multiple_entities(sample_workbook):
         build_metric_combo_chart(mixed_entities)
 
 
-def test_combo_hover_distinguishes_not_collected_and_missing_marker(sample_workbook):
+def test_combo_hover_distinguishes_not_recorded_and_source_marker(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"].copy()
     target_date = pd.to_datetime(item_data["date"]) == pd.Timestamp("2026-09-12")
-    not_collected = target_date & (item_data["metric_normalized"] == "Báo sai/Lỗi")
-    missing_marker = target_date & (item_data["metric_normalized"] == "% báo sai")
-    item_data.loc[not_collected, ["chart_value", "display_value", "value_kind"]] = [
+    not_recorded = target_date & (item_data["metric_normalized"] == "Báo sai/Lỗi")
+    source_marker = target_date & (item_data["metric_normalized"] == "% báo sai")
+    item_data.loc[not_recorded, ["chart_value", "display_value", "value_kind"]] = [
         None,
         "",
-        "not_collected",
+        "not_recorded",
     ]
-    item_data.loc[missing_marker, ["chart_value", "display_value", "value_kind"]] = [
+    item_data.loc[source_marker, ["chart_value", "display_value", "value_kind"]] = [
         None,
         "-",
-        "missing_marker",
+        "source_marker",
     ]
 
     figure = build_metric_combo_chart(item_data)
@@ -81,8 +81,8 @@ def test_combo_hover_distinguishes_not_collected_and_missing_marker(sample_workb
     assert list(figure.data[-1].customdata[0]) == [
         "Camera",
         "100",
-        "Chưa thu thập",
-        "Không có dữ liệu",
+        "Không ghi nhận trong ngày",
+        "Đánh dấu từ nguồn: -",
     ]
 
 
@@ -204,20 +204,20 @@ def test_multi_entity_unified_hover_preserves_missing_values(sample_workbook):
     )
     item_data.loc[missing_error, "chart_value"] = None
     item_data.loc[missing_error, "display_value"] = ""
-    item_data.loc[missing_error, "value_kind"] = "not_collected"
+    item_data.loc[missing_error, "value_kind"] = "not_recorded"
 
     figure = build_multi_entity_metric_chart(item_data, "Tổng số")
 
     assert list(figure.data[0].customdata[0]) == [
         "Camera",
         "100",
-        "Chưa thu thập",
+        "Không ghi nhận trong ngày",
         "8.00%",
     ]
     assert "0" not in figure.data[0].customdata[0][2]
 
 
-def test_multi_entity_unified_hover_distinguishes_missing_marker(sample_workbook):
+def test_multi_entity_unified_hover_distinguishes_source_marker(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"].copy()
     missing_error = (
@@ -226,11 +226,11 @@ def test_multi_entity_unified_hover_distinguishes_missing_marker(sample_workbook
     )
     item_data.loc[missing_error, "chart_value"] = None
     item_data.loc[missing_error, "display_value"] = "-"
-    item_data.loc[missing_error, "value_kind"] = "missing_marker"
+    item_data.loc[missing_error, "value_kind"] = "source_marker"
 
     figure = build_multi_entity_metric_chart(item_data, "Tổng số")
 
-    assert figure.data[0].customdata[0][2] == "Không có dữ liệu"
+    assert figure.data[0].customdata[0][2] == "Đánh dấu từ nguồn: -"
 
 
 def test_all_demo_charts_render(sample_workbook):

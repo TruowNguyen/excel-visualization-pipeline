@@ -104,12 +104,12 @@ def _value_fields(cell: Cell, metric: str, config: ParserConfig) -> dict[str, An
     if _is_blank(value, config):
         return {
             "value_numeric": None, "chart_value": None, "display_value": "",
-            "value_kind": "not_collected", "validation_status": "valid",
+            "value_kind": "not_recorded", "validation_status": "valid",
         }
-    if cleaned.casefold() in {marker.casefold() for marker in config.missing_markers}:
+    if cleaned.casefold() in {marker.casefold() for marker in config.source_markers}:
         return {
             "value_numeric": None, "chart_value": None, "display_value": cleaned,
-            "value_kind": "missing_marker", "validation_status": "warning",
+            "value_kind": "source_marker", "validation_status": "warning",
         }
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         numeric = float(value)
@@ -275,7 +275,7 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
                             ws.title, cell.coordinate,
                         ))
                     if fields["validation_status"] == "warning":
-                        issue_code = "MISSING_MARKER" if fields["value_kind"] == "missing_marker" else "NON_NUMERIC_METRIC"
+                        issue_code = "SOURCE_MARKER" if fields["value_kind"] == "source_marker" else "NON_NUMERIC_METRIC"
                         issues.append(ValidationIssue(
                             "warning", issue_code,
                             f"Metric '{metric_original}' chứa giá trị không dùng để vẽ: {fields['display_value']}",

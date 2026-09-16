@@ -66,13 +66,13 @@ number_format  = 0.00%
 ### 2.3. Phân biệt dữ liệu thiếu và số 0
 
 ```text
-Ô trống/NBSP → not_collected, hiển thị "Chưa thu thập"
+Ô trống/NBSP → not_recorded, hiển thị "Không ghi nhận trong ngày"
 0            → số 0 hợp lệ và được vẽ
-- / N/A      → missing_marker, hiển thị "Không có dữ liệu"
+- / N/A      → source_marker, hiển thị "Đánh dấu từ nguồn: <ký hiệu>"
 Text         → giữ để audit, không ép thành số
 ```
 
-`not_collected` và `missing_marker` đều có `chart_value = null`, không tham gia biểu đồ hay phép tính trung bình. Hai trạng thái vẫn được giữ thành record để Audit Table truy vết đúng địa chỉ ô; chúng tuyệt đối không được thay bằng `0`.
+`not_recorded` mô tả đúng nghiệp vụ rằng hệ thống không ghi nhận giá trị trong ngày, không hàm ý quy trình thu thập chưa diễn ra. `source_marker` chỉ bảo toàn ký hiệu do nguồn dùng cho dữ liệu khác bản chất, không tự diễn giải ký hiệu đó thành số hoặc trạng thái “không có dữ liệu”. Cả hai có `chart_value = null`, không tham gia biểu đồ hay phép tính trung bình, nhưng vẫn được giữ để Audit Table truy vết đúng địa chỉ ô.
 
 ### 2.4. Không tổng hợp sai cấp dữ liệu
 
@@ -583,7 +583,7 @@ fallback_parent_strategy: project
 blank_markers:
   - ""
   - "\u00a0"
-missing_markers:
+source_markers:
   - "-"
   - "n/a"
   - "na"

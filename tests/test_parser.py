@@ -27,7 +27,7 @@ def test_extracts_traceable_long_format(sample_workbook):
     assert rate["unit_source_level"] == "project"
 
 
-def test_keeps_zero_distinct_from_not_collected_blank(sample_workbook):
+def test_keeps_zero_distinct_from_not_recorded_blank(sample_workbook):
     from openpyxl import load_workbook
 
     workbook = load_workbook(sample_workbook)
@@ -39,7 +39,7 @@ def test_keeps_zero_distinct_from_not_collected_blank(sample_workbook):
     assert "E7" in set(result.data["cell_address"])
     assert result.data.set_index("cell_address").loc["D7", "chart_value"] == 0
     blank = result.data.set_index("cell_address").loc["E7"]
-    assert blank["value_kind"] == "not_collected"
+    assert blank["value_kind"] == "not_recorded"
     assert pd.isna(blank["chart_value"])
     assert blank["display_value"] == ""
 

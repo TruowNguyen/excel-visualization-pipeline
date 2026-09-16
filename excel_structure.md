@@ -57,7 +57,7 @@ VOL
 - Tỷ lệ phần trăm chủ yếu được lưu dưới dạng số thập phân, ví dụ `0.08`, với Excel number format `0.00%`.
 - Workbook sử dụng ô trống thật, khoảng trắng không ngắt `NBSP` và dấu `-` cho các trạng thái khác nhau.
 - `NBSP` chỉ là dữ liệu trình bày và được coi là blank.
-- Dấu `-` được giữ thành record `missing_marker`, không đổi thành số 0.
+- Dấu `-` được giữ thành record `source_marker` để đánh dấu dữ liệu khác bản chất, không đổi thành số 0 hoặc tự diễn giải thành “không có dữ liệu”.
 - Text xuất hiện trong một số ô metric được giữ để audit nhưng không đưa lên chart số.
 
 ## Kết quả baseline

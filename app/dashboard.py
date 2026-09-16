@@ -225,7 +225,8 @@ audit_columns = [
 with st.expander("Audit Table — dữ liệu nguồn"):
     st.caption(
         "Tooltip phục vụ đọc nhanh; bảng này giữ thông tin đầy đủ để truy vết về workbook và ô nguồn. "
-        "not_collected là ô trống/chưa thu thập; missing_marker là dấu '-' xác nhận không có dữ liệu."
+        "not_recorded là ô trống/không ghi nhận trong ngày; source_marker là ký hiệu '-' hoặc N/A "
+        "được giữ nguyên để đánh dấu dữ liệu khác bản chất."
     )
     st.dataframe(
         range_data[audit_columns].sort_values(["entity_path", "date", "metric_normalized"]),

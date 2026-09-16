@@ -43,7 +43,7 @@ class ParserConfig:
     fallback_entity_level: str = "item"
     fallback_parent_strategy: str = "project"
     blank_markers: tuple[str, ...] = ("", "\u00a0")
-    missing_markers: tuple[str, ...] = ("-", "n/a", "na", "unknown")
+    source_markers: tuple[str, ...] = ("-", "n/a", "na", "unknown")
     metric_aliases: dict[str, str] = field(default_factory=dict)
     unit_aliases: dict[str, str] = field(default_factory=dict)
 
@@ -66,7 +66,12 @@ class ParserConfig:
             fallback_entity_level=str(payload.get("fallback_entity_level", "item")),
             fallback_parent_strategy=str(payload.get("fallback_parent_strategy", "project")),
             blank_markers=tuple(payload.get("blank_markers", ["", "\u00a0"])),
-            missing_markers=tuple(payload.get("missing_markers", ["-", "n/a", "na", "unknown"])),
+            source_markers=tuple(
+                payload.get(
+                    "source_markers",
+                    payload.get("missing_markers", ["-", "n/a", "na", "unknown"]),
+                )
+            ),
             metric_aliases={str(k).casefold(): str(v) for k, v in payload.get("metric_aliases", {}).items()},
             unit_aliases={str(k).casefold(): str(v) for k, v in payload.get("unit_aliases", {}).items()},
         )

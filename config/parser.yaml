@@ -28,7 +28,7 @@ fallback_parent_strategy: project
 blank_markers:
   - ""
   - "\u00a0"
-missing_markers:
+source_markers:
   - "-"
   - "n/a"
   - "na"

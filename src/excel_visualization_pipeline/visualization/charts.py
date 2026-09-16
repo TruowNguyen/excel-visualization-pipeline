@@ -67,13 +67,15 @@ def _formatted_number(value: float) -> str:
 def _hover_display_value(row) -> str:
     """Translate source completeness states without ever inventing zeroes."""
     value_kind = getattr(row, "value_kind", None)
-    if value_kind == "not_collected":
-        return "Chưa thu thập"
-    if value_kind == "missing_marker":
-        return "Không có dữ liệu"
+    if value_kind == "not_recorded":
+        return "Không ghi nhận trong ngày"
+    if value_kind == "source_marker":
+        display_value = getattr(row, "display_value", None)
+        marker = str(display_value).strip() if pd.notna(display_value) else "-"
+        return f"Đánh dấu từ nguồn: {marker or '-'}"
     display_value = getattr(row, "display_value", None)
     if pd.isna(display_value) or not str(display_value).strip():
-        return "Chưa thu thập"
+        return "Không ghi nhận trong ngày"
     return str(display_value)
 
 
@@ -95,9 +97,9 @@ def _hover_row(
     target_date = pd.Timestamp(date)
     return [
         entity_label,
-        lookup.get((target_date, "Tổng số"), "Chưa thu thập"),
-        lookup.get((target_date, "Báo sai/Lỗi"), "Chưa thu thập"),
-        lookup.get((target_date, "% báo sai"), "Chưa thu thập"),
+        lookup.get((target_date, "Tổng số"), "Không ghi nhận trong ngày"),
+        lookup.get((target_date, "Báo sai/Lỗi"), "Không ghi nhận trong ngày"),
+        lookup.get((target_date, "% báo sai"), "Không ghi nhận trong ngày"),
     ]
 
 
