@@ -328,15 +328,18 @@ Dashboard hỗ trợ:
 - tự động tạo biểu đồ trung bình cho `Tổng số` và `Báo sai/Lỗi` trong khoảng thời gian đang chọn;
 - có khu vực multi-select riêng để so sánh đồng thời tối đa 3 entity tương thích;
 - cùng một kiểu combo chart được dùng cho một ngày hoặc cả khoảng `Từ ngày`–`Đến ngày`;
-- biểu đồ thời gian chỉ gắn `display_value` tại điểm mới nhất của mỗi series; các điểm còn lại đọc qua tooltip;
+- biểu đồ thời gian chỉ gắn `display_value` tại điểm mới nhất của mỗi series; các điểm còn lại đọc qua unified hover theo ngày;
 - toàn bộ ngày hiển thị trên trục và tiêu đề biểu đồ dùng định dạng `DD/MM`;
 - bảng dữ liệu chuẩn hóa;
 - xem warning chất lượng;
 - tải xuống normalized CSV.
 
-Dashboard áp dụng mô hình `Tooltip + Latest Label + Audit Table`:
+Dashboard áp dụng mô hình `Unified Hover + Latest Label + Audit Table`:
 
-- Tooltip hiển thị nhanh ngày, metric, giá trị thân thiện và unit khi phù hợp.
+- Unified hover được kích hoạt theo vùng ngày trên trục X, không yêu cầu đặt chuột chính xác lên marker hoặc đường line.
+- Tooltip dùng tiêu đề ngày `DD/MM/YYYY` và hiển thị đồng thời tất cả metric có dữ liệu tại ngày đó.
+- Giá trị dùng `display_value` gốc để giữ đúng định dạng phần trăm; dữ liệu thiếu không được thay bằng `0`.
+- Trong biểu đồ multi-select, mỗi entity là một nhóm gồm `Tổng số/Cảnh báo`, `Báo sai/Lỗi` và `% báo sai` của cùng ngày.
 - Latest Label chỉ giữ nhãn tại ngày mới nhất của từng series để giảm chồng lấn.
 - Biểu đồ tổng hợp ít điểm vẫn hiển thị nhãn trực tiếp trên từng cột.
 - `Audit Table — dữ liệu nguồn` cung cấp entity path, metric gốc/chuẩn hóa, raw/display/chart value, sheet, địa chỉ ô, number format, parser rule và validation status.
@@ -383,7 +386,7 @@ Unit không phải là bộ lọc tùy chọn trên giao diện. Khi render, m�
 - `Metric so sánh` cho phép chọn một trong `Tổng số`, `Báo sai/Lỗi` hoặc `% báo sai`; mặc định là `Báo sai/Lỗi`.
 - Với `Tổng số` và `Báo sai/Lỗi`, mỗi entity là một series cột có màu riêng.
 - Với `% báo sai`, mỗi entity là một đường có màu riêng.
-- Mỗi series chỉ hiển thị trực tiếp `display_value` mới nhất; mọi điểm vẫn đọc được qua tooltip.
+- Mỗi series chỉ hiển thị trực tiếp `display_value` mới nhất; mọi ngày vẫn đọc được qua unified hover.
 - Legend luôn thêm cấp hierarchy, ví dụ `[Project] VSO` hoặc `[Item] Camera`, để tránh nhầm dữ liệu cha và con.
 - Biểu đồ chỉ hiển thị metric đang chọn: số lượng dùng trục Y theo Effective Unit chung, phần trăm dùng trục Y có hậu tố `%`; không tính thêm tỷ lệ dẫn xuất.
 - Nếu lựa chọn không tương thích, dashboard không render chart và hiển thị điều kiện cần sửa.

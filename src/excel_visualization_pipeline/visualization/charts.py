@@ -24,6 +24,21 @@ def _format_date_axes(figure: Figure) -> Figure:
     return figure
 
 
+def _enable_unified_date_hover(figure: Figure) -> Figure:
+    """Show every trace for the nearest date without requiring point-level hover."""
+    figure.update_layout(
+        hovermode="x unified",
+        hoverdistance=-1,
+        hoverlabel={"namelength": -1},
+    )
+    figure.for_each_xaxis(
+        lambda axis: axis.update(
+            unifiedhovertitle={"text": "<b>Ngày %{x|%d/%m/%Y}</b>"}
+        )
+    )
+    return figure
+
+
 def _latest_labels(values) -> list[str]:
     """Keep only the last visible label while preserving every chart point."""
     value_list = list(values)
@@ -132,11 +147,11 @@ def build_project_total_chart(data: pd.DataFrame, start_date, end_date=None) -> 
         textposition="top center",
         textfont_size=11,
         cliponaxis=False,
-        hovertemplate="Ngày: %{x|%d/%m}<br>Giá trị: %{customdata[0]}<extra></extra>",
+        hovertemplate="Tổng số: %{customdata[0]}<extra></extra>",
     )
     figure.update_layout(margin={"t": 90})
     figure.for_each_yaxis(lambda axis: axis.update(matches=None))
-    return _format_date_axes(_keep_latest_trace_labels(figure))
+    return _enable_unified_date_hover(_format_date_axes(_keep_latest_trace_labels(figure)))
 
 
 def chartable(data: pd.DataFrame) -> pd.DataFrame:
@@ -237,12 +252,12 @@ def build_line_chart(data: pd.DataFrame, title: str = "Xu hướng theo thời g
         textfont_size=10,
         cliponaxis=False,
         hovertemplate=(
-            "Ngày: %{x|%d/%m}<br>Metric: %{customdata[1]}"
-            "<br>Giá trị: %{customdata[0]}<br>Unit: %{customdata[2]}<extra></extra>"
+            "<b>%{fullData.name}</b><br>%{customdata[1]}: %{customdata[0]}"
+            "<br>Unit: %{customdata[2]}<extra></extra>"
         ),
     )
     figure.update_layout(margin={"t": 90})
-    return _format_date_axes(_keep_latest_trace_labels(figure))
+    return _enable_unified_date_hover(_format_date_axes(_keep_latest_trace_labels(figure)))
 
 
 def build_bar_chart(data: pd.DataFrame, selected_date=None, title: str = "So sánh tại một ngày") -> Figure:
@@ -305,8 +320,8 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 cliponaxis=False,
                 customdata=metric_data[["display_value"]].to_numpy(),
                 hovertemplate=(
-                    f"Ngày: %{{x|%d/%m}}<br>Metric: {name}"
-                    "<br>Giá trị: %{customdata[0]}<extra></extra>"
+                    f"<b>{'Tổng số/Cảnh báo' if metric == 'Tổng số' else name}</b>: "
+                    "%{customdata[0]}<extra></extra>"
                 ),
             ),
             secondary_y=False,
@@ -328,8 +343,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 connectgaps=False,
                 customdata=rate_data[["display_value"]].to_numpy(),
                 hovertemplate=(
-                    "Ngày: %{x|%d/%m}<br>Metric: % báo sai"
-                    "<br>Giá trị: %{customdata[0]}<extra></extra>"
+                    "<b>% báo sai</b>: %{customdata[0]}<extra></extra>"
                 ),
             ),
             secondary_y=True,
@@ -340,7 +354,6 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         barmode="overlay",
         bargap=0.25,
         bargroupgap=0.08,
-        hovermode="closest",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
         margin={"t": 110},
         xaxis_title="Ngày",
@@ -353,7 +366,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         ticksuffix="%",
         secondary_y=True,
     )
-    return _format_date_axes(figure)
+    return _enable_unified_date_hover(_format_date_axes(figure))
 
 
 def build_multi_entity_metric_chart(
@@ -362,6 +375,8 @@ def build_multi_entity_metric_chart(
     title: str | None = None,
 ) -> Figure:
     """Compare one selected metric for up to three compatible entities."""
+    hover_source = data.copy()
+    hover_source["date"] = pd.to_datetime(hover_source["date"])
     frame = chartable(data)
     frame = frame[frame["metric_normalized"] == metric]
     if frame.empty:
@@ -387,6 +402,30 @@ def build_multi_entity_metric_chart(
         level_label = ENTITY_LEVEL_LABELS.get(entity_level, entity_level.title())
         legend_label = f"[{level_label}] {entity_label}"
         color = ENTITY_COLORS[color_index]
+        entity_hover_source = hover_source[hover_source["entity_id"] == entity_id]
+        hover_lookup: dict[tuple[pd.Timestamp, str], str] = {}
+        for row in entity_hover_source.itertuples():
+            if row.metric_normalized not in {"Tổng số", "Báo sai/Lỗi", "% báo sai"}:
+                continue
+            display_value = row.display_value
+            if pd.isna(display_value) or not str(display_value).strip():
+                display_value = "Không có dữ liệu"
+            hover_lookup[(pd.Timestamp(row.date), row.metric_normalized)] = str(display_value)
+        hover_rows = [
+            [
+                entity_label,
+                hover_lookup.get((pd.Timestamp(date), "Tổng số"), "Không có dữ liệu"),
+                hover_lookup.get((pd.Timestamp(date), "Báo sai/Lỗi"), "Không có dữ liệu"),
+                hover_lookup.get((pd.Timestamp(date), "% báo sai"), "Không có dữ liệu"),
+            ]
+            for date in entity_data["date"]
+        ]
+        entity_hovertemplate = (
+            "<b>%{customdata[0]}</b>"
+            "<br>Tổng số/Cảnh báo: %{customdata[1]}"
+            "<br>Báo sai/Lỗi: %{customdata[2]}"
+            "<br>% báo sai: %{customdata[3]}<extra></extra>"
+        )
         if metric == "% báo sai":
             figure.add_trace(
                 go.Scatter(
@@ -401,11 +440,8 @@ def build_multi_entity_metric_chart(
                     textposition="top center",
                     cliponaxis=False,
                     connectgaps=False,
-                    customdata=entity_data[["display_value"]].to_numpy(),
-                    hovertemplate=(
-                        "Ngày: %{x|%d/%m}<br>Giá trị: %{customdata[0]}"
-                        "<extra></extra>"
-                    ),
+                    customdata=hover_rows,
+                    hovertemplate=entity_hovertemplate,
                 )
             )
         else:
@@ -419,11 +455,8 @@ def build_multi_entity_metric_chart(
                     text=_latest_labels(entity_data["display_value"]),
                     textposition="outside",
                     cliponaxis=False,
-                    customdata=entity_data[["display_value"]].to_numpy(),
-                    hovertemplate=(
-                        "Ngày: %{x|%d/%m}<br>Giá trị: %{customdata[0]}"
-                        "<extra></extra>"
-                    ),
+                    customdata=hover_rows,
+                    hovertemplate=entity_hovertemplate,
                 )
             )
 
@@ -432,7 +465,6 @@ def build_multi_entity_metric_chart(
         barmode="group",
         bargap=0.25,
         bargroupgap=0.08,
-        hovermode="closest",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
         margin={"t": 110},
         xaxis_title="Ngày",
@@ -441,4 +473,4 @@ def build_multi_entity_metric_chart(
     )
     if metric == "% báo sai":
         figure.update_yaxes(tickformat=".1f", ticksuffix="%")
-    return _format_date_axes(figure)
+    return _enable_unified_date_hover(_format_date_axes(figure))

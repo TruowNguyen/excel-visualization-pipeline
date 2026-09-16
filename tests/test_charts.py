@@ -32,7 +32,12 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     assert list(figure.data[0].text) == ["", "120"]
     assert list(figure.data[1].text) == ["", "6"]
     assert list(figure.data[2].text) == ["", "5.00%"]
-    assert all("Giá trị" in trace.hovertemplate for trace in figure.data)
+    assert figure.layout.hovermode == "x unified"
+    assert figure.layout.hoverdistance == -1
+    assert figure.layout.xaxis.unifiedhovertitle.text == "<b>Ngày %{x|%d/%m/%Y}</b>"
+    assert "Tổng số/Cảnh báo" in figure.data[0].hovertemplate
+    assert "Báo sai/Lỗi" in figure.data[1].hovertemplate
+    assert "% báo sai" in figure.data[2].hovertemplate
 
 
 def test_combo_chart_rejects_multiple_entities(sample_workbook):
@@ -78,7 +83,11 @@ def test_multi_entity_metric_chart_renders_three_bar_groups(sample_workbook):
     assert len(figure.data) == 3
     assert figure.layout.barmode == "group"
     assert len({trace.legendgroup for trace in figure.data}) == 3
-    assert all("Giá trị" in trace.hovertemplate for trace in figure.data)
+    assert figure.layout.hovermode == "x unified"
+    assert all("Tổng số/Cảnh báo" in trace.hovertemplate for trace in figure.data)
+    assert all("Báo sai/Lỗi" in trace.hovertemplate for trace in figure.data)
+    assert all("% báo sai" in trace.hovertemplate for trace in figure.data)
+    assert list(figure.data[0].customdata[0]) == ["Camera A", "100", "8", "8.00%"]
     assert all(trace.type == "bar" for trace in figure.data)
     assert all("% báo sai" not in trace.name and "Tổng số" not in trace.name for trace in figure.data)
     assert all(trace.name.startswith("[Item]") for trace in figure.data)
@@ -149,6 +158,27 @@ def test_multi_entity_percentage_metric_uses_lines(sample_workbook):
     assert figure.layout.xaxis.tickformat == "%d/%m"
 
 
+def test_multi_entity_unified_hover_preserves_missing_values(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"].copy()
+    missing_error = (
+        (item_data["metric_normalized"] == "Báo sai/Lỗi")
+        & (pd.to_datetime(item_data["date"]) == pd.Timestamp("2026-09-12"))
+    )
+    item_data.loc[missing_error, "chart_value"] = None
+    item_data.loc[missing_error, "display_value"] = ""
+
+    figure = build_multi_entity_metric_chart(item_data, "Tổng số")
+
+    assert list(figure.data[0].customdata[0]) == [
+        "Camera",
+        "100",
+        "Không có dữ liệu",
+        "8.00%",
+    ]
+    assert "0" not in figure.data[0].customdata[0][2]
+
+
 def test_all_demo_charts_render(sample_workbook):
     data = run_pipeline(sample_workbook).data
     data = data[(data["metric_normalized"] == "% báo sai") & (data["entity_level"] == "item")]
@@ -160,7 +190,8 @@ def test_all_demo_charts_render(sample_workbook):
     assert list(bar.data[0].text) == ["5.00%"]
     assert "text" in line.data[0].mode
     assert line.layout.xaxis.tickformat == "%d/%m"
-    assert "Giá trị" in line.data[0].hovertemplate
+    assert line.layout.hovermode == "x unified"
+    assert "%{customdata[1]}" in line.data[0].hovertemplate
     assert "Giá trị" in bar.data[0].hovertemplate
 
 
@@ -176,7 +207,8 @@ def test_project_overview_uses_item_fallback_without_mixing_levels(sample_workbo
     assert len(figure.data) > 0
     assert list(figure.data[0].text) == ["100"]
     assert "text" in figure.data[0].mode
-    assert "Giá trị" in figure.data[0].hovertemplate
+    assert figure.layout.hovermode == "x unified"
+    assert "Tổng số" in figure.data[0].hovertemplate
     assert figure.layout.xaxis.tickformat == "%d/%m"
 
 

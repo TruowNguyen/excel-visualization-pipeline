@@ -273,9 +273,12 @@ else:
     if len(selected_units) != 1:
         st.error("Các entity được chọn phải có cùng Effective Unit.")
     else:
-        comparison_data = comparison_source[
-            comparison_source["entity_id"].isin(selected_comparison_ids)
-        ]
+        comparison_data = project_data[
+            project_data["entity_id"].isin(selected_comparison_ids)
+            & project_data["metric_normalized"].isin(combo_metrics)
+            & (comparison_dates >= start_date)
+            & (comparison_dates <= end_date)
+        ].copy()
         st.plotly_chart(
             build_multi_entity_metric_chart(
                 comparison_data,
