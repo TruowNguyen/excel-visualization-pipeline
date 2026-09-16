@@ -49,7 +49,9 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     assert "Tổng số/Cảnh báo" in figure.data[3].hovertemplate
     assert "Báo sai/Lỗi" in figure.data[3].hovertemplate
     assert "% báo sai" in figure.data[3].hovertemplate
-    assert list(figure.data[3].customdata[0]) == ["Camera", "100", "8", "8.00%"]
+    assert list(figure.data[3].customdata[0]) == [
+        "Camera", "100", "8", "8.00%", "—", "—", "—",
+    ]
 
 
 def test_combo_chart_rejects_multiple_entities(sample_workbook):
@@ -72,10 +74,10 @@ def test_combo_hover_labels_inconsistent_positive_rate(sample_workbook):
 
     figure = build_metric_combo_chart(item_data)
 
-    assert figure.data[-1].customdata[0][2] == (
-        "Không ghi nhận trong ngày ⚠ Không nhất quán"
-    )
-    assert figure.data[-1].customdata[0][3] == "8.00% ⚠ Không nhất quán"
+    assert figure.data[-1].customdata[0][2] == "—"
+    assert figure.data[-1].customdata[0][3] == "8.00%"
+    assert "⚠ Không nhất quán" in figure.data[-1].customdata[0][5]
+    assert "⚠ Không nhất quán" in figure.data[-1].customdata[0][6]
 
 
 def test_combo_hover_distinguishes_not_recorded_and_source_marker(sample_workbook):
@@ -100,8 +102,11 @@ def test_combo_hover_distinguishes_not_recorded_and_source_marker(sample_workboo
     assert list(figure.data[-1].customdata[0]) == [
         "Camera",
         "100",
+        "—",
+        "-",
+        "—",
         "Không ghi nhận trong ngày",
-        "Đánh dấu từ nguồn: -",
+        "Đánh dấu dữ liệu khác bản chất từ nguồn",
     ]
 
 
@@ -143,7 +148,9 @@ def test_multi_entity_metric_chart_renders_three_bar_groups(sample_workbook):
     assert all("Tổng số/Cảnh báo" in trace.hovertemplate for trace in figure.data)
     assert all("Báo sai/Lỗi" in trace.hovertemplate for trace in figure.data)
     assert all("% báo sai" in trace.hovertemplate for trace in figure.data)
-    assert list(figure.data[0].customdata[0]) == ["Camera A", "100", "8", "8.00%"]
+    assert list(figure.data[0].customdata[0]) == [
+        "Camera A", "100", "8", "8.00%", "—", "—", "—",
+    ]
     assert all(trace.type == "bar" for trace in figure.data)
     assert all("% báo sai" not in trace.name and "Tổng số" not in trace.name for trace in figure.data)
     assert all(trace.name.startswith("[Item]") for trace in figure.data)
@@ -230,8 +237,11 @@ def test_multi_entity_unified_hover_preserves_missing_values(sample_workbook):
     assert list(figure.data[0].customdata[0]) == [
         "Camera",
         "100",
-        "Không ghi nhận trong ngày",
+        "—",
         "8.00%",
+        "—",
+        "Không ghi nhận trong ngày",
+        "—",
     ]
     assert "0" not in figure.data[0].customdata[0][2]
 
@@ -249,7 +259,8 @@ def test_multi_entity_unified_hover_distinguishes_source_marker(sample_workbook)
 
     figure = build_multi_entity_metric_chart(item_data, "Tổng số")
 
-    assert figure.data[0].customdata[0][2] == "Đánh dấu từ nguồn: -"
+    assert figure.data[0].customdata[0][2] == "-"
+    assert figure.data[0].customdata[0][5] == "Đánh dấu dữ liệu khác bản chất từ nguồn"
 
 
 def test_all_demo_charts_render(sample_workbook):

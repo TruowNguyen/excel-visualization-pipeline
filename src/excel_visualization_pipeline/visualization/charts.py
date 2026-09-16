@@ -65,64 +65,84 @@ def _formatted_number(value: float) -> str:
 
 
 def _hover_display_value(row) -> str:
-    """Translate source completeness states without ever inventing zeroes."""
+    """Return a compact value while keeping source-state detail separate."""
     value_kind = getattr(row, "value_kind", None)
     if value_kind == "not_recorded":
-        data_note = getattr(row, "data_note", None)
-        if pd.notna(data_note) and "nhưng Báo sai/Lỗi" in str(data_note):
-            return "Không ghi nhận trong ngày ⚠ Không nhất quán"
-        return "Không ghi nhận trong ngày"
+        return "—"
     if value_kind == "source_marker":
         display_value = getattr(row, "display_value", None)
         marker = str(display_value).strip() if pd.notna(display_value) else "-"
-        return f"Đánh dấu từ nguồn: {marker or '-'}"
+        return marker or "-"
     if value_kind == "default_zero_rate":
-        return "0% (mặc định)"
+        return "0%"
     display_value = getattr(row, "display_value", None)
     if pd.isna(display_value) or not str(display_value).strip():
-        return "Không ghi nhận trong ngày"
-    result = str(display_value)
+        return "—"
+    return str(display_value)
+
+
+def _hover_data_note(row) -> str:
+    """Return the business description associated with one metric value."""
     data_note = getattr(row, "data_note", None)
-    if pd.notna(data_note) and "nhưng Báo sai/Lỗi" in str(data_note):
-        return f"{result} ⚠ Không nhất quán"
-    return result
+    if pd.isna(data_note) or not str(data_note).strip():
+        value_kind = getattr(row, "value_kind", None)
+        fallback_notes = {
+            "not_recorded": "Không ghi nhận trong ngày",
+            "source_marker": "Đánh dấu dữ liệu khác bản chất từ nguồn",
+            "default_zero_rate": "Mặc định 0% vì Báo sai/Lỗi không ghi nhận hoặc bằng 0",
+        }
+        return fallback_notes.get(value_kind, "—")
+    note = str(data_note)
+    if "nhưng Báo sai/Lỗi" in note:
+        return f"⚠ Không nhất quán — {note}"
+    return note
 
 
-def _metric_hover_lookup(data: pd.DataFrame, entity_id: str) -> dict[tuple[pd.Timestamp, str], str]:
-    lookup: dict[tuple[pd.Timestamp, str], str] = {}
+def _metric_hover_lookup(
+    data: pd.DataFrame,
+    entity_id: str,
+) -> dict[tuple[pd.Timestamp, str], tuple[str, str]]:
+    lookup: dict[tuple[pd.Timestamp, str], tuple[str, str]] = {}
     entity_data = data[data["entity_id"] == entity_id]
     for row in entity_data.itertuples():
         if row.metric_normalized not in {"Tổng số", "Báo sai/Lỗi", "% báo sai"}:
             continue
-        lookup[(pd.Timestamp(row.date), row.metric_normalized)] = _hover_display_value(row)
+        lookup[(pd.Timestamp(row.date), row.metric_normalized)] = (
+            _hover_display_value(row),
+            _hover_data_note(row),
+        )
     return lookup
 
 
 def _hover_row(
-    lookup: dict[tuple[pd.Timestamp, str], str],
+    lookup: dict[tuple[pd.Timestamp, str], tuple[str, str]],
     date,
     entity_label: str,
 ) -> list[str]:
     target_date = pd.Timestamp(date)
-    return [
-        entity_label,
-        lookup.get((target_date, "Tổng số"), "Không ghi nhận trong ngày"),
-        lookup.get((target_date, "Báo sai/Lỗi"), "Không ghi nhận trong ngày"),
-        lookup.get((target_date, "% báo sai"), "Không ghi nhận trong ngày"),
-    ]
+    total = lookup.get((target_date, "Tổng số"), ("—", "Không ghi nhận trong ngày"))
+    error = lookup.get((target_date, "Báo sai/Lỗi"), ("—", "Không ghi nhận trong ngày"))
+    rate = lookup.get((target_date, "% báo sai"), ("—", "Không ghi nhận trong ngày"))
+    return [entity_label, total[0], error[0], rate[0], total[1], error[1], rate[1]]
 
 
 ENTITY_HOVER_TEMPLATE = (
     "<b>%{customdata[0]}</b>"
     "<br>Tổng số/Cảnh báo: %{customdata[1]}"
+    "<br><i>Mô tả: %{customdata[4]}</i>"
     "<br>Báo sai/Lỗi: %{customdata[2]}"
-    "<br>% báo sai: %{customdata[3]}<extra></extra>"
+    "<br><i>Mô tả: %{customdata[5]}</i>"
+    "<br>% báo sai: %{customdata[3]}"
+    "<br><i>Mô tả: %{customdata[6]}</i><extra></extra>"
 )
 
 COMBO_HOVER_TEMPLATE = (
     "Tổng số/Cảnh báo: %{customdata[1]}"
+    "<br><i>Mô tả: %{customdata[4]}</i>"
     "<br>Báo sai/Lỗi: %{customdata[2]}"
-    "<br>% báo sai: %{customdata[3]}<extra></extra>"
+    "<br><i>Mô tả: %{customdata[5]}</i>"
+    "<br>% báo sai: %{customdata[3]}"
+    "<br><i>Mô tả: %{customdata[6]}</i><extra></extra>"
 )
 
 
