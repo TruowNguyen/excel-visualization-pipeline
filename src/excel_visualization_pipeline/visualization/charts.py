@@ -65,10 +65,11 @@ def _formatted_number(value: float) -> str:
 
 
 def _hover_display_value(row) -> str:
-    """Return a compact value while keeping source-state detail separate."""
+    """Return a compact hover value and retain only essential warnings."""
     value_kind = getattr(row, "value_kind", None)
     if value_kind == "not_recorded":
-        return "—"
+        data_note = getattr(row, "data_note", None)
+        return "— ⚠" if pd.notna(data_note) and "nhưng Báo sai/Lỗi" in str(data_note) else "—"
     if value_kind == "source_marker":
         display_value = getattr(row, "display_value", None)
         marker = str(display_value).strip() if pd.notna(display_value) else "-"
@@ -78,71 +79,51 @@ def _hover_display_value(row) -> str:
     display_value = getattr(row, "display_value", None)
     if pd.isna(display_value) or not str(display_value).strip():
         return "—"
-    return str(display_value)
-
-
-def _hover_data_note(row) -> str:
-    """Return the business description associated with one metric value."""
+    result = str(display_value)
     data_note = getattr(row, "data_note", None)
-    if pd.isna(data_note) or not str(data_note).strip():
-        value_kind = getattr(row, "value_kind", None)
-        fallback_notes = {
-            "not_recorded": "Không ghi nhận trong ngày",
-            "source_marker": "Đánh dấu dữ liệu khác bản chất từ nguồn",
-            "default_zero_rate": "Mặc định 0% vì Báo sai/Lỗi không ghi nhận hoặc bằng 0",
-        }
-        return fallback_notes.get(value_kind, "—")
-    note = str(data_note)
-    if "nhưng Báo sai/Lỗi" in note:
-        return f"⚠ Không nhất quán — {note}"
-    return note
+    return f"{result} ⚠" if pd.notna(data_note) and "nhưng Báo sai/Lỗi" in str(data_note) else result
 
 
 def _metric_hover_lookup(
     data: pd.DataFrame,
     entity_id: str,
-) -> dict[tuple[pd.Timestamp, str], tuple[str, str]]:
-    lookup: dict[tuple[pd.Timestamp, str], tuple[str, str]] = {}
+) -> dict[tuple[pd.Timestamp, str], str]:
+    lookup: dict[tuple[pd.Timestamp, str], str] = {}
     entity_data = data[data["entity_id"] == entity_id]
     for row in entity_data.itertuples():
         if row.metric_normalized not in {"Tổng số", "Báo sai/Lỗi", "% báo sai"}:
             continue
-        lookup[(pd.Timestamp(row.date), row.metric_normalized)] = (
-            _hover_display_value(row),
-            _hover_data_note(row),
-        )
+        lookup[(pd.Timestamp(row.date), row.metric_normalized)] = _hover_display_value(row)
     return lookup
 
 
 def _hover_row(
-    lookup: dict[tuple[pd.Timestamp, str], tuple[str, str]],
+    lookup: dict[tuple[pd.Timestamp, str], str],
     date,
     entity_label: str,
 ) -> list[str]:
     target_date = pd.Timestamp(date)
-    total = lookup.get((target_date, "Tổng số"), ("—", "Không ghi nhận trong ngày"))
-    error = lookup.get((target_date, "Báo sai/Lỗi"), ("—", "Không ghi nhận trong ngày"))
-    rate = lookup.get((target_date, "% báo sai"), ("—", "Không ghi nhận trong ngày"))
-    return [entity_label, total[0], error[0], rate[0], total[1], error[1], rate[1]]
+    return [
+        entity_label,
+        lookup.get((target_date, "Tổng số"), "—"),
+        lookup.get((target_date, "Báo sai/Lỗi"), "—"),
+        lookup.get((target_date, "% báo sai"), "—"),
+    ]
 
 
 ENTITY_HOVER_TEMPLATE = (
     "<b>%{customdata[0]}</b>"
     "<br><span style='color:#8ecae6'>■</span> Tổng số/Cảnh báo: %{customdata[1]}"
-    "<br><i>Mô tả: %{customdata[4]}</i>"
     "<br><span style='color:#d1495b'>■</span> Báo sai/Lỗi: %{customdata[2]}"
-    "<br><i>Mô tả: %{customdata[5]}</i>"
     "<br><span style='color:#ff9f1c'>━●━</span> % báo sai: %{customdata[3]}"
-    "<br><i>Mô tả: %{customdata[6]}</i><extra></extra>"
+    "<extra></extra>"
 )
 
 COMBO_HOVER_TEMPLATE = (
     "<span style='color:#8ecae6'>■</span> Tổng số/Cảnh báo: %{customdata[1]}"
-    "<br><i>Mô tả: %{customdata[4]}</i>"
     "<br><span style='color:#d1495b'>■</span> Báo sai/Lỗi: %{customdata[2]}"
-    "<br><i>Mô tả: %{customdata[5]}</i>"
     "<br><span style='color:#ff9f1c'>━●━</span> % báo sai: %{customdata[3]}"
-    "<br><i>Mô tả: %{customdata[6]}</i><extra></extra>"
+    "<extra></extra>"
 )
 
 
