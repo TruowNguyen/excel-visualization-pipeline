@@ -365,12 +365,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 text=_latest_labels(metric_data["display_value"]),
                 textposition="outside" if metric == "Báo sai/Lỗi" else "inside",
                 cliponaxis=False,
-                customdata=metric_data[["display_value"]].to_numpy(),
                 hoverinfo="skip",
-                hovertemplate=(
-                    f"<b>{'Tổng số/Cảnh báo' if metric == 'Tổng số' else name}</b>: "
-                    "%{customdata[0]}<extra></extra>"
-                ),
             ),
             secondary_y=False,
         )
@@ -389,11 +384,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 textposition="top center",
                 cliponaxis=False,
                 connectgaps=False,
-                customdata=rate_data[["display_value"]].to_numpy(),
                 hoverinfo="skip",
-                hovertemplate=(
-                    "<b>% báo sai</b>: %{customdata[0]}<extra></extra>"
-                ),
             ),
             secondary_y=True,
         )

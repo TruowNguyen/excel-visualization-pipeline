@@ -41,10 +41,12 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     assert figure.layout.hoverdistance == 20
     assert figure.layout.xaxis.showspikes is False
     assert figure.layout.xaxis.unifiedhovertitle.text == "<b>Ngày %{x|%d/%m/%Y}</b>"
-    assert "Tổng số/Cảnh báo" in figure.data[0].hovertemplate
-    assert "Báo sai/Lỗi" in figure.data[1].hovertemplate
-    assert "% báo sai" in figure.data[2].hovertemplate
+    assert all(trace.hoverinfo == "skip" for trace in figure.data[:3])
+    assert all(trace.hovertemplate is None for trace in figure.data[:3])
     assert figure.data[3].showlegend is False
+    assert "Tổng số/Cảnh báo" in figure.data[3].hovertemplate
+    assert "Báo sai/Lỗi" in figure.data[3].hovertemplate
+    assert "% báo sai" in figure.data[3].hovertemplate
     assert list(figure.data[3].customdata[0]) == ["Camera", "100", "8", "8.00%"]
 
 
