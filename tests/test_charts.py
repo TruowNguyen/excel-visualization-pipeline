@@ -5,13 +5,13 @@ from excel_visualization_pipeline.pipeline import run_pipeline
 from excel_visualization_pipeline.visualization import (
     build_bar_chart,
     build_line_chart,
-    build_metric_average_chart,
     build_metric_combo_chart,
     build_multi_entity_metric_chart,
+    build_period_statistics_chart,
     build_project_total_chart,
     prepare_project_totals,
     prepare_project_totals_range,
-    prepare_metric_averages,
+    prepare_period_statistics,
 )
 
 
@@ -29,7 +29,7 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
         "",
     ]
     assert figure.layout.barmode == "overlay"
-    assert figure.data[0].width > figure.data[1].width
+    assert figure.data[0].width == figure.data[1].width
     assert figure.layout.xaxis.tickformat == "%d/%m"
     assert figure.data[2].yaxis == "y2"
     assert figure.layout.yaxis2.tickformat == ".1f"
@@ -109,20 +109,127 @@ def test_combo_hover_distinguishes_not_recorded_and_source_marker(sample_workboo
     ]
 
 
-def test_metric_average_excludes_percentage_and_counts_data_dates(sample_workbook):
+def test_period_statistics_calculates_sum_and_average_per_observed_day(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"]
 
-    averages = prepare_metric_averages(item_data).set_index("metric_normalized")
-    figure = build_metric_average_chart(item_data, "2026-09-12", "2026-09-13")
+    statistics = prepare_period_statistics(
+        item_data,
+        "2026-09-12",
+        "2026-09-13",
+        "week",
+    ).set_index("metric_normalized")
+    figure = build_period_statistics_chart(
+        item_data,
+        "2026-09-12",
+        "2026-09-13",
+        "week",
+        ["SUM", "AVG/ngày"],
+    )
 
-    assert set(averages.index) == {"Tổng số", "Báo sai/Lỗi"}
-    assert averages.loc["Tổng số", "average_value"] == 110
-    assert averages.loc["Báo sai/Lỗi", "average_value"] == 7
-    assert averages.loc["Tổng số", "data_date_count"] == 2
-    assert len(figure.data) == 2
-    assert all(trace.type == "bar" for trace in figure.data)
-    assert {trace.name for trace in figure.data} == {"Tổng số", "Báo sai/Lỗi"}
+    assert set(statistics.index) == {"Tổng số", "Báo sai/Lỗi"}
+    assert statistics.loc["Tổng số", "period_sum"] == 220
+    assert statistics.loc["Báo sai/Lỗi", "period_sum"] == 14
+    assert statistics.loc["Tổng số", "average_per_day"] == 110
+    assert statistics.loc["Báo sai/Lỗi", "average_per_day"] == 7
+    assert statistics.loc["Tổng số", "eligible_day_count"] == 2
+    assert [trace.type for trace in figure.data] == ["bar", "bar", "scatter", "scatter", "scatter"]
+    assert {trace.name for trace in figure.data[:-1]} == {
+        "SUM · Tổng số",
+        "AVG/ngày · Tổng số",
+        "SUM · Báo sai/Lỗi",
+        "AVG/ngày · Báo sai/Lỗi",
+    }
+    assert figure.layout.barmode == "overlay"
+    assert figure.data[0].width == figure.data[1].width
+    assert figure.data[0].yaxis == "y"
+    assert figure.data[1].yaxis == "y"
+    assert figure.data[2].yaxis == "y2"
+    assert all(trace.hoverinfo == "skip" for trace in figure.data[:-1])
+    assert figure.data[-1].name == ""
+    assert figure.data[-1].showlegend is False
+    assert "Mô tả" not in figure.data[-1].hovertemplate
+    assert "color:#8ecae6'>■" in figure.data[-1].hovertemplate
+    assert "color:#d1495b'>■" in figure.data[-1].hovertemplate
+    assert "color:#0077b6'>━●━" in figure.data[-1].hovertemplate
+    assert "color:#9d0208'>━●━" in figure.data[-1].hovertemplate
+    assert list(figure.data[-1].customdata[0]) == ["220", "14", "110", "7", "2/2"]
+
+
+def test_period_statistics_mode_selection_and_source_marker_denominator(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"].copy()
+    marker = (
+        item_data["metric_normalized"].eq("Báo sai/Lỗi")
+        & pd.to_datetime(item_data["date"]).eq(pd.Timestamp("2026-09-12"))
+    )
+    item_data.loc[marker, ["chart_value", "value_kind"]] = [None, "source_marker"]
+
+    statistics = prepare_period_statistics(
+        item_data,
+        "2026-09-12",
+        "2026-09-13",
+        "week",
+    ).set_index("metric_normalized")
+    sum_only = build_period_statistics_chart(
+        item_data,
+        "2026-09-12",
+        "2026-09-13",
+        "week",
+        ["SUM"],
+    )
+
+    assert statistics.loc["Báo sai/Lỗi", "period_sum"] == 6
+    assert statistics.loc["Báo sai/Lỗi", "eligible_day_count"] == 1
+    assert statistics.loc["Báo sai/Lỗi", "average_per_day"] == 6
+    assert len(sum_only.data) == 3
+    assert all(trace.type == "bar" for trace in sum_only.data[:-1])
+    assert "AVG/ngày" not in sum_only.data[-1].hovertemplate
+
+
+def test_period_statistics_excludes_days_without_total_observation():
+    dates = pd.date_range("2026-09-07", "2026-09-13", freq="D")
+    rows = []
+    for index, value_date in enumerate(dates):
+        total_value = [10, 20, 0, 30, None, None, None][index]
+        error_value = [1, 2, None, 3, None, None, None][index]
+        for metric, value in [("Tổng số", total_value), ("Báo sai/Lỗi", error_value)]:
+            rows.append({
+                "entity_id": "camera-a",
+                "entity_label": "Camera A",
+                "entity_level": "item",
+                "effective_unit": "lượt",
+                "metric_normalized": metric,
+                "date": value_date,
+                "chart_value": value,
+                "value_kind": "number" if value is not None else "not_recorded",
+            })
+    data = pd.DataFrame(rows)
+
+    statistics = prepare_period_statistics(
+        data,
+        "2026-09-07",
+        "2026-09-13",
+        "week",
+    ).set_index("metric_normalized")
+    figure = build_period_statistics_chart(
+        data,
+        "2026-09-07",
+        "2026-09-13",
+        "week",
+        ["SUM", "AVG/ngày"],
+    )
+
+    assert statistics.loc["Tổng số", "period_sum"] == 60
+    assert statistics.loc["Tổng số", "eligible_day_count"] == 4
+    assert statistics.loc["Tổng số", "average_per_day"] == 15
+    assert statistics.loc["Báo sai/Lỗi", "period_sum"] == 6
+    assert statistics.loc["Báo sai/Lỗi", "eligible_day_count"] == 4
+    assert statistics.loc["Báo sai/Lỗi", "average_per_day"] == 1.5
+    assert statistics.loc["Tổng số", "observed_day_count"] == 4
+    assert statistics.loc["Tổng số", "calendar_day_count"] == 7
+    assert "Số ngày có dữ liệu" in figure.data[-1].hovertemplate
+    assert figure.data[-1].customdata[0][4] == "4/7"
 
 
 def test_multi_entity_metric_chart_renders_three_bar_groups(sample_workbook):

@@ -224,82 +224,247 @@ def chartable(data: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def prepare_metric_averages(data: pd.DataFrame) -> pd.DataFrame:
-    """Average count metrics per entity over dates that contain source data."""
-    frame = chartable(data)
-    frame = frame[frame["metric_normalized"].isin(["Tổng số", "Báo sai/Lỗi"])].copy()
+def _period_start(values: pd.Series, group_by: str) -> pd.Series:
+    dates = pd.to_datetime(values).dt.normalize()
+    if group_by == "day":
+        return dates
+    if group_by == "week":
+        return dates - pd.to_timedelta(dates.dt.weekday, unit="D")
+    if group_by == "month":
+        return dates.dt.to_period("M").dt.start_time
+    if group_by == "quarter":
+        return dates.dt.to_period("Q").dt.start_time
+    raise ValueError("Nhóm thời gian chỉ hỗ trợ day, week, month hoặc quarter.")
+
+
+def _natural_period_end(period_start: pd.Timestamp, group_by: str) -> pd.Timestamp:
+    if group_by == "day":
+        return period_start
+    if group_by == "week":
+        return period_start + pd.Timedelta(days=6)
+    if group_by == "month":
+        return period_start + pd.offsets.MonthEnd(0)
+    return period_start + pd.offsets.QuarterEnd(startingMonth=12)
+
+
+def _period_label(start: pd.Timestamp, end: pd.Timestamp, group_by: str) -> str:
+    if group_by == "day":
+        return f"{start:%d/%m}"
+    if group_by == "week":
+        return f"{start:%d/%m}–{end:%d/%m}"
+    if group_by == "month":
+        return f"{start:%m/%Y}"
+    return f"Q{start.quarter}/{start.year}"
+
+
+def prepare_period_statistics(
+    data: pd.DataFrame,
+    start_date,
+    end_date,
+    group_by: str,
+) -> pd.DataFrame:
+    """Calculate period SUM and AVG/day for count metrics without averaging rates."""
+    frame = data[data["metric_normalized"].isin(["Tổng số", "Báo sai/Lỗi"])].copy()
     if frame.empty:
         return pd.DataFrame()
-
-    frame["effective_unit"] = frame["effective_unit"].fillna("Chưa xác định từ Excel")
-    grouped = (
-        frame.groupby(
-            ["entity_id", "entity_label", "entity_level", "effective_unit", "metric_normalized"],
-            dropna=False,
-            as_index=False,
-        )
-        .agg(
-            average_value=("chart_value", "mean"),
-            data_date_count=("date", "nunique"),
-        )
-    )
-    grouped["display_value"] = grouped["average_value"].map(_formatted_number)
-    grouped["calculation_method"] = grouped.apply(
-        lambda row: f"Trung bình trên {row['data_date_count']} ngày có dữ liệu",
-        axis=1,
-    )
-    grouped["entity_display"] = grouped.apply(
-        lambda row: (
-            f"[{ENTITY_LEVEL_LABELS.get(str(row['entity_level']), str(row['entity_level']).title())}] "
-            f"{row['entity_label']}"
-        ),
-        axis=1,
-    )
-    return grouped
-
-
-def build_metric_average_chart(
-    data: pd.DataFrame,
-    start_date=None,
-    end_date=None,
-) -> Figure:
-    """Render average Total and Error values, separating incompatible units."""
-    frame = prepare_metric_averages(data)
-    if start_date is not None and end_date is not None:
-        title = f"Trung bình — {pd.Timestamp(start_date):%d/%m} đến {pd.Timestamp(end_date):%d/%m}"
-    else:
-        title = "Trung bình trong khoảng đã chọn"
+    frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
+    start = pd.Timestamp(start_date).normalize()
+    end = pd.Timestamp(end_date).normalize()
+    frame = frame[(frame["date"] >= start) & (frame["date"] <= end)]
     if frame.empty:
-        return px.bar(title=title)
+        return pd.DataFrame()
+    frame["effective_unit"] = frame["effective_unit"].fillna("Chưa xác định từ Excel")
+    frame["period_start"] = _period_start(frame["date"], group_by)
+    group_columns = [
+        "entity_id", "entity_label", "entity_level", "effective_unit",
+        "metric_normalized", "period_start",
+    ]
+    coverage_columns = [
+        "entity_id", "entity_label", "entity_level", "effective_unit", "period_start",
+    ]
+    observed_dates_by_period = {
+        keys: set(group["date"])
+        for keys, group in frame[
+            frame["metric_normalized"].eq("Tổng số") & frame["chart_value"].notna()
+        ].groupby(coverage_columns, dropna=False, sort=True)
+    }
+    rows: list[dict] = []
+    for keys, group in frame.groupby(group_columns, dropna=False, sort=True):
+        entity_id, entity_label, entity_level, unit, metric, period_start = keys
+        natural_end = _natural_period_end(pd.Timestamp(period_start), group_by)
+        scoped_start = max(pd.Timestamp(period_start), start)
+        scoped_end = min(natural_end, end)
+        calendar_days = (scoped_end - scoped_start).days + 1
+        coverage_key = (entity_id, entity_label, entity_level, unit, period_start)
+        observed_dates = observed_dates_by_period.get(coverage_key, set())
+        source_marker_dates = set(group.loc[group["value_kind"] == "source_marker", "date"])
+        source_marker_days = len(observed_dates & source_marker_dates)
+        eligible_days = max(len(observed_dates) - source_marker_days, 0)
+        period_sum = float(group["chart_value"].fillna(0).sum())
+        average_per_day = period_sum / eligible_days if eligible_days else None
+        rows.append({
+            "entity_id": entity_id,
+            "entity_label": entity_label,
+            "entity_level": entity_level,
+            "effective_unit": unit,
+            "metric_normalized": metric,
+            "period_start": scoped_start,
+            "period_end": scoped_end,
+            "period_label": _period_label(scoped_start, scoped_end, group_by),
+            "period_sum": period_sum,
+            "average_per_day": average_per_day,
+            "eligible_day_count": eligible_days,
+            "observed_day_count": len(observed_dates),
+            "calendar_day_count": calendar_days,
+            "source_marker_day_count": source_marker_days,
+            "display_sum": _formatted_number(period_sum),
+            "display_average": (
+                _formatted_number(average_per_day) if average_per_day is not None else "—"
+            ),
+        })
+    return pd.DataFrame(rows)
 
-    figure = px.bar(
-        frame,
-        x="entity_display",
-        y="average_value",
-        color="metric_normalized",
-        barmode="group",
-        facet_col="effective_unit" if frame["effective_unit"].nunique() > 1 else None,
-        text="display_value",
-        custom_data=["display_value", "data_date_count"],
-        title=title,
-        labels={
-            "entity_display": "Entity",
-            "average_value": "Giá trị trung bình",
-            "metric_normalized": "Metric",
-            "effective_unit": "Effective Unit",
-        },
-        color_discrete_map={"Tổng số": "#8ecae6", "Báo sai/Lỗi": "#d1495b"},
+
+def build_period_statistics_chart(
+    data: pd.DataFrame,
+    start_date,
+    end_date,
+    group_by: str,
+    modes: list[str] | tuple[str, ...],
+    title: str | None = None,
+) -> Figure:
+    """Render nested SUM bars and AVG/day lines on a secondary axis."""
+    frame = prepare_period_statistics(data, start_date, end_date, group_by)
+    figure = make_subplots(specs=[[{"secondary_y": True}]])
+    if frame.empty or not modes:
+        return figure
+    entity_ids = frame["entity_id"].dropna().unique()
+    if len(entity_ids) != 1:
+        raise ValueError("Biểu đồ thống kê theo kỳ chỉ nhận dữ liệu của đúng một entity.")
+    colors = {
+        "Tổng số": ("#8ecae6", "#0077b6"),
+        "Báo sai/Lỗi": ("#d1495b", "#9d0208"),
+    }
+    metric_frames: dict[str, tuple[pd.DataFrame, object]] = {}
+    for metric in ["Tổng số", "Báo sai/Lỗi"]:
+        metric_data = frame[frame["metric_normalized"] == metric].sort_values("period_start")
+        if metric_data.empty:
+            continue
+        customdata = metric_data[
+            [
+                "display_sum", "display_average", "eligible_day_count",
+                "period_start", "period_end", "observed_day_count", "calendar_day_count",
+            ]
+        ].to_numpy()
+        metric_frames[metric] = (metric_data, customdata)
+
+    if "SUM" in modes:
+        for metric in ["Tổng số", "Báo sai/Lỗi"]:
+            if metric not in metric_frames:
+                continue
+            metric_data, customdata = metric_frames[metric]
+            bar_color, _ = colors[metric]
+            figure.add_trace(
+                go.Bar(
+                    x=metric_data["period_label"],
+                    y=metric_data["period_sum"],
+                    name=f"SUM · {metric}",
+                    marker_color=bar_color,
+                    width=0.72,
+                    opacity=0.72 if metric == "Tổng số" else 0.95,
+                    customdata=customdata,
+                    hoverinfo="skip",
+                ),
+                secondary_y=False,
+            )
+
+    if "AVG/ngày" in modes:
+        for metric in ["Tổng số", "Báo sai/Lỗi"]:
+            if metric not in metric_frames:
+                continue
+            metric_data, customdata = metric_frames[metric]
+            _, line_color = colors[metric]
+            figure.add_trace(
+                go.Scatter(
+                    x=metric_data["period_label"],
+                    y=metric_data["average_per_day"],
+                    name=f"AVG/ngày · {metric}",
+                    mode="lines+markers",
+                    line={"color": line_color, "width": 3},
+                    marker={"size": 8},
+                    connectgaps=False,
+                    customdata=customdata,
+                    hoverinfo="skip",
+                ),
+                secondary_y=True,
+            )
+
+    period_rows = (
+        frame[["period_start", "period_label"]]
+        .drop_duplicates()
+        .sort_values("period_start")
     )
-    figure.update_traces(
-        textposition="outside",
-        cliponaxis=False,
-        hovertemplate=(
-            "Entity: %{x}<br>Trung bình: %{customdata[0]}"
-            "<br>Số ngày dữ liệu: %{customdata[1]}<extra></extra>"
+    period_lookup = {
+        (row.period_label, row.metric_normalized): (row.display_sum, row.display_average)
+        for row in frame.itertuples()
+    }
+    hover_rows = [
+        [
+            period_lookup.get((row.period_label, "Tổng số"), ("—", "—"))[0],
+            period_lookup.get((row.period_label, "Báo sai/Lỗi"), ("—", "—"))[0],
+            period_lookup.get((row.period_label, "Tổng số"), ("—", "—"))[1],
+            period_lookup.get((row.period_label, "Báo sai/Lỗi"), ("—", "—"))[1],
+            next(
+                (
+                    f"{period_row.observed_day_count}/{period_row.calendar_day_count}"
+                    for period_row in frame.itertuples()
+                    if period_row.period_label == row.period_label
+                ),
+                "—",
+            ),
+        ]
+        for row in period_rows.itertuples()
+    ]
+    hover_lines: list[str] = ["Số ngày có dữ liệu: %{customdata[4]}"]
+    if "SUM" in modes:
+        hover_lines.extend([
+            "<span style='color:#8ecae6'>■</span> Tổng số/Cảnh báo · SUM: %{customdata[0]}",
+            "<span style='color:#d1495b'>■</span> Báo sai/Lỗi · SUM: %{customdata[1]}",
+        ])
+    if "AVG/ngày" in modes:
+        hover_lines.extend([
+            "<span style='color:#0077b6'>━●━</span> Tổng số/Cảnh báo · AVG/ngày: %{customdata[2]}",
+            "<span style='color:#9d0208'>━●━</span> Báo sai/Lỗi · AVG/ngày: %{customdata[3]}",
+        ])
+    figure.add_trace(
+        go.Scatter(
+            x=period_rows["period_label"],
+            y=[0] * len(period_rows),
+            name="",
+            mode="markers",
+            marker={"size": 1, "opacity": 0},
+            showlegend=False,
+            customdata=hover_rows,
+            hovertemplate="<br>".join(hover_lines) + "<extra></extra>",
         ),
+        secondary_y=False,
     )
-    figure.update_layout(margin={"t": 100}, hovermode="closest")
-    figure.for_each_yaxis(lambda axis: axis.update(matches=None, rangemode="tozero"))
+    entity_label = str(frame["entity_label"].iloc[0])
+    unit = str(frame["effective_unit"].iloc[0])
+    figure.update_layout(
+        title=title or f"Thống kê theo kỳ — {entity_label}",
+        barmode="overlay",
+        bargap=0.25,
+        bargroupgap=0.08,
+        hovermode="x unified",
+        hoverdistance=20,
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
+        margin={"t": 110},
+        xaxis_title="Kỳ",
+    )
+    figure.update_xaxes(showspikes=False)
+    figure.update_yaxes(title_text=f"SUM ({unit})", rangemode="tozero", secondary_y=False)
+    figure.update_yaxes(title_text=f"AVG/ngày ({unit})", rangemode="tozero", secondary_y=True)
     return figure
 
 
@@ -366,7 +531,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
     figure = make_subplots(specs=[[{"secondary_y": True}]])
     metric_specs = [
         ("Tổng số", "Tổng số", "#8ecae6", 0.72, 18 * 60 * 60 * 1000),
-        ("Báo sai/Lỗi", "Báo sai/Lỗi", "#d1495b", 0.95, 9 * 60 * 60 * 1000),
+        ("Báo sai/Lỗi", "Báo sai/Lỗi", "#d1495b", 0.95, 18 * 60 * 60 * 1000),
     ]
     for metric, name, color, opacity, width in metric_specs:
         metric_data = frame[frame["metric_normalized"] == metric].sort_values("date")

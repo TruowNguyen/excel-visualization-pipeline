@@ -4,6 +4,9 @@ import argparse
 import sys
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
@@ -11,9 +14,9 @@ from excel_visualization_pipeline.pipeline import run_pipeline  # noqa: E402
 from excel_visualization_pipeline.visualization import (  # noqa: E402
     build_bar_chart,
     build_line_chart,
-    build_metric_average_chart,
     build_metric_combo_chart,
     build_multi_entity_metric_chart,
+    build_period_statistics_chart,
 )
 
 
@@ -38,7 +41,14 @@ def main() -> int:
     assert not candidates.empty and candidates.max() == len(combo_metrics)
     combo_entity_id = candidates.idxmax()
     build_metric_combo_chart(combo_source[combo_source["entity_id"] == combo_entity_id])
-    build_metric_average_chart(combo_source)
+    combo_dates = sorted(combo_source["date"].dropna().unique())
+    build_period_statistics_chart(
+        combo_source[combo_source["entity_id"] == combo_entity_id],
+        combo_dates[0],
+        combo_dates[-1],
+        "week",
+        ["SUM", "AVG/ngày"],
+    )
     eligible = result.data[
         (result.data["metric_normalized"] == "Báo sai/Lỗi")
         & result.data["effective_unit"].notna()

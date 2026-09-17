@@ -2,13 +2,27 @@ default_level: item
 percentage_metrics:
   - "% báo sai"
 charts:
-  metric_average:
-    type: grouped_bar
+  period_statistics:
+    type: bar_line_secondary_y
+    bar_mode: overlay
     metrics:
       - "Tổng số"
       - "Báo sai/Lỗi"
-    denominator: available_data_dates_per_metric
+    modes:
+      SUM: bar
+      AVG/ngày: line
+    nested_bars:
+      background: "Tổng số"
+      foreground: "Báo sai/Lỗi"
+      aligned_width: true
+    group_by:
+      - day
+      - week
+      - month
+      - quarter
+    average_formula: period_sum / eligible_observed_days
     separate_by:
+      - entity_id
       - effective_unit
   metric_combo:
     type: bar_line_secondary_y
@@ -17,6 +31,7 @@ charts:
     bars:
       - "Tổng số"
       - "Báo sai/Lỗi"
+    aligned_bar_width: true
     line: "% báo sai"
     separate_by:
       - entity_id

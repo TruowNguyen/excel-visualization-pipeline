@@ -16,7 +16,8 @@ Nguồn khảo sát: `test data for CX report dashboard.xlsx`
 | Item | 28 |
 | Entity node | 36 |
 | Max entity depth | 2 |
-| Block `Kết quả triển khai` | 44 |
+| Block `Kết quả triển khai` trong workbook | 44 |
+| Block được xử lý từ `01/08/2026` | 41 |
 | Công thức | 0 |
 
 ## Parent-child entity hierarchy
@@ -61,21 +62,29 @@ VOL
 - Ô `% báo sai` trống chỉ được gán `default_zero_rate = 0%` khi `Báo sai/Lỗi` cùng entity/ngày không ghi nhận hoặc bằng 0; `raw_value` vẫn giữ nguyên để phân biệt với số 0 từ Excel.
 - Text xuất hiện trong một số ô metric được giữ để audit nhưng không đưa lên chart số.
 
-## Kết quả baseline
+## Kết quả baseline của pipeline
 
-Với phiên bản parser demo hiện tại:
+Với phiên bản parser hiện tại và `minimum_data_date: "2026-08-01"`:
 
 ```text
-record_count           = 1955
-chartable_record_count = 1791
+record_count           = 4182
+chartable_record_count = 2343
 project_count          = 6
 section_count          = 2
 item_count             = 28
 entity_count           = 36
 max_entity_depth       = 2
-date_count             = 44
-metric_count           = 4
+fallback_entity_count  = 1
+unknown_unit_count     = 2
+unit_count             = 4
+default_zero_rate_count = 646
+inconsistent_error_metric_count = 89
+date_count             = 41
+metric_count           = 3
 quality_gate_errors    = 0
+quality_gate_warnings  = 193
 ```
 
-Baseline này được kiểm tra trong smoke test. Khi workbook thay đổi, manifest mới cần được so sánh với baseline để phát hiện thay đổi cấu trúc ngoài dự kiến.
+Ba metric trong phạm vi hiện tại là `Tổng số`, `Báo sai/Lỗi` và `% báo sai`. Metric `Ghi chú` chỉ xuất hiện trong các block cũ trước mốc lọc nên không được tính vào baseline pipeline, dù parser vẫn hỗ trợ metric này.
+
+Baseline này được xác nhận bằng automated test và smoke test trên workbook thật. Khi workbook hoặc cấu hình thay đổi, manifest mới cần được so sánh với baseline để phát hiện thay đổi cấu trúc ngoài dự kiến.
