@@ -11,17 +11,24 @@ import streamlit as st
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from excel_visualization_pipeline.config import ParserConfig  # noqa: E402
 from excel_visualization_pipeline.pipeline import run_pipeline  # noqa: E402
+from excel_visualization_pipeline.storage import (  # noqa: E402
+    import_pipeline_result,
+    initialize_database,
+    load_current_data,
+    load_current_entities,
+    load_import_history,
+)
 from excel_visualization_pipeline.entity_selection import initial_entity_with_data  # noqa: E402
 from excel_visualization_pipeline.date_ranges import (  # noqa: E402
     aggregation_period_ranges,
-    month_ranges,
     recent_data_range,
-    week_ranges,
 )
 from excel_visualization_pipeline.visualization import (  # noqa: E402
     build_metric_combo_chart,
     build_multi_entity_metric_chart,
+    build_period_metric_combo_chart,
     build_period_statistics_chart,
 )
 
@@ -64,8 +71,8 @@ def restore_browser_filters() -> None:
     widget_keys = {
         "project_filter",
         "range_mode",
-        "detail_week",
-        "detail_month",
+        "overview_week_count",
+        "overview_month_count",
         "custom_start_date",
         "custom_end_date",
         "entity_navigator",
@@ -128,9 +135,14 @@ def create_browser_state_component():
 browser_state_component = create_browser_state_component()
 
 
-@st.cache_data(show_spinner="Đang đọc và chuẩn hóa workbook...")
-def cached_pipeline(payload: bytes, source_name: str, config_path: str, config_mtime_ns: int):
-    """Cache parsing by workbook bytes and parser-config version across user sessions."""
+@st.cache_data(show_spinner="Đang đọc và kiểm tra workbook...")
+def cached_preview(
+    payload: bytes,
+    source_name: str,
+    config_path: str,
+    config_mtime_ns: int,
+):
+    """Parse/validate for preview only; this function never writes SQLite."""
     _ = config_mtime_ns
     source = BytesIO(payload)
     source.name = source_name
@@ -138,6 +150,51 @@ def cached_pipeline(payload: bytes, source_name: str, config_path: str, config_m
 
 
 st.set_page_config(page_title="Excel Quality Dashboard", layout="wide")
+st.markdown(
+    """
+    <style>
+    /* Plotly's native legend remains the toggle control; only its visual affordance changes. */
+    div[data-testid="stPlotlyChart"] g.legend g.traces {
+        cursor: pointer;
+        transform-box: fill-box;
+        transform-origin: center;
+        transition: opacity 180ms ease;
+    }
+    div[data-testid="stPlotlyChart"] g.legend g.traces rect.legendtoggle {
+        fill: rgba(148, 163, 184, 0.06) !important;
+        fill-opacity: 1 !important;
+        stroke: rgba(148, 163, 184, 0.28);
+        stroke-width: 0.75px;
+        height: 26px;
+        transform: translateY(-3px);
+        rx: 7px;
+        ry: 7px;
+        transition: fill 180ms ease, stroke 180ms ease;
+    }
+    div[data-testid="stPlotlyChart"] g.legend g.traces text.legendtext {
+        font-size: 12px !important;
+        text-rendering: geometricPrecision;
+    }
+    div[data-testid="stPlotlyChart"] g.legend g.traces g.layers {
+        transform: translateY(0);
+    }
+    div[data-testid="stPlotlyChart"] g.legend g.traces:hover rect.legendtoggle {
+        fill: rgba(148, 163, 184, 0.16) !important;
+        stroke: rgba(100, 116, 139, 0.55);
+    }
+    div[data-testid="stPlotlyChart"] g.legend g.traces[style*="opacity: 0.5"] {
+        opacity: 0.4 !important;
+    }
+    div[data-testid="stPlotlyChart"] g.legend g.traces:focus rect.legendtoggle,
+    div[data-testid="stPlotlyChart"] g.legend g.traces:focus-within rect.legendtoggle {
+        fill: rgba(59, 130, 246, 0.10) !important;
+        stroke: #3B82F6;
+        stroke-width: 1px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 st.title("Excel Visualization Pipeline")
 
 if st.query_params.to_dict():
@@ -157,38 +214,106 @@ if not st.session_state.get("_browser_state_loaded", False):
     )
 
 
-default_file = PROJECT_ROOT.parent / "test data for CX report dashboard.xlsx"
-uploaded = st.sidebar.file_uploader("Chọn file Excel", type=["xlsx"])
-if uploaded is None and not default_file.exists():
-    st.info("Hãy tải lên một file .xlsx để bắt đầu.")
-    st.stop()
-
+database_file = PROJECT_ROOT / "data" / "local" / "analytics.sqlite3"
+source_key = "cx_report_master"
 config_file = PROJECT_ROOT / "config" / "parser.yaml"
-if uploaded is not None:
+initialize_database(database_file)
+
+st.sidebar.subheader("Import dữ liệu")
+import_mode_label = st.sidebar.selectbox(
+    "Chế độ cập nhật dữ liệu",
+    ["Toàn bộ snapshot", "Chỉ dữ liệu bổ sung"],
+    help=(
+        "Toàn bộ snapshot dùng khi workbook đại diện đầy đủ cho phạm vi trong file. "
+        "Chỉ dữ liệu bổ sung dùng khi file chỉ chứa ngày/record mới; record vắng mặt sẽ không bị xóa."
+    ),
+)
+import_mode = "full_snapshot" if import_mode_label == "Toàn bộ snapshot" else "incremental"
+uploaded = st.sidebar.file_uploader("Chọn file Excel", type=["xlsx"])
+preview_result = None
+source_payload = None
+source_name = None
+
+if uploaded is None:
+    st.sidebar.caption("Chưa chọn file · dashboard chỉ đọc dữ liệu hiện có từ SQLite.")
+else:
     source_payload = uploaded.getvalue()
     source_name = uploaded.name
-else:
-    source_payload = default_file.read_bytes()
-    source_name = default_file.name
+    preview_result = cached_preview(
+        source_payload,
+        source_name,
+        str(config_file),
+        config_file.stat().st_mtime_ns,
+    )
+    preview_manifest = preview_result.manifest
+    st.sidebar.caption(
+        f"Preview: {preview_manifest['record_count']:,} record · "
+        f"{preview_manifest['date_count']} ngày · "
+        f"{len(preview_result.report.errors)} lỗi · "
+        f"{len(preview_result.report.warnings)} cảnh báo"
+    )
+    if preview_result.report.errors:
+        st.sidebar.error("Quality gate chưa đạt; không thể import file này.")
+    confirm_import = st.sidebar.button(
+        "Xác nhận import",
+        type="primary",
+        disabled=bool(preview_result.report.errors),
+        use_container_width=True,
+    )
+    if confirm_import:
+        outcome = import_pipeline_result(
+            database_file,
+            source_key,
+            source_name,
+            source_payload,
+            preview_result,
+            config=ParserConfig.from_yaml(config_file),
+            mode=import_mode,
+            display_name="CX Report Master",
+        )
+        st.session_state["_last_import_feedback"] = {
+            "source_hash": preview_manifest["source_hash"],
+            "status": outcome.status,
+            "run_id": outcome.run_id,
+            "duplicate_of_run_id": outcome.duplicate_of_run_id,
+            "inserted_count": outcome.inserted_count,
+            "updated_count": outcome.updated_count,
+            "unchanged_count": outcome.unchanged_count,
+            "message": outcome.message,
+        }
 
-result = cached_pipeline(
-    source_payload,
-    source_name,
-    str(config_file),
-    config_file.stat().st_mtime_ns,
-)
-data = result.data.copy()
-manifest = result.manifest
+    feedback = st.session_state.get("_last_import_feedback", {})
+    if feedback.get("source_hash") == preview_manifest["source_hash"]:
+        if feedback.get("status") == "committed":
+            st.sidebar.success(
+                f"Đã lưu run #{feedback['run_id']}: +{feedback['inserted_count']}, "
+                f"sửa {feedback['updated_count']}, giữ nguyên {feedback['unchanged_count']}."
+            )
+        elif feedback.get("status") == "duplicate":
+            st.sidebar.info(
+                f"File đã được lưu ở run #{feedback['duplicate_of_run_id']}; không tạo dữ liệu trùng."
+            )
+        elif feedback.get("status") == "rejected":
+            st.sidebar.error(feedback.get("message") or "Import bị từ chối; SQLite không thay đổi.")
+
+data = load_current_data(database_file, source_key)
+entities = load_current_entities(database_file, source_key)
+if data.empty or entities.empty:
+    if preview_result is not None and preview_result.report.errors:
+        st.error(f"Quality gate thất bại: {len(preview_result.report.errors)} lỗi.")
+        st.dataframe(
+            pd.DataFrame(issue.as_dict() for issue in preview_result.report.issues),
+            width="stretch",
+        )
+    else:
+        st.info("SQLite chưa có dữ liệu. Hãy chọn workbook, kiểm tra preview và bấm Xác nhận import.")
+    st.stop()
+
 saved_state = st.session_state.get("_restored_filters", {})
 apply_restored_state = st.session_state.pop("_apply_restored_state", False)
-if saved_state.get("source_hash") != manifest["source_hash"]:
+if saved_state.get("source_key") not in {None, source_key}:
     saved_state = {}
     apply_restored_state = False
-
-if result.report.errors:
-    st.error(f"Quality gate thất bại: {len(result.report.errors)} lỗi. Biểu đồ không được render.")
-    st.dataframe(pd.DataFrame(issue.as_dict() for issue in result.report.issues), width="stretch")
-    st.stop()
 
 projects = sorted(data["project_label"].dropna().unique())
 if apply_restored_state:
@@ -204,7 +329,7 @@ selected_project = st.sidebar.selectbox(
         "index", option_index(projects, saved_state.get("project")), apply_restored_state
     ),
 )
-project_entities = result.entities[result.entities["project_label"] == selected_project].copy()
+project_entities = entities[entities["project_label"] == selected_project].copy()
 project_entities = project_entities.sort_values(["source_row", "entity_depth"])
 project_data = data[data["project_label"] == selected_project].copy()
 
@@ -237,7 +362,8 @@ range_mode = st.sidebar.selectbox(
     ),
 )
 recent_range = recent_data_range(available_dates, count=10)
-selected_detail_period_start = None
+overview_group_by = None
+overview_period_count = None
 
 if range_mode == "10 ngày gần nhất":
     start_date, end_date = recent_range.start, recent_range.end
@@ -246,41 +372,61 @@ if range_mode == "10 ngày gần nhất":
         f"({recent_range.data_date_count} ngày có dữ liệu)"
     )
 elif range_mode == "Theo tuần":
-    ranges = week_ranges(available_dates)
-    requested_period = saved_state.get("period")
-    period_index = next(
-        (index for index, value in enumerate(ranges) if value.start.isoformat() == requested_period),
-        0,
-    )
+    overview_group_by = "week"
+    ranges = aggregation_period_ranges(available_dates, overview_group_by)
+    default_count = min(8, len(ranges))
+    try:
+        requested_count = int(saved_state.get("overview_period_count", default_count))
+    except (TypeError, ValueError):
+        requested_count = default_count
+    requested_count = min(max(requested_count, 1), len(ranges))
     if apply_restored_state:
-        st.session_state["detail_week"] = ranges[period_index]
-    selected_range = st.sidebar.selectbox(
-        "Chọn tuần",
-        ranges,
-        format_func=lambda value: f"{value.label} · {value.data_date_count} ngày dữ liệu",
-        key="detail_week",
-        **widget_default("index", period_index, apply_restored_state),
+        st.session_state["overview_week_count"] = requested_count
+    overview_period_count = int(
+        st.sidebar.number_input(
+            "Số tuần so sánh",
+            min_value=1,
+            max_value=len(ranges),
+            step=1,
+            key="overview_week_count",
+            **widget_default("value", requested_count, apply_restored_state),
+        )
     )
-    start_date, end_date = selected_range.start, selected_range.end
-    selected_detail_period_start = selected_range.start.isoformat()
+    selected_ranges = ranges[-overview_period_count:]
+    start_date = max(selected_ranges[0].start, available_dates[0])
+    end_date = min(selected_ranges[-1].end, available_dates[-1])
+    st.sidebar.caption(
+        f"So sánh {overview_period_count} tuần lịch · "
+        f"{start_date:%d/%m/%Y} – {end_date:%d/%m/%Y}"
+    )
 elif range_mode == "Theo tháng":
-    ranges = month_ranges(available_dates)
-    requested_period = saved_state.get("period")
-    period_index = next(
-        (index for index, value in enumerate(ranges) if value.start.isoformat() == requested_period),
-        0,
-    )
+    overview_group_by = "month"
+    ranges = aggregation_period_ranges(available_dates, overview_group_by)
+    default_count = min(6, len(ranges))
+    try:
+        requested_count = int(saved_state.get("overview_period_count", default_count))
+    except (TypeError, ValueError):
+        requested_count = default_count
+    requested_count = min(max(requested_count, 1), len(ranges))
     if apply_restored_state:
-        st.session_state["detail_month"] = ranges[period_index]
-    selected_range = st.sidebar.selectbox(
-        "Chọn tháng",
-        ranges,
-        format_func=lambda value: f"{value.label} · {value.data_date_count} ngày dữ liệu",
-        key="detail_month",
-        **widget_default("index", period_index, apply_restored_state),
+        st.session_state["overview_month_count"] = requested_count
+    overview_period_count = int(
+        st.sidebar.number_input(
+            "Số tháng so sánh",
+            min_value=1,
+            max_value=len(ranges),
+            step=1,
+            key="overview_month_count",
+            **widget_default("value", requested_count, apply_restored_state),
+        )
     )
-    start_date, end_date = selected_range.start, selected_range.end
-    selected_detail_period_start = selected_range.start.isoformat()
+    selected_ranges = ranges[-overview_period_count:]
+    start_date = max(selected_ranges[0].start, available_dates[0])
+    end_date = min(selected_ranges[-1].end, available_dates[-1])
+    st.sidebar.caption(
+        f"So sánh {overview_period_count} tháng lịch · "
+        f"{start_date:%d/%m/%Y} – {end_date:%d/%m/%Y}"
+    )
 else:
     restored_start_date = stored_date(
         saved_state, "start", recent_range.start, available_dates[0], available_dates[-1]
@@ -396,9 +542,19 @@ else:
                     unsafe_allow_html=True,
                 )
                 st.plotly_chart(
-                    build_metric_combo_chart(
-                        entity_data,
-                        f"{entity['entity_label']} — {entity_unit}",
+                    (
+                        build_period_metric_combo_chart(
+                            entity_data,
+                            start_date,
+                            end_date,
+                            overview_group_by,
+                            f"{entity['entity_label']} — {entity_unit}",
+                        )
+                        if overview_group_by
+                        else build_metric_combo_chart(
+                            entity_data,
+                            f"{entity['entity_label']} — {entity_unit}",
+                        )
                     ),
                     width="stretch",
                 )
@@ -640,6 +796,7 @@ elif selected_statistics_periods:
                         statistics_group,
                         selected_stat_modes,
                         f"{entity['entity_label']} — {selected_period_label}",
+                        coverage_data=project_data,
                     ),
                     width="stretch",
                 )
@@ -762,12 +919,15 @@ else:
                 comparison_data,
                 comparison_metric,
                 f"So sánh {comparison_metric} của {len(selected_comparison_ids)} entity — {selected_units[0]}",
+                group_by=overview_group_by,
+                start_date=start_date,
+                end_date=end_date,
             ),
             width="stretch",
         )
 
 current_state = {
-    "source_hash": manifest["source_hash"],
+    "source_key": source_key,
     "project": selected_project,
     "range": range_mode,
     "start": start_date.isoformat(),
@@ -782,8 +942,8 @@ current_state = {
 }
 if selected_comparison_ids:
     current_state["comparison_entities"] = ",".join(selected_comparison_ids)
-if selected_detail_period_start is not None:
-    current_state["period"] = selected_detail_period_start
+if overview_period_count is not None:
+    current_state["overview_period_count"] = str(overview_period_count)
 if recent_period_count is not None:
     current_state["period_count"] = str(recent_period_count)
 if statistics_period_from is not None:
@@ -803,12 +963,37 @@ if st.session_state.get("_browser_state_loaded", False):
         height=1,
     )
 
-with st.expander(f"Cảnh báo chất lượng ({len(result.report.warnings)})"):
-    st.dataframe(pd.DataFrame(issue.as_dict() for issue in result.report.warnings), width="stretch")
+preview_warnings = preview_result.report.warnings if preview_result is not None else []
+with st.expander(f"Cảnh báo chất lượng của file preview ({len(preview_warnings)})"):
+    if preview_warnings:
+        st.dataframe(pd.DataFrame(issue.as_dict() for issue in preview_warnings), width="stretch")
+    else:
+        st.caption("Chưa chọn file preview hoặc file không có warning.")
+
+with st.expander("Lịch sử import SQLite"):
+    import_history = load_import_history(database_file, source_key)
+    history_columns = [
+        "attempt_id",
+        "run_id",
+        "submitted_file_name",
+        "requested_mode",
+        "attempt_status",
+        "started_at",
+        "committed_at",
+        "inserted_count",
+        "updated_count",
+        "unchanged_count",
+        "restored_count",
+        "deleted_count",
+        "lineage_changed_count",
+        "error_count",
+        "warning_count",
+    ]
+    st.dataframe(import_history.loc[:, history_columns], width="stretch", hide_index=True)
 
 st.download_button(
     "Tải toàn bộ normalized CSV",
-    result.data.to_csv(index=False).encode("utf-8-sig"),
+    data.to_csv(index=False).encode("utf-8-sig"),
     file_name="normalized_data.csv",
     mime="text/csv",
 )

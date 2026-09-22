@@ -1,9 +1,26 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
+from uuid import uuid4
 
 import pytest
 from openpyxl import Workbook
+
+
+@pytest.fixture
+def storage_workspace() -> Path:
+    root = Path(__file__).resolve().parent / "_storage_runtime"
+    path = root / uuid4().hex
+    path.mkdir(parents=True)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+        try:
+            root.rmdir()
+        except OSError:
+            pass
 
 
 @pytest.fixture

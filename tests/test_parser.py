@@ -11,6 +11,8 @@ def test_extracts_traceable_long_format(sample_workbook):
     assert result.report.is_valid
     assert result.manifest["project_count"] == 1
     assert result.manifest["date_count"] == 2
+    assert result.manifest["observed_date_min"] == "2026-09-12"
+    assert result.manifest["observed_date_max"] == "2026-09-13"
     assert len(result.data) == 6
     rate = result.data[result.data["cell_address"] == "F7"].iloc[0]
     assert rate["raw_value"] == 0.08
@@ -77,6 +79,8 @@ def test_filters_dates_before_configured_minimum(sample_workbook):
     )
 
     assert result.manifest["minimum_data_date"] == "2026-09-13"
+    assert result.manifest["observed_date_min"] == "2026-09-13"
+    assert result.manifest["observed_date_max"] == "2026-09-13"
     assert result.manifest["date_count"] == 1
     assert len(result.data) == 3
     assert pd.to_datetime(result.data["date"]).min() == pd.Timestamp("2026-09-13")
