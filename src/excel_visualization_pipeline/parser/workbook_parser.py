@@ -376,6 +376,8 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
         "default_zero_rate_count": int(data["value_kind"].eq("default_zero_rate").sum()) if not data.empty else 0,
         "inconsistent_error_metric_count": len(inconsistent_errors),
         "minimum_data_date": config.minimum_data_date,
+        "observed_date_min": pd.Timestamp(min(detected_dates)).date().isoformat() if detected_dates else None,
+        "observed_date_max": pd.Timestamp(max(detected_dates)).date().isoformat() if detected_dates else None,
         "date_count": len(detected_dates),
         "metric_count": len(detected_metrics),
         "projects": sorted(project_nodes["project_label"].unique()) if not entities.empty else [],

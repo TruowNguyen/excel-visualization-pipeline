@@ -28,6 +28,7 @@ __pycache__/
 htmlcov/
 build/
 dist/
+frontend/node_modules/
 *.egg-info/
 
 # Virtual environments
@@ -45,3 +46,10 @@ Thumbs.db
 *.log
 *.tmp
 ~$*
+
+#agent
+.agents/
+.claude/
+.codex/
+.impeccable/
+.browser-qa-profile/

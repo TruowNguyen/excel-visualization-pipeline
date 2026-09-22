@@ -6,12 +6,12 @@
 |---|---|
 | Hệ thống | Excel Visualization Pipeline |
 | Phiên bản package | `0.1.0` |
-| Trạng thái | MVP hoàn chỉnh, đang ổn định hóa cho demo nội bộ |
-| Ngôn ngữ | Python 3.11+ |
-| Giao diện | Streamlit + Plotly |
+| Trạng thái | MVP đã tích hợp SQLite và đang chuyển giao diện sang TypeScript/FastAPI |
+| Ngôn ngữ | Python 3.11+; TypeScript frontend |
+| Giao diện | TypeScript/Vite + Plotly.js; Streamlit legacy |
 | Nguồn dữ liệu | Workbook `.xlsx` bán cấu trúc |
 
-Tài liệu này là đặc tả kỹ thuật và nghiệp vụ chính của hệ thống. Khảo sát chi tiết workbook mẫu được lưu riêng tại [`excel_structure.md`](../excel_structure.md).
+Tài liệu này đặc tả pipeline và nghiệp vụ. Kiến trúc giao diện mới, API và cách chạy nằm tại [`FRONTEND_BACKEND.md`](FRONTEND_BACKEND.md). Khảo sát workbook mẫu ở [`excel_structure.md`](../excel_structure.md).
 
 ## 2. Mục tiêu và phạm vi
 
@@ -37,7 +37,9 @@ Chuẩn hóa long format có source lineage
     ↓
 Validation và quality gate
     ↓
-Plotly charts + Streamlit dashboard
+SQLite import transaction + revision history
+    ↓
+FastAPI read model + TypeScript workspace (Streamlit được giữ để đối chiếu)
     ↓
 CSV + manifest + validation report
 ```
@@ -52,12 +54,13 @@ Phạm vi MVP:
 - phân biệt số, phần trăm, số 0, ô trống, source marker và text;
 - validation có error/warning;
 - dashboard nội bộ hỗ trợ drill-down, thống kê và so sánh entity;
+- lưu current state, revision history và import audit trong SQLite local;
+- hỗ trợ import idempotent, full snapshot và incremental;
 - export dataset và metadata phục vụ audit.
 
 Ngoài phạm vi hiện tại:
 
 - authentication/authorization;
-- database và lịch sử snapshot lâu dài;
 - lịch chạy tự động;
 - xử lý workbook có password;
 - evaluate công thức Excel;
@@ -122,22 +125,39 @@ Dashboard không tự cộng node con thành node cha. Mỗi điểm biểu đ�
 ```text
 excel_visualization_pipeline/
 ├── app/
-│   └── dashboard.py
+│   ├── api.py
+│   └── dashboard.py             # legacy Streamlit
+├── frontend/                    # TypeScript/Vite workspace
 ├── config/
 │   ├── parser.yaml
 │   └── visualization.yaml
-├── data/processed/
+├── data/
+│   ├── local/analytics.sqlite3
+│   ├── raw/
+│   └── backups/
 ├── docs/
 │   └── SYSTEM_SPECIFICATION.md
 ├── scripts/
 │   ├── run_pipeline.py
-│   └── smoke_test.py
+│   ├── import_workbook.py
+│   ├── init_database.py
+│   ├── backup_database.py
+│   ├── verify_database.py
+│   ├── smoke_test.py
+│   └── smoke_test_storage.py
 ├── src/excel_visualization_pipeline/
 │   ├── ingestion/excel_reader.py
 │   ├── parser/hierarchy.py
 │   ├── parser/workbook_parser.py
 │   ├── validation/validator.py
 │   ├── visualization/charts.py
+│   ├── storage/
+│   │   ├── importer.py
+│   │   ├── repository.py
+│   │   ├── canonical.py
+│   │   ├── connection.py
+│   │   ├── migrations.py
+│   │   └── migrations/*.sql
 │   ├── config.py
 │   ├── date_ranges.py
 │   ├── entity_selection.py
@@ -249,6 +269,29 @@ load_excel → parse_workbook → validate_dataset → PipelineResult
 - `manifest.json`;
 - `validation_report.json`.
 
+### 4.7. SQLite storage
+
+`storage/importer.py` điều phối luồng lưu trữ:
+
+```text
+artifact + attempt → parse/validate → BEGIN IMMEDIATE
+                   → project/entity/observation revisions
+                   → presence + counters + committed run → COMMIT
+```
+
+Nguyên tắc chính:
+
+- parse Excel ngoài write transaction;
+- duplicate dựa trên source hash, parser config hash và import contract hash;
+- rejected/failed/duplicate chỉ ghi attempt, không thay current data;
+- `observation_revisions` chỉ append khi semantic value/lifecycle đổi;
+- `import_observation_presence` ghi cả record unchanged;
+- dashboard đọc `v_current_entities` và `v_current_observations`;
+- workbook gốc được archive trong `data/raw/`, database trong `data/local/`;
+- auto-tombstone tắt mặc định; incremental không bao giờ suy luận deletion.
+
+Schema và transaction contract đầy đủ được mô tả tại [SQLITE_DATABASE_DESIGN_v3.md](SQLITE_DATABASE_DESIGN_v3.md).
+
 ## 5. Mô hình dữ liệu
 
 ### 5.1. Normalized record
@@ -267,7 +310,7 @@ Mỗi ô metric thuộc phạm vi trở thành một record.
 | Value | `raw_value`, `value_numeric`, `chart_value`, `display_value`, `number_format`, `value_kind`, `data_note` |
 | Quality | `validation_status` |
 
-Logical key dùng phát hiện duplicate:
+Logical key của normalized parser dùng phát hiện duplicate trong cùng workbook:
 
 ```text
 sheet_name
@@ -277,6 +320,14 @@ sheet_name
 + metric_normalized
 + unit_normalized
 ```
+
+Khi persist, database resolve parser entity key sang stable internal `entity_id` và dùng logical key:
+
+```text
+source_id + entity_id + observed_date + metric_code
+```
+
+Unit không nằm trong database key. Thay đổi unit tạo revision của observation hiện có. Parser key/path được quản lý qua `entity_aliases` để có thể nối identity khi rename/move được xác nhận thủ công.
 
 ### 5.2. Entity table
 
@@ -318,25 +369,34 @@ Báo sai/Lỗi/Nghi ngờ gian lận     → Báo sai/Lỗi
 
 Tên nguồn luôn được giữ trong `metric_original`.
 
-## 7. Dashboard
+## 7. Dashboard và quy tắc nghiệp vụ
+
+Các quy tắc chart, chọn entity và import dưới đây được giữ nguyên khi chuyển sang UI TypeScript. Các chi tiết về widget/cache/component trong mục này mô tả giao diện Streamlit cũ; giao diện chính hiện gọi FastAPI và lưu bộ lọc bằng `sessionStorage`. Xem [`FRONTEND_BACKEND.md`](FRONTEND_BACKEND.md).
 
 ### 7.1. Nguồn dữ liệu và quality gate
 
 - người dùng có thể upload `.xlsx`;
-- nếu không upload, dashboard dùng workbook demo ở thư mục cha;
-- nếu report có error, dashboard hiển thị lỗi và không render chart;
-- warning vẫn được hiển thị trong khu vực cảnh báo.
+- nếu không upload, dashboard chỉ đọc current views trong SQLite và không chạy import;
+- người dùng chọn `full_snapshot` hoặc `incremental` trước khi import;
+- workbook được parse/validate để preview nhưng chưa ghi database;
+- chỉ nút **Xác nhận import** mới commit workbook hợp lệ vào `data/local/analytics.sqlite3`;
+- sau import, dashboard đọc toàn bộ current data từ SQLite, không chỉ dữ liệu trong file vừa upload;
+- nếu preview có error, nút xác nhận bị vô hiệu hóa và current dashboard vẫn không bị thay đổi;
+- warning vẫn được hiển thị trong khu vực cảnh báo;
+- lịch sử attempt/run và counters hiển thị trong expander import history.
 
 ### 7.2. Cache
 
-Dashboard dùng `st.cache_data` cho `PipelineResult`. Cache key gồm:
+Dashboard dùng `st.cache_data` chỉ cho parse/validate preview. Cache key gồm:
 
 - bytes của workbook;
 - tên file;
 - đường dẫn parser config;
 - `mtime_ns` của parser config.
 
-Cache được dùng chung giữa các session nhưng mỗi caller nhận một bản sao an toàn. Khi workbook hoặc cấu hình thay đổi, cache key thay đổi và pipeline chạy lại.
+Preview và widget rerun không tạo import attempt. Khi người dùng bấm xác nhận, storage tạo attempt/run ngoài cache; sau đó current views được đọc lại từ SQLite. Dữ liệu import bằng CLI cũng xuất hiện trên dashboard mà không phụ thuộc preview đang cache.
+
+Storage từ chối cùng artifact được áp dụng lại bằng contract/mode khác và từ chối stale artifact replay sau một workbook mới hơn. Phục hồi có chủ đích phải dùng `allow_replay`, tạo contract/run mới và được audit.
 
 ### 7.3. Trạng thái và reload
 
@@ -349,7 +409,7 @@ Dashboard dùng một Streamlit component v2 ẩn để ghi trạng thái hiện
 - tùy chọn kỳ chưa đầy đủ;
 - metric và entity so sánh.
 
-Reload tạo session Streamlit mới; component đọc JSON từ `sessionStorage`, gửi về Python và dashboard khôi phục widget. URL không chứa Project, entity hoặc bộ lọc. Trạng thái được tách theo browser tab/origin và tự mất khi đóng tab, nên không tạo lịch sử lâu dài phía server.
+Reload tạo session Streamlit mới; component đọc JSON từ `sessionStorage`, gửi về Python và dashboard khôi phục widget. URL không chứa Project, entity hoặc bộ lọc. Trạng thái bộ lọc được tách theo browser tab/origin và tự mất khi đóng tab; dữ liệu nghiệp vụ và import history vẫn tồn tại lâu dài trong SQLite.
 
 State có `source_hash`; nếu workbook hiện tại khác workbook đã lưu, dashboard bỏ state cũ và dùng mặc định an toàn. Query parameters từ phiên bản cũ được tự xóa khỏi URL.
 
@@ -358,11 +418,17 @@ File upload không thể tự khôi phục sau reload theo cơ chế bảo mật
 ### 7.4. Chọn thời gian
 
 - `10 ngày gần nhất`: 10 ngày phân biệt có dữ liệu gần nhất;
-- `Theo tuần`: tuần ISO, Thứ Hai–Chủ Nhật;
-- `Theo tháng`: tháng lịch;
+- `Theo tuần`: so sánh các tuần ISO độc lập (Thứ Hai–Chủ Nhật), mặc định tối đa 8 tuần gần nhất;
+- `Theo tháng`: so sánh các tháng lịch độc lập, mặc định tối đa 6 tháng gần nhất;
 - `Tùy chỉnh`: ngày bắt đầu/kết thúc trong phạm vi dữ liệu.
 
+`Theo tuần` và `Theo tháng` không còn là thao tác chọn một kỳ rồi vẽ lại từng ngày trong kỳ. Mỗi điểm/cột trên trục X đại diện cho đúng một tuần hoặc một tháng để người dùng so sánh giữa các kỳ. `Tổng số` và `Báo sai/Lỗi` là tổng của kỳ; `% báo sai` của kỳ được tính theo tỷ lệ có trọng số `SUM(Báo sai/Lỗi) / SUM(Tổng số) × 100`, không lấy trung bình cộng các tỷ lệ ngày.
+
 Khoảng sidebar áp dụng cho combo chart, Audit Table và so sánh entity. Thống kê SUM/AVG có phạm vi độc lập.
+
+Với nhóm theo tuần, nhãn trục X dùng số tuần ISO theo dạng `Tuần WW/YYYY` (ví dụ `Tuần 37/2026`). Khoảng ngày tương ứng vẫn hiển thị trong unified hover theo dạng `07/09–13/09`.
+
+Mẫu số AVG ưu tiên ngày có `Tổng số` dạng số của chính entity. Nếu node con không có bất kỳ `Tổng số` dạng số nào, `Báo sai/Lỗi · AVG/ngày` kế thừa ngày quan sát từ ancestor gần nhất có `Tổng số`. Giá trị `Tổng số · AVG/ngày` của node con vẫn là missing, tránh diễn giải dữ liệu trống thành số 0.
 
 ### 7.5. Entity navigation
 
@@ -405,6 +471,8 @@ Hỗ trợ nhóm theo ngày, tuần, tháng và quý.
 ### 7.9. Hover, label và audit
 
 - unified hover theo ngày;
+- interactive legend dùng các item dạng compact toggle chip, không có label hoặc khung container lớn; mỗi item giữ đúng visual encoding của series, nhấn một lần để ẩn/hiện và nhấn đúp để chỉ xem riêng series đó;
+- legend item dùng cùng chiều cao, marker slot cố định, vertical alignment ở giữa và khoảng cách nhất quán giữa các item;
 - chỉ gắn nhãn trực tiếp tại điểm mới nhất của series;
 - tooltip dùng `display_value` để bảo toàn định dạng;
 - Audit Table hiển thị nguồn, hierarchy, raw/display/chart value, sheet/cell, number format và parser metadata;
@@ -456,19 +524,20 @@ Parser vẫn hỗ trợ `Ghi chú`, nhưng metric này chỉ xuất hiện ở b
 
 ## 9. Kiểm thử
 
-Bộ test hiện có 35 test:
+Bộ test hiện có 45 test:
 
 | Nhóm | Số lượng |
 |---|---:|
-| Charts | 16 |
+| Charts | 17 |
 | Date ranges | 7 |
 | Entity selection | 4 |
 | Parser | 4 |
 | Validation | 2 |
 | Hierarchy | 1 |
 | Real workbook smoke | 1 |
+| SQLite storage | 9 |
 
-Smoke test kiểm tra pipeline, quality gate và khả năng dựng line/bar/combo/statistics/comparison chart trên workbook thật.
+Smoke test kiểm tra pipeline, quality gate và khả năng dựng line/bar/combo/statistics/comparison chart trên workbook thật. Storage smoke test kiểm tra end-to-end Excel → SQLite → current views → chart cùng integrity/foreign key.
 
 Baseline chính được khóa bằng assertion trong `tests/test_smoke_real_workbook.py`; thay đổi workbook hoặc semantics parser ngoài dự kiến sẽ làm test thất bại.
 
@@ -483,7 +552,15 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-### Chạy dashboard
+### Chạy workspace mới
+
+```powershell
+python -m uvicorn app.api:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Terminal khác: `cd frontend; npm ci; npm run dev`, sau đó mở `http://127.0.0.1:5173`.
+
+### Chạy Streamlit legacy
 
 ```powershell
 python -m streamlit run app\dashboard.py
@@ -501,11 +578,26 @@ python -m streamlit run app\dashboard.py
 python scripts\run_pipeline.py "..\test data for CX report dashboard.xlsx"
 ```
 
+### Vận hành SQLite
+
+```powershell
+python scripts\init_database.py
+python scripts\import_workbook.py "..\test data for CX report dashboard.xlsx"
+python scripts\inspect_import_history.py
+python scripts\verify_database.py
+python scripts\backup_database.py
+```
+
+File chỉ chứa phần dữ liệu nối tiếp phải dùng `--mode incremental`. Giữ nguyên `--source-key` cho mọi file thuộc cùng nguồn logic.
+
+`--allow-replay` chỉ dùng để phục hồi có chủ đích sau khi backup; thao tác này có thể đưa current values về revision của artifact cũ.
+
 ### Chạy test
 
 ```powershell
 python -m pytest
 python scripts\smoke_test.py "..\test data for CX report dashboard.xlsx"
+python scripts\smoke_test_storage.py "..\test data for CX report dashboard.xlsx"
 ```
 
 ## 11. Cấu hình parser
@@ -532,9 +624,10 @@ Khi workbook thay đổi:
 - export HTML/PDF/PNG;
 - Docker và CI;
 - logging/monitoring;
-- folder watcher và refresh tự động;
+- scheduler/folder watcher và refresh tự động;
 - authentication/authorization;
-- database và snapshot history khi chuyển từ demo sang vận hành lâu dài;
+- workflow quản trị `entity_aliases` khi rename/move;
+- bật tombstone theo từng declared scope sau khi có acceptance fixture;
 - tách service/API khi cần tích hợp hoặc scale nhiều instance.
 
 ## 13. Tiêu chí MVP đã hoàn thành
@@ -551,3 +644,7 @@ Khi workbook thay đổi:
 - [x] Cache theo workbook/config.
 - [x] Khôi phục bộ lọc qua browser `sessionStorage` sau reload, không làm lộ state trên URL.
 - [x] Automated tests và smoke test workbook thật.
+- [x] SQLite migrations, current views và append-only revision history.
+- [x] Import idempotent với audit attempt/run/artifact/presence.
+- [x] Dashboard đọc current data từ SQLite sau khi import.
+- [x] CLI init/import/history/backup/verify và storage smoke test.

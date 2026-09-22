@@ -16,6 +16,26 @@ ENTITY_LEVEL_LABELS = {
 }
 
 
+def _interactive_legend() -> dict:
+    """Keep Plotly's native toggle behavior in a compact, production-style legend."""
+    return {
+        "orientation": "h",
+        "yanchor": "bottom",
+        "y": 1.02,
+        "xanchor": "left",
+        "x": 0,
+        "bgcolor": "rgba(0, 0, 0, 0)",
+        "borderwidth": 0,
+        "font": {"color": "#334155", "size": 12},
+        "itemsizing": "constant",
+        "itemwidth": 34,
+        "valign": "middle",
+        "tracegroupgap": 8,
+        "itemclick": "toggle",
+        "itemdoubleclick": "toggleothers",
+    }
+
+
 def _format_date_axes(figure: Figure) -> Figure:
     """Use the Vietnamese day/month display without changing datetime values."""
     figure.for_each_xaxis(
@@ -47,6 +67,35 @@ def _latest_labels(values) -> list[str]:
     if labels:
         labels[-1] = str(value_list[-1])
     return labels
+
+
+def _exact_lineage_fields(frame: pd.DataFrame) -> dict:
+    """Attach identity metadata only; chart values and ordering remain untouched."""
+    if "observation_ref" not in frame.columns or "lineage_ref" not in frame.columns:
+        return {
+            "ids": [None] * len(frame),
+            "meta": {
+                "lineage": {
+                    "contractVersion": 1,
+                    "kind": "exact-observation",
+                    "selectable": False,
+                    "lineageRefs": [None] * len(frame),
+                }
+            },
+        }
+    observation_refs = [value if pd.notna(value) else None for value in frame["observation_ref"]]
+    lineage_refs = [value if pd.notna(value) else None for value in frame["lineage_ref"]]
+    return {
+        "ids": observation_refs,
+        "meta": {
+            "lineage": {
+                "contractVersion": 1,
+                "kind": "exact-observation",
+                "selectable": any(observation_refs) and any(lineage_refs),
+                "lineageRefs": lineage_refs,
+            }
+        },
+    }
 
 
 def _keep_latest_trace_labels(figure: Figure) -> Figure:
@@ -251,10 +300,92 @@ def _period_label(start: pd.Timestamp, end: pd.Timestamp, group_by: str) -> str:
     if group_by == "day":
         return f"{start:%d/%m}"
     if group_by == "week":
-        return f"{start:%d/%m}–{end:%d/%m}"
+        iso = start.isocalendar()
+        return f"Tuần {iso.week:02d}/{iso.year}"
     if group_by == "month":
         return f"{start:%m/%Y}"
     return f"Q{start.quarter}/{start.year}"
+
+
+def prepare_period_metric_summary(
+    data: pd.DataFrame,
+    start_date,
+    end_date,
+    group_by: str,
+) -> pd.DataFrame:
+    """Aggregate the overview metrics into independent calendar periods.
+
+    Count metrics are summed inside each period.  The period error rate is a
+    weighted rate (SUM errors / SUM total), never an average of daily rates.
+    This keeps a weekly view as a comparison of calendar weeks instead of a
+    seven-point daily chart.
+    """
+    if group_by not in {"week", "month"}:
+        raise ValueError("So sánh kỳ chỉ hỗ trợ week hoặc month.")
+
+    frame = data[
+        data["metric_normalized"].isin(["Tổng số", "Báo sai/Lỗi", "% báo sai"])
+    ].copy()
+    if frame.empty:
+        return pd.DataFrame()
+    frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
+    start = pd.Timestamp(start_date).normalize()
+    end = pd.Timestamp(end_date).normalize()
+    frame = frame[(frame["date"] >= start) & (frame["date"] <= end)]
+    if frame.empty:
+        return pd.DataFrame()
+
+    frame["period_start"] = _period_start(frame["date"], group_by)
+    rows: list[dict] = []
+    for (entity_id, period_start), period_data in frame.groupby(
+        ["entity_id", "period_start"], dropna=False, sort=True
+    ):
+        period_start = pd.Timestamp(period_start)
+        period_end = min(_natural_period_end(period_start, group_by), end)
+        scoped_start = max(period_start, start)
+        total_rows = period_data[period_data["metric_normalized"] == "Tổng số"]
+        error_rows = period_data[period_data["metric_normalized"] == "Báo sai/Lỗi"]
+        total_values = pd.to_numeric(total_rows["chart_value"], errors="coerce")
+        error_values = pd.to_numeric(error_rows["chart_value"], errors="coerce")
+        total_sum = total_values.sum(min_count=1)
+        error_sum = error_values.sum(min_count=1)
+
+        # A blank error cell means no error was recorded for a day whose total
+        # was observed. A source marker ("-", N/A, ...) remains missing.
+        if pd.isna(error_sum) and pd.notna(total_sum):
+            error_kinds = set(error_rows.get("value_kind", pd.Series(dtype=str)).dropna())
+            if "source_marker" not in error_kinds:
+                error_sum = 0.0
+
+        if pd.notna(total_sum) and float(total_sum) > 0 and pd.notna(error_sum):
+            error_rate = float(error_sum) / float(total_sum) * 100
+        elif pd.notna(total_sum) and float(total_sum) == 0 and error_sum == 0:
+            error_rate = 0.0
+        else:
+            error_rate = None
+
+        first = period_data.iloc[0]
+        unit_values = period_data["effective_unit"].dropna().unique()
+        unit = str(unit_values[0]) if len(unit_values) else "Chưa xác định từ Excel"
+        rows.append(
+            {
+                "entity_id": entity_id,
+                "entity_label": first["entity_label"],
+                "entity_level": first["entity_level"],
+                "effective_unit": unit,
+                "period_start": scoped_start,
+                "period_end": period_end,
+                "period_label": _period_label(period_start, period_end, group_by),
+                "total_sum": float(total_sum) if pd.notna(total_sum) else None,
+                "error_sum": float(error_sum) if pd.notna(error_sum) else None,
+                "error_rate": error_rate,
+                "display_total": _formatted_number(total_sum) if pd.notna(total_sum) else "—",
+                "display_error": _formatted_number(error_sum) if pd.notna(error_sum) else "—",
+                "display_rate": f"{error_rate:.2f}%" if error_rate is not None else "—",
+                "period_range": f"{scoped_start:%d/%m}–{period_end:%d/%m}",
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def prepare_period_statistics(
@@ -262,8 +393,9 @@ def prepare_period_statistics(
     start_date,
     end_date,
     group_by: str,
+    coverage_data: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Calculate period SUM and AVG/day for count metrics without averaging rates."""
+    """Calculate period SUM and AVG/day, inheriting observation days when needed."""
     frame = data[data["metric_normalized"].isin(["Tổng số", "Báo sai/Lỗi"])].copy()
     if frame.empty:
         return pd.DataFrame()
@@ -273,20 +405,59 @@ def prepare_period_statistics(
     frame = frame[(frame["date"] >= start) & (frame["date"] <= end)]
     if frame.empty:
         return pd.DataFrame()
+    coverage_frame = (
+        coverage_data if coverage_data is not None else data
+    )
+    coverage_frame = coverage_frame[
+        coverage_frame["metric_normalized"].isin(["Tổng số", "Báo sai/Lỗi"])
+    ].copy()
+    coverage_frame["date"] = pd.to_datetime(coverage_frame["date"]).dt.normalize()
+    parent_lookup = (
+        coverage_frame[["entity_id", "parent_entity_id"]]
+        .drop_duplicates("entity_id")
+        .set_index("entity_id")["parent_entity_id"]
+        .to_dict()
+        if "parent_entity_id" in coverage_frame.columns
+        else {}
+    )
+    entities_with_total = set(
+        coverage_frame.loc[
+            coverage_frame["metric_normalized"].eq("Tổng số")
+            & coverage_frame["chart_value"].notna(),
+            "entity_id",
+        ]
+    )
+
+    def coverage_source_for(entity_id):
+        current = entity_id
+        visited = set()
+        while pd.notna(current) and current not in visited:
+            if current in entities_with_total:
+                return current
+            visited.add(current)
+            current = parent_lookup.get(current)
+        return entity_id
+
+    coverage_source_by_entity = {
+        entity_id: coverage_source_for(entity_id)
+        for entity_id in frame["entity_id"].dropna().unique()
+    }
+    coverage_frame = coverage_frame[
+        (coverage_frame["date"] >= start) & (coverage_frame["date"] <= end)
+    ]
+    coverage_frame["period_start"] = _period_start(coverage_frame["date"], group_by)
     frame["effective_unit"] = frame["effective_unit"].fillna("Chưa xác định từ Excel")
     frame["period_start"] = _period_start(frame["date"], group_by)
     group_columns = [
         "entity_id", "entity_label", "entity_level", "effective_unit",
         "metric_normalized", "period_start",
     ]
-    coverage_columns = [
-        "entity_id", "entity_label", "entity_level", "effective_unit", "period_start",
-    ]
     observed_dates_by_period = {
         keys: set(group["date"])
-        for keys, group in frame[
-            frame["metric_normalized"].eq("Tổng số") & frame["chart_value"].notna()
-        ].groupby(coverage_columns, dropna=False, sort=True)
+        for keys, group in coverage_frame[
+            coverage_frame["metric_normalized"].eq("Tổng số")
+            & coverage_frame["chart_value"].notna()
+        ].groupby(["entity_id", "period_start"], dropna=False, sort=True)
     }
     rows: list[dict] = []
     for keys, group in frame.groupby(group_columns, dropna=False, sort=True):
@@ -295,13 +466,19 @@ def prepare_period_statistics(
         scoped_start = max(pd.Timestamp(period_start), start)
         scoped_end = min(natural_end, end)
         calendar_days = (scoped_end - scoped_start).days + 1
-        coverage_key = (entity_id, entity_label, entity_level, unit, period_start)
+        coverage_source_entity_id = coverage_source_by_entity.get(entity_id, entity_id)
+        coverage_key = (coverage_source_entity_id, period_start)
         observed_dates = observed_dates_by_period.get(coverage_key, set())
         source_marker_dates = set(group.loc[group["value_kind"] == "source_marker", "date"])
         source_marker_days = len(observed_dates & source_marker_dates)
         eligible_days = max(len(observed_dates) - source_marker_days, 0)
         period_sum = float(group["chart_value"].fillna(0).sum())
-        average_per_day = period_sum / eligible_days if eligible_days else None
+        inherits_coverage = coverage_source_entity_id != entity_id
+        average_per_day = (
+            period_sum / eligible_days
+            if eligible_days and not (metric == "Tổng số" and inherits_coverage)
+            else None
+        )
         rows.append({
             "entity_id": entity_id,
             "entity_label": entity_label,
@@ -317,6 +494,7 @@ def prepare_period_statistics(
             "observed_day_count": len(observed_dates),
             "calendar_day_count": calendar_days,
             "source_marker_day_count": source_marker_days,
+            "coverage_source_entity_id": coverage_source_entity_id,
             "display_sum": _formatted_number(period_sum),
             "display_average": (
                 _formatted_number(average_per_day) if average_per_day is not None else "—"
@@ -332,9 +510,16 @@ def build_period_statistics_chart(
     group_by: str,
     modes: list[str] | tuple[str, ...],
     title: str | None = None,
+    coverage_data: pd.DataFrame | None = None,
 ) -> Figure:
     """Render nested SUM bars and AVG/day lines on a secondary axis."""
-    frame = prepare_period_statistics(data, start_date, end_date, group_by)
+    frame = prepare_period_statistics(
+        data,
+        start_date,
+        end_date,
+        group_by,
+        coverage_data=coverage_data,
+    )
     figure = make_subplots(specs=[[{"secondary_y": True}]])
     if frame.empty or not modes:
         return figure
@@ -400,7 +585,7 @@ def build_period_statistics_chart(
             )
 
     period_rows = (
-        frame[["period_start", "period_label"]]
+        frame[["period_start", "period_end", "period_label"]]
         .drop_duplicates()
         .sort_values("period_start")
     )
@@ -422,10 +607,13 @@ def build_period_statistics_chart(
                 ),
                 "—",
             ),
+            f"{row.period_start:%d/%m}–{row.period_end:%d/%m}",
         ]
         for row in period_rows.itertuples()
     ]
     hover_lines: list[str] = ["Số ngày có dữ liệu: %{customdata[4]}"]
+    if group_by == "week":
+        hover_lines.insert(0, "Khoảng tuần: %{customdata[5]}")
     if "SUM" in modes:
         hover_lines.extend([
             "<span style='color:#8ecae6'>■</span> Tổng số/Cảnh báo · SUM: %{customdata[0]}",
@@ -458,8 +646,8 @@ def build_period_statistics_chart(
         bargroupgap=0.08,
         hovermode="x unified",
         hoverdistance=20,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
-        margin={"t": 110},
+        legend=_interactive_legend(),
+        margin={"t": 100},
         xaxis_title="Kỳ",
     )
     figure.update_xaxes(showspikes=False)
@@ -512,6 +700,114 @@ def build_bar_chart(data: pd.DataFrame, selected_date=None, title: str = "So sá
     return _format_date_axes(figure)
 
 
+def build_period_metric_combo_chart(
+    data: pd.DataFrame,
+    start_date,
+    end_date,
+    group_by: str,
+    title: str | None = None,
+) -> Figure:
+    """Compare overview metrics across calendar weeks or calendar months."""
+    frame = prepare_period_metric_summary(data, start_date, end_date, group_by)
+    figure = make_subplots(specs=[[{"secondary_y": True}]])
+    if frame.empty:
+        return figure
+
+    entity_ids = frame["entity_id"].dropna().unique()
+    units = frame["effective_unit"].dropna().unique()
+    if len(entity_ids) != 1:
+        raise ValueError("Combo chart theo kỳ chỉ nhận dữ liệu của đúng một entity.")
+    if len(units) > 1:
+        raise ValueError("Combo chart theo kỳ không được trộn nhiều effective unit.")
+
+    frame = frame.sort_values("period_start")
+    entity_label = str(frame["entity_label"].iloc[0])
+    unit = str(units[0]) if len(units) else "Không xác định"
+    x_values = frame["period_label"]
+    for column, name, color, opacity, position in [
+        ("total_sum", "Tổng số", "#8ecae6", 0.72, "inside"),
+        ("error_sum", "Báo sai/Lỗi", "#d1495b", 0.95, "outside"),
+    ]:
+        figure.add_trace(
+            go.Bar(
+                x=x_values,
+                y=frame[column],
+                name=name,
+                marker_color=color,
+                opacity=opacity,
+                width=0.72,
+                text=_latest_labels(
+                    frame["display_total" if column == "total_sum" else "display_error"]
+                ),
+                textposition=position,
+                cliponaxis=False,
+                hoverinfo="skip",
+            ),
+            secondary_y=False,
+        )
+
+    figure.add_trace(
+        go.Scatter(
+            x=x_values,
+            y=frame["error_rate"],
+            name="% báo sai",
+            mode="lines+markers+text",
+            line={"color": "#ff9f1c", "width": 3},
+            marker={"size": 8},
+            text=_latest_labels(frame["display_rate"]),
+            textposition="top center",
+            cliponaxis=False,
+            connectgaps=False,
+            hoverinfo="skip",
+        ),
+        secondary_y=True,
+    )
+    hover_rows = frame[
+        ["entity_label", "display_total", "display_error", "display_rate", "period_range"]
+    ].to_numpy()
+    figure.add_trace(
+        go.Scatter(
+            x=x_values,
+            y=[0] * len(frame),
+            name="",
+            mode="markers",
+            marker={"size": 1, "opacity": 0},
+            showlegend=False,
+            customdata=hover_rows,
+            hovertemplate=(
+                "Khoảng: %{customdata[4]}"
+                "<br><span style='color:#8ecae6'>■</span> Tổng số/Cảnh báo: %{customdata[1]}"
+                "<br><span style='color:#d1495b'>■</span> Báo sai/Lỗi: %{customdata[2]}"
+                "<br><span style='color:#ff9f1c'>━●━</span> % báo sai: %{customdata[3]}"
+                "<extra></extra>"
+            ),
+        ),
+        secondary_y=False,
+    )
+    figure.update_layout(
+        title=title or f"{entity_label} — {unit}",
+        barmode="overlay",
+        bargap=0.25,
+        bargroupgap=0.08,
+        hovermode="x unified",
+        hoverdistance=20,
+        hoverlabel={"namelength": -1},
+        legend=_interactive_legend(),
+        margin={"t": 100},
+        xaxis_title="Tuần" if group_by == "week" else "Tháng",
+    )
+    figure.update_xaxes(showspikes=False, unifiedhovertitle={"text": "<b>%{x}</b>"})
+    figure.update_yaxes(title_text=f"Số lượng ({unit})", rangemode="tozero", secondary_y=False)
+    figure.update_yaxes(
+        title_text="% báo sai",
+        rangemode="tozero",
+        tickformat=".1f",
+        ticksuffix="%",
+        secondary_y=True,
+    )
+    return figure
+
+
 def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Figure:
     """Render Error inside Total bars and Error Rate on a secondary Y axis."""
     frame = chartable(data)
@@ -549,6 +845,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 textposition="outside" if metric == "Báo sai/Lỗi" else "inside",
                 cliponaxis=False,
                 hoverinfo="skip",
+                **_exact_lineage_fields(metric_data),
             ),
             secondary_y=False,
         )
@@ -568,6 +865,7 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 cliponaxis=False,
                 connectgaps=False,
                 hoverinfo="skip",
+                **_exact_lineage_fields(rate_data),
             ),
             secondary_y=True,
         )
@@ -601,8 +899,8 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         barmode="overlay",
         bargap=0.25,
         bargroupgap=0.08,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
-        margin={"t": 110},
+        legend=_interactive_legend(),
+        margin={"t": 100},
         xaxis_title="Ngày",
     )
     figure.update_yaxes(title_text=f"Số lượng ({unit})", rangemode="tozero", secondary_y=False)
@@ -620,8 +918,105 @@ def build_multi_entity_metric_chart(
     data: pd.DataFrame,
     metric: str,
     title: str | None = None,
+    group_by: str | None = None,
+    start_date=None,
+    end_date=None,
 ) -> Figure:
     """Compare one selected metric for up to three compatible entities."""
+    if group_by is not None:
+        if data.empty:
+            return go.Figure()
+        if "project_id" in data.columns and data["project_id"].nunique() != 1:
+            raise ValueError("Các entity so sánh phải thuộc cùng một Project.")
+        date_values = pd.to_datetime(data["date"])
+        period_frame = prepare_period_metric_summary(
+            data,
+            start_date if start_date is not None else date_values.min(),
+            end_date if end_date is not None else date_values.max(),
+            group_by,
+        )
+        value_columns = {
+            "Tổng số": ("total_sum", "display_total"),
+            "Báo sai/Lỗi": ("error_sum", "display_error"),
+            "% báo sai": ("error_rate", "display_rate"),
+        }
+        if metric not in value_columns:
+            raise ValueError(f"Metric không được hỗ trợ: {metric}")
+        value_column, display_column = value_columns[metric]
+        frame = period_frame[period_frame[value_column].notna()].copy()
+        if frame.empty:
+            return go.Figure()
+
+        entity_ids = list(frame["entity_id"].dropna().unique())
+        if len(entity_ids) > 3:
+            raise ValueError("Chỉ được so sánh tối đa 3 entity.")
+        units = frame["effective_unit"].dropna().unique()
+        if frame["effective_unit"].isna().any() or len(units) != 1:
+            raise ValueError("Các entity so sánh phải có cùng một effective unit đã xác định.")
+
+        unit = str(units[0])
+        figure = go.Figure()
+        for color_index, entity_id in enumerate(entity_ids):
+            entity_data = frame[frame["entity_id"] == entity_id].sort_values("period_start")
+            entity_label = str(entity_data["entity_label"].iloc[0])
+            entity_level = str(entity_data["entity_level"].iloc[0])
+            level_label = ENTITY_LEVEL_LABELS.get(entity_level, entity_level.title())
+            legend_label = f"[{level_label}] {entity_label}"
+            color = ENTITY_COLORS[color_index]
+            hover_rows = entity_data[
+                ["entity_label", "display_total", "display_error", "display_rate"]
+            ].to_numpy()
+            common = {
+                "x": entity_data["period_label"],
+                "y": entity_data[value_column],
+                "name": legend_label,
+                "legendgroup": entity_id,
+                "customdata": hover_rows,
+                "hovertemplate": ENTITY_HOVER_TEMPLATE,
+            }
+            if metric == "% báo sai":
+                figure.add_trace(
+                    go.Scatter(
+                        **common,
+                        mode="lines+markers+text",
+                        line={"color": color, "width": 3},
+                        marker={"size": 8},
+                        text=_latest_labels(entity_data[display_column]),
+                        textposition="top center",
+                        cliponaxis=False,
+                        connectgaps=False,
+                    )
+                )
+            else:
+                figure.add_trace(
+                    go.Bar(
+                        **common,
+                        marker_color=color,
+                        text=_latest_labels(entity_data[display_column]),
+                        textposition="outside",
+                        cliponaxis=False,
+                    )
+                )
+
+        figure.update_layout(
+            title=title or f"So sánh {metric} — {unit}",
+            barmode="group",
+            bargap=0.25,
+            bargroupgap=0.08,
+            hovermode="x unified",
+            hoverdistance=20,
+            hoverlabel={"namelength": -1},
+            legend=_interactive_legend(),
+            margin={"t": 100},
+            xaxis_title="Tuần" if group_by == "week" else "Tháng",
+            yaxis_title="% báo sai" if metric == "% báo sai" else f"{metric} ({unit})",
+            yaxis={"rangemode": "tozero"},
+        )
+        figure.update_xaxes(showspikes=False, unifiedhovertitle={"text": "<b>%{x}</b>"})
+        if metric == "% báo sai":
+            figure.update_yaxes(tickformat=".1f", ticksuffix="%")
+        return figure
+
     hover_source = data.copy()
     hover_source["date"] = pd.to_datetime(hover_source["date"])
     frame = chartable(data)
@@ -670,6 +1065,7 @@ def build_multi_entity_metric_chart(
                     connectgaps=False,
                     customdata=hover_rows,
                     hovertemplate=ENTITY_HOVER_TEMPLATE,
+                    **_exact_lineage_fields(entity_data),
                 )
             )
         else:
@@ -685,6 +1081,7 @@ def build_multi_entity_metric_chart(
                     cliponaxis=False,
                     customdata=hover_rows,
                     hovertemplate=ENTITY_HOVER_TEMPLATE,
+                    **_exact_lineage_fields(entity_data),
                 )
             )
 
@@ -693,8 +1090,8 @@ def build_multi_entity_metric_chart(
         barmode="group",
         bargap=0.25,
         bargroupgap=0.08,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
-        margin={"t": 110},
+        legend=_interactive_legend(),
+        margin={"t": 100},
         xaxis_title="Ngày",
         yaxis_title="% báo sai" if metric == "% báo sai" else f"{metric} ({unit})",
         yaxis={"rangemode": "tozero"},
