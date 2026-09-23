@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed"
   },
   "dependencies": {
     "plotly.js-dist-min": "^3.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "typescript": "^5.9.0",
     "vite": "^7.1.0"
   }

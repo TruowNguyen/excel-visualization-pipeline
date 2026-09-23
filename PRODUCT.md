@@ -59,7 +59,7 @@ Giới hạn hiện tại:
 
 ## Brand Commitments
 
-- Tên sản phẩm hiện dùng trong giao diện là **CX Platform** và **CX Analytics Workspace**; tên kỹ thuật của repository là **Excel Visualization Pipeline**.
+- Tên sản phẩm hiện dùng trong giao diện là **Automated CX Report**; tên kỹ thuật của repository là **Excel Visualization Pipeline**.
 - Ngôn ngữ sản phẩm hiện tại là tiếng Việt, có thể giữ thuật ngữ kỹ thuật quen thuộc như Project, Entity, Metric, Audit và Import khi chúng làm rõ mô hình dữ liệu.
 - Nội dung giao diện phải thể hiện đúng trạng thái nội bộ/MVP, không đưa ra tuyên bố về bảo mật, quy mô production hoặc khả năng triển khai chưa được chứng minh.
 

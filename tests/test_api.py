@@ -59,6 +59,23 @@ def test_workspace_api_reads_imported_sqlite_without_reparsing(
         "exactObservation": True,
         "aggregateObservation": True,
     }
+    overview_only = client.get(
+        "/api/projects/Alpha/workspace", params={"mode": "week", "view": "overview"}
+    )
+    assert overview_only.status_code == 200
+    assert overview_only.json()["overview"]
+    assert overview_only.json()["statistics"] == []
+    assert overview_only.json()["comparisonCandidates"] == []
+    assert overview_only.json()["audit"]["total"] == 0
+    cached_overview = client.get(
+        "/api/projects/Alpha/workspace", params={"mode": "week", "view": "overview"}
+    )
+    assert "cache;desc=hit" in cached_overview.headers["server-timing"]
+    statistics_only = client.get(
+        "/api/projects/Alpha/workspace", params={"mode": "week", "view": "statistics"}
+    ).json()
+    assert statistics_only["overview"] == []
+    assert statistics_only["statistics"]
     aggregate_trace = next(
         trace for trace in body["overview"][0]["figure"]["data"]
         if trace.get("meta", {}).get("lineage", {}).get("kind") == "aggregate"

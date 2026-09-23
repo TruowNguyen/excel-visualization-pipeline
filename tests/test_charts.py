@@ -23,12 +23,11 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
 
     figure = build_metric_combo_chart(item_data)
 
-    assert [trace.type for trace in figure.data] == ["bar", "bar", "scatter", "scatter"]
+    assert [trace.type for trace in figure.data] == ["bar", "bar", "scatter"]
     assert [trace.name for trace in figure.data] == [
         "Tổng số",
         "Báo sai/Lỗi",
         "% báo sai",
-        "",
     ]
     assert figure.layout.barmode == "overlay"
     assert figure.data[0].width == figure.data[1].width
@@ -50,23 +49,19 @@ def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
     assert list(figure.data[0].text) == ["", "120"]
     assert list(figure.data[1].text) == ["", "6"]
     assert list(figure.data[2].text) == ["", "5.00%"]
-    assert figure.layout.hovermode == "x unified"
-    assert figure.layout.hoverdistance == 20
+    assert figure.layout.hovermode == "closest"
+    assert figure.layout.hoverdistance == 5
     assert figure.layout.xaxis.showspikes is False
-    assert figure.layout.xaxis.unifiedhovertitle.text == "<b>Ngày %{x|%d/%m/%Y}</b>"
-    assert all(trace.hoverinfo == "skip" for trace in figure.data[:3])
-    assert all(trace.hovertemplate is None for trace in figure.data[:3])
-    assert figure.data[3].showlegend is False
-    assert "Camera" not in figure.data[3].hovertemplate
-    assert "<b>" not in figure.data[3].hovertemplate
-    assert "Tổng số/Cảnh báo" in figure.data[3].hovertemplate
-    assert "Báo sai/Lỗi" in figure.data[3].hovertemplate
-    assert "% báo sai" in figure.data[3].hovertemplate
-    assert "color:#8ecae6'>■" in figure.data[3].hovertemplate
-    assert "color:#d1495b'>■" in figure.data[3].hovertemplate
-    assert "color:#ff9f1c'>━●━" in figure.data[3].hovertemplate
-    assert "Mô tả" not in figure.data[3].hovertemplate
-    assert list(figure.data[3].customdata[0]) == [
+    assert all(trace.name for trace in figure.data)
+    assert all("Ngày %{x|%d/%m/%Y}" in trace.hovertemplate for trace in figure.data)
+    assert all("Tổng số/Cảnh báo" in trace.hovertemplate for trace in figure.data)
+    assert all("Báo sai/Lỗi" in trace.hovertemplate for trace in figure.data)
+    assert all("% báo sai" in trace.hovertemplate for trace in figure.data)
+    assert all("color:#8ecae6'>■" in trace.hovertemplate for trace in figure.data)
+    assert all("color:#d1495b'>■" in trace.hovertemplate for trace in figure.data)
+    assert all("color:#ff9f1c'>━●━" in trace.hovertemplate for trace in figure.data)
+    assert all("Mô tả" not in trace.hovertemplate for trace in figure.data)
+    assert list(figure.data[0].customdata[0]) == [
         "Camera", "100", "8", "8.00%",
     ]
 
@@ -122,12 +117,13 @@ def test_period_combo_compares_calendar_weeks_instead_of_daily_points():
     assert list(summary["total_sum"]) == [300, 100]
     assert list(summary["error_sum"]) == [30, 5]
     assert list(summary["error_rate"]) == [10, 5]
-    assert [len(trace.x) for trace in figure.data] == [2, 2, 2, 2]
+    assert [len(trace.x) for trace in figure.data] == [2, 2, 2]
     assert list(figure.data[0].x) == ["Tuần 37/2026", "Tuần 38/2026"]
     assert figure.layout.xaxis.title.text == "Tuần"
     assert figure.layout.barmode == "overlay"
     assert figure.data[0].width == figure.data[1].width
-    assert figure.layout.xaxis.unifiedhovertitle.text == "<b>%{x}</b>"
+    assert figure.layout.hovermode == "closest"
+    assert all("Khoảng: %{customdata[4]}" in trace.hovertemplate for trace in figure.data)
 
 
 def test_combo_hover_labels_inconsistent_positive_rate(sample_workbook):
@@ -164,7 +160,9 @@ def test_combo_hover_distinguishes_not_recorded_and_source_marker(sample_workboo
 
     figure = build_metric_combo_chart(item_data)
 
-    assert list(figure.data[-1].customdata[0]) == [
+    # The non-null Total point remains hoverable and carries the full tooltip
+    # row, while the null Error/Rate observations do not become click targets.
+    assert list(figure.data[0].customdata[0]) == [
         "Camera",
         "100",
         "—",
@@ -197,8 +195,8 @@ def test_period_statistics_calculates_sum_and_average_per_observed_day(sample_wo
     assert statistics.loc["Báo sai/Lỗi", "average_per_day"] == 7
     assert statistics.loc["Tổng số", "eligible_day_count"] == 2
     assert statistics.loc["Tổng số", "period_label"] == "Tuần 37/2026"
-    assert [trace.type for trace in figure.data] == ["bar", "bar", "scatter", "scatter", "scatter"]
-    assert {trace.name for trace in figure.data[:-1]} == {
+    assert [trace.type for trace in figure.data] == ["bar", "bar", "scatter", "scatter"]
+    assert {trace.name for trace in figure.data} == {
         "SUM · Tổng số",
         "AVG/ngày · Tổng số",
         "SUM · Báo sai/Lỗi",
@@ -211,18 +209,17 @@ def test_period_statistics_calculates_sum_and_average_per_observed_day(sample_wo
     assert figure.data[0].yaxis == "y"
     assert figure.data[1].yaxis == "y"
     assert figure.data[2].yaxis == "y2"
-    assert all(trace.hoverinfo == "skip" for trace in figure.data[:-1])
-    assert figure.data[-1].name == ""
-    assert figure.data[-1].showlegend is False
-    assert "Mô tả" not in figure.data[-1].hovertemplate
-    assert "color:#8ecae6'>■" in figure.data[-1].hovertemplate
-    assert "color:#d1495b'>■" in figure.data[-1].hovertemplate
-    assert "color:#0077b6'>━●━" in figure.data[-1].hovertemplate
-    assert "color:#9d0208'>━●━" in figure.data[-1].hovertemplate
-    assert list(figure.data[-1].customdata[0]) == [
+    assert figure.layout.hovermode == "closest"
+    assert all(trace.name for trace in figure.data)
+    assert all("Mô tả" not in trace.hovertemplate for trace in figure.data)
+    assert all("color:#8ecae6'>■" in trace.hovertemplate for trace in figure.data)
+    assert all("color:#d1495b'>■" in trace.hovertemplate for trace in figure.data)
+    assert all("color:#0077b6'>━●━" in trace.hovertemplate for trace in figure.data)
+    assert all("color:#9d0208'>━●━" in trace.hovertemplate for trace in figure.data)
+    assert list(figure.data[0].customdata[0]) == [
         "220", "14", "110", "7", "2/2", "12/09–13/09",
     ]
-    assert "Khoảng tuần: %{customdata[5]}" in figure.data[-1].hovertemplate
+    assert all("Khoảng tuần: %{customdata[5]}" in trace.hovertemplate for trace in figure.data)
 
 
 def test_period_statistics_mode_selection_and_source_marker_denominator(sample_workbook):
@@ -251,9 +248,9 @@ def test_period_statistics_mode_selection_and_source_marker_denominator(sample_w
     assert statistics.loc["Báo sai/Lỗi", "period_sum"] == 6
     assert statistics.loc["Báo sai/Lỗi", "eligible_day_count"] == 1
     assert statistics.loc["Báo sai/Lỗi", "average_per_day"] == 6
-    assert len(sum_only.data) == 3
-    assert all(trace.type == "bar" for trace in sum_only.data[:-1])
-    assert "AVG/ngày" not in sum_only.data[-1].hovertemplate
+    assert len(sum_only.data) == 2
+    assert all(trace.type == "bar" for trace in sum_only.data)
+    assert all("AVG/ngày" not in trace.hovertemplate for trace in sum_only.data)
 
 
 def test_period_statistics_excludes_days_without_total_observation():

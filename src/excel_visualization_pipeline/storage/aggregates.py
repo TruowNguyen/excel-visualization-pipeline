@@ -26,6 +26,19 @@ def register_aggregate_snapshots(
     if not specifications:
         return []
     initialize_database(db_path)
+    fingerprints = [
+        content_hash({
+            "sourceKey": source_key,
+            "project": project_label,
+            "context": spec["context"],
+            "result": spec["result"],
+            "aggregation": spec["aggregation"],
+            "sourceRunId": spec.get("sourceRunId"),
+            "members": spec["members"],
+            "calculatorVersion": 1,
+        })
+        for spec in specifications
+    ]
     refs: list[str] = []
     with connect_database(db_path) as connection:
         connection.execute("BEGIN IMMEDIATE")
@@ -36,36 +49,51 @@ def register_aggregate_snapshots(
             raise LineageNotFoundError("Nguồn dữ liệu không tồn tại.")
         source_id = int(source["source_id"])
         try:
-            for spec in specifications:
-                members = spec["members"]
-                for member in members:
-                    evidence = connection.execute(
-                        """
-                        SELECT 1 FROM observation_lineage_snapshots ols
-                        JOIN observations o ON o.observation_id = ols.observation_id
-                        WHERE ols.lineage_ref = ? AND o.source_id = ?
-                        """,
-                        (member["lineageRef"], source_id),
-                    ).fetchone()
-                    if evidence is None:
-                        raise LineageNotFoundError("Aggregate chứa lineage không hợp lệ.")
-                fingerprint = content_hash({
-                    "sourceKey": source_key,
-                    "project": project_label,
-                    "context": spec["context"],
-                    "result": spec["result"],
-                    "aggregation": spec["aggregation"],
-                    "sourceRunId": spec.get("sourceRunId"),
-                    "members": members,
-                    "calculatorVersion": 1,
-                })
-                existing = connection.execute(
-                    "SELECT aggregate_ref FROM aggregate_snapshots WHERE fingerprint = ?",
-                    (fingerprint,),
-                ).fetchone()
-                if existing is not None:
-                    refs.append(str(existing["aggregate_ref"]))
+            existing_by_fingerprint: dict[str, str] = {}
+            unique_fingerprints = list(dict.fromkeys(fingerprints))
+            for offset in range(0, len(unique_fingerprints), 500):
+                batch = unique_fingerprints[offset:offset + 500]
+                placeholders = ",".join("?" for _ in batch)
+                rows = connection.execute(
+                    f"SELECT fingerprint, aggregate_ref FROM aggregate_snapshots WHERE fingerprint IN ({placeholders})",
+                    batch,
+                ).fetchall()
+                existing_by_fingerprint.update(
+                    {str(row["fingerprint"]): str(row["aggregate_ref"]) for row in rows}
+                )
+
+            missing_pairs = [
+                (spec, fingerprint)
+                for spec, fingerprint in zip(specifications, fingerprints)
+                if fingerprint not in existing_by_fingerprint
+            ]
+            lineage_refs = list(dict.fromkeys(
+                str(member["lineageRef"])
+                for spec, _ in missing_pairs
+                for member in spec["members"]
+            ))
+            valid_refs: set[str] = set()
+            for offset in range(0, len(lineage_refs), 500):
+                batch = lineage_refs[offset:offset + 500]
+                placeholders = ",".join("?" for _ in batch)
+                rows = connection.execute(
+                    f"""
+                    SELECT ols.lineage_ref FROM observation_lineage_snapshots ols
+                    JOIN observations o ON o.observation_id = ols.observation_id
+                    WHERE o.source_id = ? AND ols.lineage_ref IN ({placeholders})
+                    """,
+                    [source_id, *batch],
+                ).fetchall()
+                valid_refs.update(str(row["lineage_ref"]) for row in rows)
+            if len(valid_refs) != len(lineage_refs):
+                raise LineageNotFoundError("Aggregate chứa lineage không hợp lệ.")
+
+            for spec, fingerprint in zip(specifications, fingerprints):
+                existing_ref = existing_by_fingerprint.get(fingerprint)
+                if existing_ref is not None:
+                    refs.append(existing_ref)
                     continue
+                members = spec["members"]
                 aggregate_ref = f"agg_{uuid.uuid4().hex}"
                 cursor = connection.execute(
                     """
@@ -98,6 +126,7 @@ def register_aggregate_snapshots(
                             member.get("note"),
                         ),
                     )
+                existing_by_fingerprint[fingerprint] = aggregate_ref
                 refs.append(aggregate_ref)
             connection.execute("COMMIT")
         except Exception:

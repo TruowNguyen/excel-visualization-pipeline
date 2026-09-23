@@ -1,7 +1,16 @@
 import './style.css';
-import { clearChartSelection, renderChart, selectChartPoint } from './chart';
+import { accessibleChartPoints } from './chart-accessibility';
+import { clearChartSelection, purgeChart, renderChart, selectChartPoint } from './chart';
 import { entityCardTitle, entityTrail } from './presentation';
 import type { ChartPointSelection, Entity, Figure } from './types';
+import {
+  beginWorkspaceTrace,
+  finishWorkspaceTrace,
+  noteWorkspaceInteraction,
+  recordFingerprint,
+  scheduleFeedbackPaint,
+  type WorkspacePerformanceTrace,
+} from './workspace-performance';
 
 type Project = { label: string; records: number; chartable: number; entities: number; units: number; minDate: string | null; maxDate: string | null };
 type Chart = { entityId: string; title: string; figure: Figure };
@@ -78,6 +87,7 @@ type SelectionOrigin = {
   plotKey: string; tab: Tab; entityRef: string; seriesName: string; observedDate: string;
   displayedValue: string; curveNumber: number; pointNumber: number;
   viewport?: { xRange?: unknown[]; yRange?: unknown[]; y2Range?: unknown[] };
+  focusTargetId?: string;
 };
 type InvestigationSelection = { kind: 'exact-observation' | 'aggregate'; aggregateRef: string | null; observationRef: string | null; lineageRef: string | null; origin: SelectionOrigin };
 type InvestigationState =
@@ -130,6 +140,10 @@ let message = '';
 let bootstrapLoaded = false;
 let bootstrapError = '';
 let workspaceError = '';
+let workspaceProject = '';
+let workspaceView: 'overview' | 'statistics' | 'comparison' | 'audit' | '' = '';
+let displayedFilterLabel = '';
+let lastWorkspaceRequestKey = '';
 let historyError = '';
 let request: AbortController | null = null;
 let investigationRequest: AbortController | null = null;
@@ -139,6 +153,10 @@ let investigationLiveMessage = '';
 let aggregateParent: Extract<InvestigationState, { status: 'aggregate-ready' }> | null = null;
 let revisionHistory: { status: 'loading' | 'ready' | 'error'; observationRef: string; data?: RevisionHistory; error?: string } | null = null;
 let importDetail: { status: 'loading' | 'ready' | 'error'; importRef: string; data?: ImportRun; error?: string } | null = null;
+const accessiblePointRegistry = new Map<string, { plotKey: string; entityRef: string; point: ChartPointSelection }>();
+const chartFingerprints = new Map<string, string>();
+let pendingChartRenders: Promise<void>[] = [];
+let renderingWorkspaceTrace: WorkspacePerformanceTrace | null = null;
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const SIDEBAR_KEY = 'excel_visualization_pipeline.sidebar_collapsed.v1';
 let sidebarCollapsed = false;
@@ -154,15 +172,27 @@ function restorePendingFocus(): void {
   const id = pendingFocusId; pendingFocusId = '';
   requestAnimationFrame(() => document.getElementById(id)?.focus());
 }
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
+async function api<T>(path: string, init?: RequestInit, trace?: WorkspacePerformanceTrace): Promise<T> {
+  if (trace) trace.requestDispatchedAt = performance.now();
   const response = await fetch(`/api${path}`, init);
+  if (trace) {
+    trace.responseHeadersAt = performance.now();
+    trace.backendTiming = response.headers.get('Server-Timing') || undefined;
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const detail = body.detail;
     const detailMessage = typeof detail === 'object' && detail && typeof detail.message === 'string' ? detail.message : null;
     throw new Error(typeof detail === 'string' ? detail : detailMessage || `HTTP ${response.status}`);
   }
-  return response.json() as Promise<T>;
+  if (!trace) return response.json() as Promise<T>;
+  const body = await response.text();
+  trace.responseBodyAt = performance.now();
+  const parseStarted = performance.now();
+  const result = JSON.parse(body) as T;
+  trace.jsonParseMs = performance.now() - parseStarted;
+  trace.dataReadyAt = performance.now();
+  return result;
 }
 function select(options: { value: string; label: string }[], current: string): string {
   return options.map(option => `<option value="${esc(option.value)}" ${option.value === current ? 'selected' : ''}>${esc(option.label)}</option>`).join('');
@@ -171,17 +201,18 @@ function currentProject(): Project | undefined { return projects.find(project =>
 function renderShell(): void {
   app.innerHTML = `<div class="shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}">
     <aside class="sidebar">
-      <div class="brand"><div class="brand-mark">CX</div><div class="brand-copy"><strong>CX Platform</strong><span>Analytics workspace</span></div><button class="sidebar-toggle" data-action="toggle-sidebar" aria-label="Thu gọn hoặc mở sidebar" title="Thu gọn hoặc mở sidebar">☰</button></div>
+      <div class="brand"><div class="brand-mark">CX</div><div class="brand-copy"><strong>Automated CX Report</strong><span>Analytics workspace</span></div><button class="sidebar-toggle" data-action="toggle-sidebar" aria-label="Thu gọn hoặc mở sidebar" title="Thu gọn hoặc mở sidebar">☰</button></div>
       <div class="side-scroll"><div id="side-filters"></div></div>
     <div class="side-bottom"><span class="status-dot"></span><span class="status-copy">Kho dữ liệu nội bộ</span> <small>v1.0 · Internal</small></div>
     </aside>
-    <div class="main-column"><header class="topbar"><div class="breadcrumb">Không gian làm việc <span>/</span> <strong>Analytics</strong></div><div class="top-actions"><span class="environment">INTERNAL</span><div class="avatar">CX</div></div></header>
+    <div class="main-column"><header class="topbar"><div class="breadcrumb">Không gian làm việc <span aria-hidden="true">/</span> <strong>Analytics</strong></div><div class="top-actions"><span class="environment">INTERNAL</span><div class="avatar">CX</div></div></header>
     <main class="workspace"><div id="workspace"></div></main></div>
     <aside id="investigation-drawer" class="investigation-drawer" aria-hidden="true"></aside>
   </div>`;
 }
 function renderSidebar(): void {
   const root = document.querySelector<HTMLDivElement>('#side-filters')!;
+  const activeField = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.field : undefined;
   const project = currentProject();
   root.innerHTML = `<div class="side-heading">Dự án & bộ lọc</div>
     <label class="field"><span>Dự án</span><select data-field="project">${select(projects.map(p => ({ value: p.label, label: p.label })), state.project)}</select></label>
@@ -199,6 +230,7 @@ function renderSidebar(): void {
       <label class="field"><span>Phạm vi</span><select data-field="scope">${select([{ value: 'node', label: 'Entity đã chọn' }, { value: 'children', label: 'Entity con trực tiếp' }], state.scope)}</select></label>
     </div>
     <div class="side-tip"><span>✦</span><strong>Bộ lọc được giữ khi tải lại trang</strong><p>Thiết lập chỉ lưu trong thẻ trình duyệt này, không xuất hiện trên đường dẫn.</p></div>`;
+  if (activeField) requestAnimationFrame(() => root.querySelector<HTMLElement>(`[data-field="${activeField}"]`)?.focus());
 }
 function header(title: string, subtitle: string): string {
   return `<div class="page-head"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><div class="head-actions"><button class="ghost" data-action="refresh">↻ Làm mới dữ liệu</button>${state.project ? `<a class="primary" href="/api/projects/${encodeURIComponent(state.project)}/export.csv">↓ Tải dữ liệu CSV</a>` : ''}</div></div>`;
@@ -447,7 +479,15 @@ async function loadImport(importRef: string): Promise<void> {
   if (investigation.status !== 'closed') renderInvestigation();
 }
 
-function openInvestigation(plotKey: string, entityRef: string, point: ChartPointSelection): void {
+function updateAccessiblePointSelection(plotKey: string, selectedKey: string | null): void {
+  document.querySelectorAll<HTMLButtonElement>(`[data-chart-point][data-plot-key="${plotKey}"]`).forEach(button => {
+    const selected = selectedKey !== null && button.dataset.pointKey === selectedKey;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+}
+
+function openInvestigation(plotKey: string, entityRef: string, point: ChartPointSelection, focusTargetId?: string): void {
   const plot = document.querySelector<HTMLElement>(`[data-plot="${plotKey}"]`);
   if (!plot) return;
   const selection: InvestigationSelection = {
@@ -460,10 +500,12 @@ function openInvestigation(plotKey: string, entityRef: string, point: ChartPoint
       observedDate: String(point.x).slice(0, 10), displayedValue: String(point.y ?? '—'),
       curveNumber: point.curveNumber, pointNumber: point.pointNumber,
       viewport: selectionViewport(plot),
+      focusTargetId,
     },
   };
   aggregateParent = null; revisionHistory = null; importDetail = null;
   selectChartPoint(plot, point.curveNumber, point.pointNumber);
+  updateAccessiblePointSelection(plotKey, `${point.curveNumber}:${point.pointNumber}`);
   void loadProvenance(selection);
 }
 
@@ -488,7 +530,12 @@ function returnToChart(): void {
   const selection = auditFocus.selection;
   auditFocus = null;
   state.tab = selection.origin.tab; save(); renderMain(); renderInvestigation();
-  requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-plot="${selection.origin.plotKey}"]`)?.focus());
+  requestAnimationFrame(() => {
+    const target = selection.origin.focusTargetId
+      ? document.getElementById(selection.origin.focusTargetId)
+      : document.querySelector<HTMLElement>(`[data-plot="${selection.origin.plotKey}"]`);
+    target?.focus();
+  });
 }
 
 async function copyInvestigationValue(kind: 'cell' | 'value'): Promise<void> {
@@ -504,27 +551,98 @@ async function copyInvestigationValue(kind: 'cell' | 'value'): Promise<void> {
 }
 function renderMain(): void {
   const root = document.querySelector<HTMLDivElement>('#workspace')!;
+  disposeCharts(root);
   const project = currentProject();
   const chosenTab = tabs.find(tab => tab.key === state.tab)!;
   const trail = entityTrail(entities, state.entity);
   root.innerHTML = `<nav class="tabbar" aria-label="Tính năng workspace">${tabs.map(tab => `<button class="tab ${tab.key === state.tab ? 'active' : ''}" data-tab="${tab.key}" aria-current="${tab.key === state.tab ? 'page' : 'false'}"><span>${tab.icon}</span>${tab.label}</button>`).join('')}</nav>
     ${header(state.project || 'Không gian phân tích', project ? `${fmt(project.records)} quan sát đã lưu · ${fmt(project.chartable)} quan sát có thể vẽ` : bootstrapError ? 'Chưa kết nối được kho dữ liệu.' : bootstrapLoaded ? 'Chưa có workbook nào được nhập.' : 'Đang kiểm tra dữ liệu…')}
-    ${trail.length ? `<div class="hierarchy-context"><span class="context-label">Vị trí trong hierarchy</span><div class="entity-breadcrumb" aria-label="Đường dẫn entity">${trail.map((entity, index) => `<span class="crumb ${index === trail.length - 1 ? 'current' : ''}">${esc(entity.entity_label)}</span>${index < trail.length - 1 ? '<span class="crumb-separator" aria-hidden="true">›</span>' : ''}`).join('')}</div></div>` : ''}
-    ${message ? `<div class="notice">${esc(message)}</div>` : ''}
+    <div id="workspace-hierarchy">${hierarchyMarkup(trail)}</div>
+    <div id="workspace-message">${message ? `<div class="notice">${esc(message)}</div>` : ''}</div>
     ${project ? `<div class="kpi-grid">
       <div class="kpi"><div class="kpi-icon violet">◈</div><span>DỰ ÁN</span><strong>${esc(project.label)}</strong><small>Đang xem</small></div>
       <div class="kpi"><div class="kpi-icon blue">◇</div><span>ENTITY</span><strong>${fmt(project.entities)}</strong><small>Trong cây phân cấp</small></div>
       <div class="kpi"><div class="kpi-icon teal">▣</div><span>ĐƠN VỊ</span><strong>${fmt(project.units)}</strong><small>Đơn vị của entity</small></div>
       <div class="kpi"><div class="kpi-icon amber">▤</div><span>QUAN SÁT</span><strong>${fmt(project.records)}</strong><small>Đã lưu, gồm cả ô không vẽ được</small></div>
     </div>` : ''}
-    <div class="content-card"><div class="tab-content"><div class="section-title"><div><h2>${chosenTab.label}</h2></div>${loading ? '<span class="loading">Đang cập nhật biểu đồ…</span>' : ''}</div><div id="tab-body"></div></div></div>`;
+    <div class="content-card" aria-busy="${loading}"><div class="tab-content"><div class="section-title"><div><h2>${chosenTab.label}</h2></div><span id="workspace-loading" class="loading" ${loading ? '' : 'hidden'}>Đang cập nhật biểu đồ…</span></div><div id="workspace-request-status" class="workspace-request-status" role="status" aria-live="polite" aria-atomic="true"></div><div id="tab-body"></div></div></div>`;
   renderTab();
+  updateWorkspaceRequestStatus();
 }
-function chartCard(chart: Chart, index: number, section: string): string {
+
+function hierarchyMarkup(trail = entityTrail(entities, state.entity)): string {
+  return trail.length ? `<div class="hierarchy-context"><span class="context-label">Vị trí trong hierarchy</span><div class="entity-breadcrumb" aria-label="Đường dẫn entity">${trail.map((entity, index) => `<span class="crumb ${index === trail.length - 1 ? 'current' : ''}">${esc(entity.entity_label)}</span>${index < trail.length - 1 ? '<span class="crumb-separator" aria-hidden="true">›</span>' : ''}`).join('')}</div></div>` : '';
+}
+
+function updateWorkspaceChrome(): void {
+  const project = currentProject();
+  const heading = document.querySelector<HTMLElement>('.page-head h1');
+  const subtitle = document.querySelector<HTMLElement>('.page-head p');
+  if (heading) heading.textContent = state.project || 'Không gian phân tích';
+  if (subtitle) subtitle.textContent = project
+    ? `${fmt(project.records)} quan sát đã lưu · ${fmt(project.chartable)} quan sát có thể vẽ`
+    : bootstrapError ? 'Chưa kết nối được kho dữ liệu.' : bootstrapLoaded ? 'Chưa có workbook nào được nhập.' : 'Đang kiểm tra dữ liệu…';
+  const hierarchy = document.querySelector<HTMLElement>('#workspace-hierarchy');
+  if (hierarchy) hierarchy.innerHTML = hierarchyMarkup();
+  const messageRoot = document.querySelector<HTMLElement>('#workspace-message');
+  if (messageRoot) messageRoot.innerHTML = message ? `<div class="notice">${esc(message)}</div>` : '';
+}
+
+function updateWorkspaceRequestStatus(): void {
+  const card = document.querySelector<HTMLElement>('.content-card');
+  card?.setAttribute('aria-busy', String(loading));
+  const indicator = document.querySelector<HTMLElement>('#workspace-loading');
+  if (indicator) indicator.hidden = !loading;
+  const status = document.querySelector<HTMLElement>('#workspace-request-status');
+  if (!status) return;
+  status.classList.toggle('error', Boolean(workspaceError));
+  status.innerHTML = workspaceError && workspace
+    ? `<div><strong>Chưa áp dụng được bộ lọc mới.</strong> Biểu đồ vẫn hiển thị ${esc(displayedFilterLabel || 'kết quả thành công gần nhất')}. ${esc(workspaceError)}</div><button class="ghost" data-action="retry-workspace">Thử lại</button>`
+    : loading && workspace
+      ? `<div><strong>Đang áp dụng bộ lọc đã chọn.</strong> Trong lúc chờ, biểu đồ vẫn hiển thị ${esc(displayedFilterLabel || 'kết quả trước đó')}.</div>`
+      : loading ? '<span class="sr-only">Đang cập nhật dữ liệu biểu đồ.</span>' : '';
+}
+
+function workspaceFilterLabel(value: Workspace): string {
+  const entity = entities.find(item => item.entity_id === value.selectedEntity)?.entity_label || value.selectedEntity;
+  const scope = state.scope === 'children' ? 'các entity con' : entity;
+  return `${scope}, ${dateLabel(value.window.start)}–${dateLabel(value.window.end)}`;
+}
+
+function disposeCharts(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>('[data-plot]').forEach(element => {
+    const key = element.dataset.plot;
+    if (key) chartFingerprints.delete(key);
+    purgeChart(element);
+  });
+}
+function chartKeyboardLayer(figure: Figure, plotKey: string, entityRef: string): string {
+  const points = accessibleChartPoints(figure);
+  if (!points.length) return '<p class="chart-keyboard-empty">Biểu đồ này chưa có điểm dữ liệu hỗ trợ điều tra bằng bàn phím.</p>';
+  const selected = investigationSelection();
+  const keepOpen = selected?.origin.plotKey === plotKey && Boolean(selected.origin.focusTargetId);
+  const hintId = `chart-keyboard-hint-${plotKey}`;
+  const buttons = points.map(item => {
+    const registryKey = `${plotKey}:${item.key}`;
+    const id = `chart-point-${plotKey}-${item.key.replace(':', '-')}`;
+    accessiblePointRegistry.set(registryKey, { plotKey, entityRef, point: item.selection });
+    const activeRef = item.selection.aggregateRef || item.selection.observationRef;
+    const selectedRef = selected?.aggregateRef || selected?.observationRef;
+    const isSelected = selected?.origin.plotKey === plotKey && activeRef !== null && activeRef === selectedRef;
+    return `<li><button id="${esc(id)}" class="chart-point-option ${isSelected ? 'selected' : ''}" data-action="open-chart-point" data-chart-point data-plot-key="${esc(plotKey)}" data-point-key="${esc(item.key)}" data-registry-key="${esc(registryKey)}" aria-pressed="${isSelected}" ${item.hasProvenance ? '' : 'data-lineage-unavailable="true"'}>${esc(item.label)}</button></li>`;
+  }).join('');
+  return `<details class="chart-keyboard" ${keepOpen ? 'open' : ''}><summary>Điều tra điểm bằng bàn phím <span>${fmt(points.length)} điểm</span></summary><p id="${esc(hintId)}">Dùng Tab để chọn điểm. Nhấn Enter hoặc Space để mở nguồn dữ liệu.</p><ul class="chart-point-list" aria-describedby="${esc(hintId)}">${buttons}</ul></details>`;
+}
+
+function chartPlotKey(section: string, entityId: string): string {
+  return `${section}-${encodeURIComponent(entityId)}`;
+}
+function chartCard(chart: Chart, section: string): string {
   const entity = entities.find(item => item.entity_id === chart.entityId);
   const path = entityTrail(entities, chart.entityId).map(item => item.entity_label).join(' / ');
   const metadata = `${path}${entity?.effective_unit ? ` · Đơn vị: ${entity.effective_unit}` : ''}`;
-  return `<article class="chart-card"><div class="card-top"><div><h3>${esc(entityCardTitle(entity, chart.title))}</h3><span>${esc(metadata)}</span></div><span class="pill">Theo bộ lọc</span></div><div class="plot" data-plot="${section}-${index}" tabindex="0" aria-label="Biểu đồ ${esc(entityCardTitle(entity, chart.title))}"></div></article>`;
+  const plotKey = chartPlotKey(section, chart.entityId);
+  return `<article class="chart-card" data-chart-key="${esc(plotKey)}"><div class="card-top"><div><h3>${esc(entityCardTitle(entity, chart.title))}</h3><span>${esc(metadata)}</span></div><span class="pill">Theo bộ lọc</span></div><div class="plot" data-plot="${esc(plotKey)}" tabindex="0" aria-label="Biểu đồ ${esc(entityCardTitle(entity, chart.title))}"></div>${chartKeyboardLayer(chart.figure, plotKey, chart.entityId)}</article>`;
 }
 function hasSiblingCharts(charts: Chart[]): boolean {
   return state.scope === 'children' && (workspace?.scopeIds.length || 0) > 1 && charts.length > 1;
@@ -532,9 +650,100 @@ function hasSiblingCharts(charts: Chart[]): boolean {
 function statePanel(title: string, detail: string, retry = false, retryAction = 'refresh'): string {
   return `<div class="empty ${retry ? 'state-error' : ''}" role="${retry ? 'alert' : 'status'}"><h3>${esc(title)}</h3><p>${esc(detail)}</p>${retry ? `<button class="ghost" data-action="${retryAction}">Thử tải lại</button>` : ''}</div>`;
 }
+
+function analyticsHost(body: HTMLDivElement, tab: Tab, preamble: string): HTMLDivElement {
+  if (body.dataset.workspaceTab !== tab) {
+    disposeCharts(body);
+    body.innerHTML = '<div data-analytics-preamble></div><div data-chart-host></div>';
+    body.dataset.workspaceTab = tab;
+  }
+  const preambleRoot = body.querySelector<HTMLDivElement>('[data-analytics-preamble]')!;
+  const activeField = preambleRoot.contains(document.activeElement) && document.activeElement instanceof HTMLElement
+    ? document.activeElement.dataset.field : undefined;
+  preambleRoot.innerHTML = preamble;
+  if (activeField) requestAnimationFrame(() => preambleRoot.querySelector<HTMLElement>(`[data-field="${activeField}"]`)?.focus());
+  return body.querySelector<HTMLDivElement>('[data-chart-host]')!;
+}
+
+function replaceChartCardPresentation(card: HTMLElement, markup: string): void {
+  const template = document.createElement('template');
+  template.innerHTML = markup.trim();
+  const fresh = template.content.firstElementChild as HTMLElement;
+  const currentTop = card.querySelector('.card-top');
+  const freshTop = fresh.querySelector('.card-top');
+  if (currentTop && freshTop) currentTop.replaceWith(freshTop);
+  const currentKeyboard = card.querySelector('.chart-keyboard, .chart-keyboard-empty');
+  const freshKeyboard = fresh.querySelector('.chart-keyboard, .chart-keyboard-empty');
+  if (currentKeyboard && freshKeyboard) currentKeyboard.replaceWith(freshKeyboard);
+  else if (!currentKeyboard && freshKeyboard) card.append(freshKeyboard);
+  const plot = card.querySelector<HTMLElement>('[data-plot]');
+  const freshPlot = fresh.querySelector<HTMLElement>('[data-plot]');
+  if (plot && freshPlot) plot.setAttribute('aria-label', freshPlot.getAttribute('aria-label') || 'Biểu đồ');
+}
+
+function reconcileChartCollection(host: HTMLDivElement, charts: Chart[], section: 'overview' | 'statistics'): void {
+  if (!charts.length) {
+    disposeCharts(host);
+    host.innerHTML = empty(section === 'statistics' ? 'Không có kỳ dữ liệu phù hợp.' : 'Không có dữ liệu trong khoảng thời gian đã chọn.');
+    return;
+  }
+  let grid = host.querySelector<HTMLDivElement>(':scope > .chart-grid');
+  if (!grid) {
+    host.innerHTML = '<div class="chart-grid"></div>';
+    grid = host.querySelector<HTMLDivElement>(':scope > .chart-grid')!;
+  }
+  const previousGridClass = grid.className;
+  grid.className = `chart-grid ${hasSiblingCharts(charts) ? 'children-grid' : ''}`.trim();
+  const wanted = new Set(charts.map(chart => chartPlotKey(section, chart.entityId)));
+  grid.querySelectorAll<HTMLElement>(':scope > [data-chart-key]').forEach(card => {
+    const key = card.dataset.chartKey || '';
+    if (wanted.has(key)) return;
+    disposeCharts(card); card.remove(); chartFingerprints.delete(key);
+  });
+  charts.forEach((chart, index) => {
+    const key = chartPlotKey(section, chart.entityId);
+    const markup = chartCard(chart, section);
+    let card = Array.from(grid!.children).find(item => (item as HTMLElement).dataset.chartKey === key) as HTMLElement | undefined;
+    if (!card) {
+      const template = document.createElement('template'); template.innerHTML = markup.trim();
+      card = template.content.firstElementChild as HTMLElement;
+      grid!.insertBefore(card, grid!.children[index] || null);
+    } else {
+      replaceChartCardPresentation(card, markup);
+      if (grid!.children[index] !== card) grid!.insertBefore(card, grid!.children[index] || null);
+    }
+    draw(key, chart.figure, chart.entityId);
+  });
+  if (previousGridClass !== grid.className) requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+}
+
+function reconcileComparison(host: HTMLDivElement): void {
+  if (!workspace?.comparison) {
+    disposeCharts(host);
+    const candidates = workspace?.comparisonCandidates || [];
+    host.innerHTML = state.comparisonEntities.length >= 2
+      ? statePanel('Không tạo được biểu đồ so sánh', 'Các entity được chọn cần cùng đơn vị và có dữ liệu cho chỉ số, khoảng thời gian hiện tại.')
+      : statePanel('Chưa đủ entity để so sánh', candidates.length < 2 ? 'Không đủ entity có dữ liệu cho chỉ số và khoảng thời gian hiện tại. Hãy đổi bộ lọc.' : 'Chọn thêm entity cùng đơn vị; cần ít nhất 2 và tối đa 3 entity.');
+    return;
+  }
+  const keyboard = chartKeyboardLayer(workspace.comparison, 'comparison', 'comparison');
+  const markup = `<article class="chart-card" data-chart-key="comparison"><div class="card-top"><h3>So sánh ${esc(state.comparisonMetric)}</h3><span class="pill">Cùng đơn vị</span></div><div class="plot" data-plot="comparison" tabindex="0" aria-label="Biểu đồ so sánh ${esc(state.comparisonMetric)}"></div>${keyboard}</article>`;
+  let grid = host.querySelector<HTMLDivElement>(':scope > .chart-grid');
+  if (!grid) { host.innerHTML = '<div class="chart-grid one"></div>'; grid = host.querySelector<HTMLDivElement>(':scope > .chart-grid')!; }
+  let card = grid.querySelector<HTMLElement>(':scope > [data-chart-key="comparison"]');
+  if (!card) {
+    const template = document.createElement('template'); template.innerHTML = markup;
+    card = template.content.firstElementChild as HTMLElement; grid.replaceChildren(card);
+  } else replaceChartCardPresentation(card, markup);
+  const comparisonIdentity = `comparison:${state.comparisonMetric}:${[...state.comparisonEntities].sort().join(',')}`;
+  draw('comparison', workspace.comparison, 'comparison', comparisonIdentity);
+}
+
 function renderTab(): void {
   const body = document.querySelector<HTMLDivElement>('#tab-body');
   if (!body) return;
+  pendingChartRenders = [];
+  accessiblePointRegistry.clear();
   if (!bootstrapLoaded) { body.innerHTML = statePanel('Đang kiểm tra dữ liệu', 'Vui lòng chờ trong khi kết nối kho dữ liệu.'); return; }
   if (bootstrapError) {
     if (state.tab === 'import' && importResult) {
@@ -549,7 +758,12 @@ function renderTab(): void {
     if (state.tab === 'history') renderHistory(body);
     return;
   }
-  if (workspaceError && ['overview', 'statistics', 'comparison', 'audit'].includes(state.tab)) {
+  const analyticalTab = ['overview', 'statistics', 'comparison', 'audit'].includes(state.tab);
+  if (analyticalTab && workspaceView !== state.tab && !(state.tab === 'audit' && auditFocus)) {
+    body.innerHTML = statePanel('Đang tải dữ liệu', 'Đang chuẩn bị dữ liệu cho khu vực vừa chọn.');
+    return;
+  }
+  if (workspaceError && !workspace && ['overview', 'statistics', 'comparison', 'audit'].includes(state.tab)) {
     body.innerHTML = statePanel('Không tải được dữ liệu phân tích', `Bộ lọc được giữ nguyên. ${workspaceError} Thử tải lại khi máy chủ hoạt động.`, true);
     return;
   }
@@ -558,24 +772,22 @@ function renderTab(): void {
     return;
   }
   if (state.tab === 'overview') {
-    body.innerHTML = `<p class="section-desc">Biểu đồ Tổng số, Báo sai/Lỗi và % báo sai theo ${state.scope === 'children' ? 'từng entity con trực tiếp' : 'entity đã chọn'}.</p>${workspace?.overview.length ? `<div class="chart-grid ${hasSiblingCharts(workspace.overview) ? 'children-grid' : ''}">${workspace.overview.map((chart, i) => chartCard(chart, i, 'overview')).join('')}</div>` : empty('Không có dữ liệu trong khoảng thời gian đã chọn.')}`;
-    workspace?.overview.forEach((chart, i) => draw(`overview-${i}`, chart.figure, chart.entityId));
+    const host = analyticsHost(body, state.tab, `<p class="section-desc">Biểu đồ Tổng số, Báo sai/Lỗi và % báo sai theo ${state.scope === 'children' ? 'từng entity con trực tiếp' : 'entity đã chọn'}.</p>`);
+    reconcileChartCollection(host, workspace?.overview || [], 'overview');
   } else if (state.tab === 'statistics') {
-    body.innerHTML = `<div class="control-bar"><label>Nhóm theo<select data-field="statisticsGroup">${select([{value:'day',label:'Ngày'},{value:'week',label:'Tuần'},{value:'month',label:'Tháng'},{value:'quarter',label:'Quý'}], state.statisticsGroup)}</select></label>
+    const host = analyticsHost(body, state.tab, `<div class="control-bar"><label>Nhóm theo<select data-field="statisticsGroup">${select([{value:'day',label:'Ngày'},{value:'week',label:'Tuần'},{value:'month',label:'Tháng'},{value:'quarter',label:'Quý'}], state.statisticsGroup)}</select></label>
       <label>Hiển thị<select data-field="statisticsMode">${select([{value:'both',label:'SUM & AVG/ngày'},{value:'sum',label:'Chỉ SUM'},{value:'average',label:'Chỉ AVG/ngày'}], state.statisticsMode)}</select></label>
       <label>Phạm vi<select data-field="statisticsRange">${select([{value:'recent',label:'Các kỳ gần nhất'},{value:'all',label:'Toàn bộ dữ liệu'},{value:'custom',label:'Chọn khoảng kỳ'}], state.statisticsRange)}</select></label>
       ${state.statisticsRange === 'recent' ? `<label>Số kỳ<input data-field="statisticsCount" type="number" min="1" max="60" value="${state.statisticsCount}"></label>` : ''}
       ${state.statisticsRange === 'custom' ? `<label>Từ kỳ<input data-field="statisticsFrom" type="date" value="${esc(state.statisticsFrom)}"></label><label>Đến kỳ<input data-field="statisticsTo" type="date" value="${esc(state.statisticsTo)}"></label>` : ''}
       <label class="check"><input data-field="includeIncomplete" type="checkbox" ${state.includeIncomplete ? 'checked' : ''}> Kỳ chưa đầy đủ</label></div>
-      <p class="section-desc">SUM và AVG/ngày dùng toàn bộ lịch sử của entity, độc lập với khoảng ngày sidebar. ${workspace?.statisticsPeriods.length || 0} kỳ đang hiển thị.</p>
-      ${workspace?.statistics.length ? `<div class="chart-grid ${hasSiblingCharts(workspace.statistics) ? 'children-grid' : ''}">${workspace.statistics.map((chart, i) => chartCard(chart, i, 'statistics')).join('')}</div>` : empty('Không có kỳ dữ liệu phù hợp.')}`;
-    workspace?.statistics.forEach((chart, i) => draw(`statistics-${i}`, chart.figure, chart.entityId));
+      <p class="section-desc">SUM và AVG/ngày dùng toàn bộ lịch sử của entity, độc lập với khoảng ngày sidebar. ${workspace?.statisticsPeriods.length || 0} kỳ đang hiển thị.</p>`);
+    reconcileChartCollection(host, workspace?.statistics || [], 'statistics');
   } else if (state.tab === 'comparison') {
     const candidates = workspace?.comparisonCandidates || [];
-    body.innerHTML = `<div class="control-bar"><label>Chỉ số<select data-field="comparisonMetric">${select(['Tổng số','Báo sai/Lỗi','% báo sai'].map(value => ({value,label:value})), state.comparisonMetric)}</select></label><div class="comparison-hint">Chọn 2–3 entity có dữ liệu trong khoảng thời gian đang xem và cùng đơn vị. Tối đa 3 entity.</div></div>
-      <div class="entity-picks">${candidates.map(item => `<label class="entity-pick"><input type="checkbox" data-compare="${esc(item.entity_id)}" ${state.comparisonEntities.includes(item.entity_id) ? 'checked' : ''}><span>${esc(item.entity_label)}<small>${esc(item.effective_unit)}</small></span></label>`).join('')}</div>
-      ${workspace?.comparison ? `<div class="chart-grid one"><article class="chart-card"><div class="card-top"><h3>So sánh ${esc(state.comparisonMetric)}</h3><span class="pill">Cùng đơn vị</span></div><div class="plot" data-plot="comparison" tabindex="0" aria-label="Biểu đồ so sánh ${esc(state.comparisonMetric)}"></div></article></div>` : state.comparisonEntities.length >= 2 ? statePanel('Không tạo được biểu đồ so sánh', 'Các entity được chọn cần cùng đơn vị và có dữ liệu cho chỉ số, khoảng thời gian hiện tại.') : statePanel('Chưa đủ entity để so sánh', candidates.length < 2 ? 'Không đủ entity có dữ liệu cho chỉ số và khoảng thời gian hiện tại. Hãy đổi bộ lọc.' : 'Chọn thêm entity cùng đơn vị; cần ít nhất 2 và tối đa 3 entity.')}`;
-    if (workspace?.comparison) draw('comparison', workspace.comparison, 'comparison');
+    const host = analyticsHost(body, state.tab, `<div class="control-bar"><label>Chỉ số<select data-field="comparisonMetric">${select(['Tổng số','Báo sai/Lỗi','% báo sai'].map(value => ({value,label:value})), state.comparisonMetric)}</select></label><div class="comparison-hint">Chọn 2–3 entity có dữ liệu trong khoảng thời gian đang xem và cùng đơn vị. Tối đa 3 entity.</div></div>
+      <div class="entity-picks">${candidates.map(item => `<label class="entity-pick"><input type="checkbox" data-compare="${esc(item.entity_id)}" ${state.comparisonEntities.includes(item.entity_id) ? 'checked' : ''}><span>${esc(item.entity_label)}<small>${esc(item.effective_unit)}</small></span></label>`).join('')}</div>`);
+    reconcileComparison(host);
   } else if (state.tab === 'audit') {
     const audit = workspace?.audit;
     const columns = ['date','entity_path','metric_normalized','raw_value','display_value','chart_value','value_kind','sheet_name','cell_address','validation_status'];
@@ -593,7 +805,7 @@ function renderTab(): void {
   restorePendingFocus();
 }
 function empty(messageText: string): string { return `<div class="empty"><div class="empty-icon">▥</div><h3>${esc(messageText)}</h3><p>Thử đổi project, entity hoặc khoảng thời gian trong sidebar.</p></div>`; }
-function draw(key: string, figure: Figure, entityRef: string): void {
+function draw(key: string, figure: Figure, entityRef: string, chartIdentity = key): void {
   const element = document.querySelector<HTMLElement>(`[data-plot="${key}"]`);
   if (!element) return;
   const selection = investigationSelection();
@@ -607,13 +819,25 @@ function draw(key: string, figure: Figure, entityRef: string): void {
       yaxis2: { ...((figure.layout.yaxis2 as Record<string, unknown> | undefined) ?? {}), ...(viewport.y2Range ? { range: viewport.y2Range } : {}) },
     },
   } : figure;
-  renderChart(
+  const selectedRef = selection?.origin.plotKey === key ? aggregateParent?.selection.aggregateRef || selection.aggregateRef || selection.observationRef || undefined : undefined;
+  const height = element.closest('.children-grid') ? 380 : 420;
+  const fingerprintStarted = performance.now();
+  const fingerprint = JSON.stringify({ figure: prepared, selectedRef, height });
+  const unchanged = element.classList.contains('js-plotly-plot') && chartFingerprints.get(key) === fingerprint;
+  if (renderingWorkspaceTrace) recordFingerprint(renderingWorkspaceTrace, performance.now() - fingerprintStarted, !unchanged);
+  if (unchanged) return;
+  chartFingerprints.set(key, fingerprint);
+  const render = renderChart(
     element,
     prepared,
     point => openInvestigation(key, entityRef, point),
-    selection?.origin.plotKey === key ? aggregateParent?.selection.aggregateRef || selection.aggregateRef || selection.observationRef || undefined : undefined,
-    element.closest('.children-grid') ? 380 : 420,
+    selectedRef,
+    height,
+    `${state.project}:${chartIdentity}`,
   );
+  pendingChartRenders.push(render.catch(error => {
+    console.error(`Không thể cập nhật biểu đồ ${key}.`, error);
+  }));
 }
 function previewDestination(value: Preview): string {
   return value.manifest.projects?.join(', ') || currentProject()?.label || 'Chưa xác định';
@@ -722,13 +946,18 @@ async function loadEntities(): Promise<void> {
   entities = response.entities;
   if (!entities.some(entity => entity.entity_id === state.entity)) state.entity = '';
 }
-async function loadWorkspace(): Promise<void> {
+async function loadWorkspace(debounceMs = 0): Promise<void> {
   request?.abort();
   workspaceError = '';
   if (!state.project) { workspace = null; renderSidebar(); renderMain(); return; }
   const current = new AbortController(); request = current;
-  loading = true; renderSidebar(); renderMain();
+  const requestedView = ['overview', 'statistics', 'comparison', 'audit'].includes(state.tab)
+    ? state.tab as 'overview' | 'statistics' | 'comparison' | 'audit'
+    : 'overview';
+  const trace = beginWorkspaceTrace('workspace-load');
+  loading = true; updateWorkspaceRequestStatus(); scheduleFeedbackPaint(trace);
   const params = new URLSearchParams({
+    view: requestedView,
     mode: state.mode, count: String(state.count), scope: state.scope,
     statistics_group: state.statisticsGroup, statistics_mode: state.statisticsMode,
     statistics_count: String(state.statisticsRange === 'all' ? 3660 : state.statisticsCount),
@@ -741,20 +970,54 @@ async function loadWorkspace(): Promise<void> {
     if (state.statisticsFrom) params.set('statistics_from', state.statisticsFrom);
     if (state.statisticsTo) params.set('statistics_to', state.statisticsTo);
   }
+  const requestKey = `${state.project}?${params.toString()}`;
   try {
-    workspace = await api<Workspace>(`/projects/${encodeURIComponent(state.project)}/workspace?${params}`, { signal: current.signal });
-    if (current !== request) return;
-    state.entity = workspace.selectedEntity;
-    loading = false; workspaceError = ''; message = ''; save(); renderSidebar(); renderMain();
+    if (debounceMs > 0) await new Promise(resolve => setTimeout(resolve, debounceMs));
+    if (current.signal.aborted || current !== request) { void finishWorkspaceTrace(trace, 'aborted'); return; }
+    if (workspace && workspaceView === requestedView && !workspaceError && requestKey === lastWorkspaceRequestKey) {
+      loading = false; request = null; updateWorkspaceRequestStatus();
+      await finishWorkspaceTrace(trace, 'success'); return;
+    }
+    const result = await api<Workspace>(`/projects/${encodeURIComponent(state.project)}/workspace?${params}`, { signal: current.signal }, trace);
+    if (current !== request) { void finishWorkspaceTrace(trace, 'aborted'); return; }
+    workspace = result; workspaceProject = state.project; workspaceView = requestedView; state.entity = result.selectedEntity;
+    displayedFilterLabel = workspaceFilterLabel(result); lastWorkspaceRequestKey = requestKey;
+    workspaceError = ''; message = ''; save();
+    renderSidebar(); updateWorkspaceChrome();
+    const reconcileStarted = performance.now();
+    renderingWorkspaceTrace = trace;
+    renderTab();
+    renderingWorkspaceTrace = null;
+    trace.reconciliationMs = performance.now() - reconcileStarted;
+    const renders = [...pendingChartRenders];
+    const plotlyStarted = performance.now();
+    await Promise.all(renders);
+    trace.plotlyMs = performance.now() - plotlyStarted;
+    if (current !== request) { void finishWorkspaceTrace(trace, 'aborted'); return; }
+    loading = false; request = null; updateWorkspaceRequestStatus();
+    await finishWorkspaceTrace(trace, 'success');
   } catch (error) {
-    if (current.signal.aborted) return;
-    loading = false; workspace = null; workspaceError = (error as Error).message; renderSidebar(); renderMain();
+    if (current.signal.aborted || current !== request) {
+      void finishWorkspaceTrace(trace, 'aborted'); return;
+    }
+    loading = false; workspaceError = (error as Error).message; request = null;
+    if (workspace) updateWorkspaceRequestStatus();
+    else { renderSidebar(); renderMain(); }
+    await finishWorkspaceTrace(trace, 'error', workspaceError);
   }
 }
 async function refreshProject(): Promise<void> {
-  workspace = null;
+  request?.abort();
+  const changingProject = workspaceProject !== state.project;
+  if (changingProject) {
+    workspace = null; workspaceView = ''; displayedFilterLabel = ''; lastWorkspaceRequestKey = ''; workspaceError = ''; chartFingerprints.clear();
+    renderSidebar(); renderMain();
+  }
   try { await loadEntities(); await loadWorkspace(); }
-  catch (error) { workspaceError = (error as Error).message; renderMain(); }
+  catch (error) {
+    workspaceError = (error as Error).message;
+    if (workspace) updateWorkspaceRequestStatus(); else renderMain();
+  }
 }
 async function refreshHistory(): Promise<void> {
   historyError = ''; historyLoading = true; if (state.tab === 'history') renderTab();
@@ -763,6 +1026,7 @@ async function refreshHistory(): Promise<void> {
   historyLoading = false; if (state.tab === 'history') renderTab();
 }
 app.addEventListener('change', event => {
+  const interactionAt = performance.now();
   const target = event.target as HTMLInputElement | HTMLSelectElement;
   if (target.id === 'file-input' && target instanceof HTMLInputElement) {
     selectedFile = target.files?.[0] || null; preview = null; importResult = null; importError = '';
@@ -775,7 +1039,9 @@ app.addEventListener('change', event => {
     const selected = new Set(state.comparisonEntities);
     if (target instanceof HTMLInputElement && target.checked) selected.add(id); else selected.delete(id);
     if (selected.size > 3) { message = 'Chỉ được chọn tối đa 3 entity.'; if (target instanceof HTMLInputElement) target.checked = false; renderMain(); return; }
-    state.comparisonEntities = [...selected]; save(); void loadWorkspace(); return;
+    state.comparisonEntities = [...selected]; save();
+    noteWorkspaceInteraction(`compare:${id}`, interactionAt, performance.now());
+    void loadWorkspace(120); return;
   }
   const field = target.dataset.field as keyof State | undefined;
   if (!field) return;
@@ -790,7 +1056,9 @@ app.addEventListener('change', event => {
   if (field === 'entity') state.scope = 'node';
   if (field !== 'auditOffset') state.auditOffset = 0;
   save();
-  if (field === 'project') void refreshProject(); else void loadWorkspace();
+  noteWorkspaceInteraction(`field:${field}`, interactionAt, performance.now());
+  const debounceMs = ['project', 'entity', 'scope'].includes(field) ? 0 : 120;
+  if (field === 'project') void refreshProject(); else void loadWorkspace(debounceMs);
 });
 app.addEventListener('click', event => {
   const element = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-action]');
@@ -802,19 +1070,33 @@ app.addEventListener('click', event => {
     window.dispatchEvent(new Event('resize'));
     return;
   }
-  if (element.dataset.tab) { state.tab = element.dataset.tab as Tab; save(); renderMain(); if (state.tab === 'history') void refreshHistory(); return; }
+  if (element.dataset.tab) {
+    state.tab = element.dataset.tab as Tab; save(); renderMain();
+    if (state.tab === 'history') void refreshHistory();
+    else if (['overview', 'statistics', 'comparison', 'audit'].includes(state.tab) && workspaceView !== state.tab) void loadWorkspace();
+    return;
+  }
   const action = element.dataset.action;
   if (action === 'close-investigation') {
     const selection = investigationSelection();
     investigationRequest?.abort(); investigation = { status: 'closed' }; aggregateParent = null; revisionHistory = null; importDetail = null; investigationLiveMessage = '';
     if (selection) {
       const plot = document.querySelector<HTMLElement>(`[data-plot="${selection.origin.plotKey}"]`);
-      if (plot) { clearChartSelection(plot); requestAnimationFrame(() => plot.focus()); }
+      if (plot) {
+        clearChartSelection(plot);
+        updateAccessiblePointSelection(selection.origin.plotKey, null);
+        requestAnimationFrame(() => (selection.origin.focusTargetId ? document.getElementById(selection.origin.focusTargetId) : plot)?.focus());
+      }
     }
     renderInvestigation(); return;
   }
   if (action === 'retry-provenance') {
     const selection = investigationSelection(); if (selection) void loadProvenance(selection); return;
+  }
+  if (action === 'open-chart-point') {
+    const item = element.dataset.registryKey ? accessiblePointRegistry.get(element.dataset.registryKey) : undefined;
+    if (item) openInvestigation(item.plotKey, item.entityRef, item.point, element.id);
+    return;
   }
   if (action === 'load-contributors') { void loadMoreContributors(); return; }
   if (action === 'open-contributor' && investigation.status === 'aggregate-ready') {
@@ -842,6 +1124,7 @@ app.addEventListener('click', event => {
   if (action === 'return-to-chart') { returnToChart(); return; }
   if (action === 'retry-audit-lookup') { if (auditFocus) void loadAuditLookup(auditFocus.selection); return; }
   if (action === 'refresh') { void bootstrap(); return; }
+  if (action === 'retry-workspace') { void loadWorkspace(); return; }
   if (action === 'retry-history') { void refreshHistory(); return; }
   if (action === 'audit-prev' || action === 'audit-next') {
     state.auditOffset = Math.max(0, state.auditOffset + (action === 'audit-next' ? 100 : -100)); save(); void loadWorkspace(); return;

@@ -1,4 +1,4 @@
-# Tách frontend/backend cho CX Analytics Workspace
+# Tách frontend/backend cho Automated CX Report
 
 ## Mục tiêu và nguồn template
 
@@ -46,7 +46,9 @@ Không chạy parser khi người dùng đổi filter hoặc reload. `POST /api/
 2. Cài TypeScript dependencies: `cd frontend; npm ci`.
 3. Dev: chạy `python -m uvicorn app.api:app --host 127.0.0.1 --port 8000 --reload`; terminal khác chạy `cd frontend; npm run dev`.
 4. Production-like local: `cd frontend; npm run build`; sau đó chạy Uvicorn. FastAPI phục vụ `frontend/dist` tại `/` nếu tồn tại.
-5. Kiểm thử: `python -m pytest`; `cd frontend; npm run build`.
+5. Kiểm thử backend: `python -m pytest`.
+6. Kiểm thử frontend bằng Chrome/Playwright: `cd frontend; npm test`. Suite tự khởi động Vite, dùng API fixture xác định và thao tác trực tiếp trên các điểm Plotly; dùng `npm run test:headed` khi cần quan sát trình duyệt.
+7. Typecheck/build: `cd frontend; npm run typecheck; npm run build`.
 
 `EVP_DATABASE` và `EVP_SOURCE_KEY` có thể đổi nguồn SQLite/API. Frontend không truy cập SQLite trực tiếp.
 

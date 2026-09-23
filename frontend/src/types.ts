@@ -12,6 +12,7 @@ export type ChartTrace = {
   type?: string;
   name?: string;
   x?: unknown[];
+  y?: unknown[] | { dtype?: string; bdata?: string };
   mode?: string;
   text?: unknown;
   textposition?: unknown;
@@ -28,6 +29,13 @@ export type ChartTrace = {
     [key: string]: unknown;
   };
   [key: string]: unknown;
+};
+
+export type AccessibleChartPoint = {
+  key: string;
+  label: string;
+  selection: ChartPointSelection;
+  hasProvenance: boolean;
 };
 
 export type ChartPointSelection = {

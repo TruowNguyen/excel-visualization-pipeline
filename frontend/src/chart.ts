@@ -1,9 +1,11 @@
 import type { ChartPointSelection, Figure } from './types';
 
 let plotlyModule: Promise<typeof import('plotly.js-dist-min')> | null = null;
+const renderVersions = new WeakMap<HTMLElement, number>();
+const CHART_TEXT_COLOR = '#526176';
 
 /** Presentation-only overrides. Values, customdata, hover templates and trace order stay intact. */
-export function presentationFigure(figure: Figure, height = 420): Figure {
+export function presentationFigure(figure: Figure, height = 420, identity?: string): Figure {
   const data = figure.data.map(trace => {
     const styled = { ...trace };
     if (styled.type === 'bar') {
@@ -34,17 +36,18 @@ export function presentationFigure(figure: Figure, height = 420): Figure {
       height,
       paper_bgcolor: '#ffffff',
       plot_bgcolor: '#ffffff',
-      font: { family: 'Inter, Segoe UI, sans-serif', color: '#526073', size: 12 },
-      hovermode: 'x unified',
-      hoverdistance: -1,
+      font: { family: 'Inter, Segoe UI, sans-serif', color: CHART_TEXT_COLOR, size: 12 },
+      hovermode: figure.layout.hovermode ?? 'x unified',
+      hoverdistance: figure.layout.hoverdistance ?? -1,
       hoverlabel: { bgcolor: '#172238', bordercolor: '#172238', font: { color: '#fff', size: 12 } },
       legend: {
         ...(figure.layout.legend ?? {}),
         orientation: 'h', x: 0, xanchor: 'left', y: 1.13, yanchor: 'bottom',
-        font: { color: '#526073', size: 11 }, itemwidth: 28, tracegroupgap: 14,
+        font: { color: CHART_TEXT_COLOR, size: 11 }, itemwidth: 28, tracegroupgap: 14,
         bgcolor: 'rgba(0,0,0,0)', borderwidth: 0,
       },
       xaxis,
+      uirevision: figure.layout.uirevision ?? identity,
       margin: { l: 58, r: 42, t: 88, b: 64 },
     },
   };
@@ -65,9 +68,12 @@ export function renderChart(
   onPointClick?: (selection: ChartPointSelection) => void,
   selectedRef?: string,
   height = 420,
-): void {
+  identity?: string,
+): Promise<void> {
   plotlyModule ??= import('plotly.js-dist-min');
-  const styled = presentationFigure(figure, height);
+  const version = (renderVersions.get(element) ?? 0) + 1;
+  renderVersions.set(element, version);
+  const styled = presentationFigure(figure, height, identity);
   styled.data = styled.data.map(trace => {
     const lineage = trace.meta?.lineage;
     if (!lineage || !['exact-observation', 'aggregate'].includes(lineage.kind)) return trace;
@@ -80,11 +86,14 @@ export function renderChart(
       unselected: { marker: { opacity: .48 } },
     };
   });
-  void plotlyModule.then(({ default: Plotly }) => {
+  return plotlyModule.then(({ default: Plotly }) => {
     if (!element.isConnected) return;
+    element.dispatchEvent(new CustomEvent('cx:plotly-render-start', { bubbles: true }));
     return Plotly.react(element, styled.data, styled.layout, {
       responsive: true, displaylogo: false, scrollZoom: false,
     }).then(() => {
+      if (!element.isConnected || renderVersions.get(element) !== version) return;
+      element.dispatchEvent(new CustomEvent('cx:plotly-render-complete', { bubbles: true }));
       const plot = element as PlotElement;
       plot.removeAllListeners?.('plotly_click');
       if (!onPointClick) return;
@@ -108,6 +117,13 @@ export function renderChart(
       });
     });
   });
+}
+
+/** Release Plotly listeners and observers when a keyed chart leaves the workspace. */
+export function purgeChart(element: HTMLElement): void {
+  renderVersions.delete(element);
+  if (!plotlyModule) return;
+  void plotlyModule.then(({ default: Plotly }) => Plotly.purge(element));
 }
 
 export function selectChartPoint(element: HTMLElement, curveNumber: number, pointNumber: number): void {

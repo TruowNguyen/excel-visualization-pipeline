@@ -20,7 +20,7 @@ def _date(value: Any) -> str:
 
 def _members(rows: pd.DataFrame, role: str, note: str | None = None) -> list[dict[str, Any]] | None:
     result = []
-    for row in rows.sort_values(["date", "entity_id", "metric_code"]).itertuples(index=False):
+    for row in rows.itertuples(index=False):
         lineage_ref = getattr(row, "lineage_ref", None)
         if lineage_ref is None or pd.isna(lineage_ref):
             return None
@@ -35,16 +35,6 @@ def _members(rows: pd.DataFrame, role: str, note: str | None = None) -> list[dic
             "note": note if included else "Không có giá trị số được dùng trong phép tính.",
         })
     return result
-
-
-def _range(data: pd.DataFrame, entity_id: str, start: str, end: str, metric: str) -> pd.DataFrame:
-    dates = pd.to_datetime(data["date"]).dt.date
-    return data[
-        (data["entity_id"] == entity_id)
-        & (data["metric_normalized"] == metric)
-        & (dates >= date.fromisoformat(start))
-        & (dates <= date.fromisoformat(end))
-    ]
 
 
 def _spec(
@@ -115,11 +105,12 @@ def attach_aggregate_lineage(
     end_date,
     comparison_metric: str | None = None,
     coverage_data: pd.DataFrame | None = None,
+    prepared_summary: pd.DataFrame | None = None,
 ) -> None:
     """Add immutable refs to aggregate traces, using the already-rendered y values."""
     if not figure.data or data.empty:
         return
-    summary = (
+    summary = prepared_summary if prepared_summary is not None else (
         prepare_period_statistics(
             data, start_date, end_date, group_by, coverage_data=coverage_data
         ) if kind == "statistics" else prepare_period_metric_summary(
@@ -137,6 +128,24 @@ def attach_aggregate_lineage(
     specs: list[dict[str, Any]] = []
     locations: list[tuple[int, int]] = []
     per_trace: dict[int, list[str | None]] = {}
+    range_cache: dict[tuple[int, str, str, str, str], pd.DataFrame] = {}
+
+    def select_range(source: pd.DataFrame, entity_id: str, start: str, end: str, metric: str) -> pd.DataFrame:
+        key = (id(source), entity_id, start, end, metric)
+        cached = range_cache.get(key)
+        if cached is not None:
+            return cached
+        dates = source["date"]
+        if not pd.api.types.is_datetime64_any_dtype(dates):
+            dates = pd.to_datetime(dates)
+        selected = source[
+            source["entity_id"].eq(entity_id)
+            & source["metric_normalized"].eq(metric)
+            & dates.ge(pd.Timestamp(start))
+            & dates.le(pd.Timestamp(end))
+        ].sort_values(["date", "entity_id", "metric_code"])
+        range_cache[key] = selected
+        return selected
 
     for trace_index, trace in enumerate(figure.data):
         name = str(trace.name or "")
@@ -176,7 +185,7 @@ def attach_aggregate_lineage(
             members: list[dict[str, Any]] = []
             inferred_zero = False
             if kind == "statistics":
-                value_rows = _range(data, entity_id, start, end, metric)
+                value_rows = select_range(data, entity_id, start, end, metric)
                 value_members = _members(value_rows, "value")
                 if value_members is None:
                     continue
@@ -185,14 +194,14 @@ def attach_aggregate_lineage(
                 explanation = "Cộng các giá trị số trong kỳ." if metric_column == "period_sum" else "Tổng giá trị chia cho số ngày có dữ liệu hợp lệ."
                 if metric_column == "average_per_day":
                     coverage_source = coverage_data if coverage_data is not None else data
-                    coverage_rows = _range(coverage_source, str(row.coverage_source_entity_id), start, end, "Tổng số")
+                    coverage_rows = select_range(coverage_source, str(row.coverage_source_entity_id), start, end, "Tổng số")
                     coverage_rows = coverage_rows[coverage_rows["chart_value"].notna()]
                     coverage_note = "Ngày có dữ liệu từ entity cha." if str(row.coverage_source_entity_id) != entity_id else "Ngày có dữ liệu Tổng số."
                     coverage_members = _members(coverage_rows, "coverage", coverage_note)
                     if coverage_members is None:
                         continue
                     marker_dates = set(pd.to_datetime(value_rows.loc[value_rows["value_kind"] == "source_marker", "date"]).dt.date)
-                    for member, coverage_row in zip(coverage_members, coverage_rows.sort_values(["date", "entity_id", "metric_code"]).itertuples(index=False)):
+                    for member, coverage_row in zip(coverage_members, coverage_rows.itertuples(index=False)):
                         if pd.Timestamp(coverage_row.date).date() in marker_dates:
                             member["included"] = False
                             member["note"] = "Ngày này có dấu nguồn ở metric đang xét nên bị loại khỏi mẫu số."
@@ -204,7 +213,7 @@ def attach_aggregate_lineage(
                 if metric == "% báo sai":
                     metric_roles = [("Báo sai/Lỗi", "numerator"), ("Tổng số", "denominator")]
                 for source_metric, role in metric_roles:
-                    source_rows = _range(data, entity_id, start, end, source_metric)
+                    source_rows = select_range(data, entity_id, start, end, source_metric)
                     source_members = _members(source_rows, role)
                     if source_members is None:
                         members = []
@@ -213,7 +222,7 @@ def attach_aggregate_lineage(
                 if not members:
                     continue
                 if metric == "Báo sai/Lỗi" and not any(m["role"] == "value" for m in members):
-                    total_rows = _range(data, entity_id, start, end, "Tổng số")
+                    total_rows = select_range(data, entity_id, start, end, "Tổng số")
                     coverage_members = _members(total_rows[total_rows["chart_value"].notna()], "coverage", "Tổng số đã ghi nhận; lỗi trống được suy ra bằng 0.")
                     if coverage_members is None:
                         continue

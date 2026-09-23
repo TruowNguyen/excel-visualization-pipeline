@@ -511,14 +511,11 @@ def build_period_statistics_chart(
     modes: list[str] | tuple[str, ...],
     title: str | None = None,
     coverage_data: pd.DataFrame | None = None,
+    prepared_frame: pd.DataFrame | None = None,
 ) -> Figure:
     """Render nested SUM bars and AVG/day lines on a secondary axis."""
-    frame = prepare_period_statistics(
-        data,
-        start_date,
-        end_date,
-        group_by,
-        coverage_data=coverage_data,
+    frame = prepared_frame if prepared_frame is not None else prepare_period_statistics(
+        data, start_date, end_date, group_by, coverage_data=coverage_data,
     )
     figure = make_subplots(specs=[[{"secondary_y": True}]])
     if frame.empty or not modes:
@@ -624,19 +621,12 @@ def build_period_statistics_chart(
             "<span style='color:#0077b6'>━●━</span> Tổng số/Cảnh báo · AVG/ngày: %{customdata[2]}",
             "<span style='color:#9d0208'>━●━</span> Báo sai/Lỗi · AVG/ngày: %{customdata[3]}",
         ])
-    figure.add_trace(
-        go.Scatter(
-            x=period_rows["period_label"],
-            y=[0] * len(period_rows),
-            name="",
-            mode="markers",
-            marker={"size": 1, "opacity": 0},
-            showlegend=False,
-            customdata=hover_rows,
-            hovertemplate="<br>".join(hover_lines) + "<extra></extra>",
-        ),
-        secondary_y=False,
-    )
+    hover_by_period = dict(zip(period_rows["period_label"], hover_rows))
+    hovertemplate = "<b>%{x}</b><br>" + "<br>".join(hover_lines) + "<extra></extra>"
+    for trace in figure.data:
+        trace.customdata = [hover_by_period[str(label)] for label in trace.x]
+        trace.hoverinfo = None
+        trace.hovertemplate = hovertemplate
     entity_label = str(frame["entity_label"].iloc[0])
     unit = str(frame["effective_unit"].iloc[0])
     figure.update_layout(
@@ -644,8 +634,9 @@ def build_period_statistics_chart(
         barmode="overlay",
         bargap=0.25,
         bargroupgap=0.08,
-        hovermode="x unified",
-        hoverdistance=20,
+        hovermode="closest",
+        hoverdistance=5,
+        hoverlabel={"namelength": -1},
         legend=_interactive_legend(),
         margin={"t": 100},
         xaxis_title="Kỳ",
@@ -706,9 +697,12 @@ def build_period_metric_combo_chart(
     end_date,
     group_by: str,
     title: str | None = None,
+    prepared_frame: pd.DataFrame | None = None,
 ) -> Figure:
     """Compare overview metrics across calendar weeks or calendar months."""
-    frame = prepare_period_metric_summary(data, start_date, end_date, group_by)
+    frame = prepared_frame if prepared_frame is not None else prepare_period_metric_summary(
+        data, start_date, end_date, group_by
+    )
     figure = make_subplots(specs=[[{"secondary_y": True}]])
     if frame.empty:
         return figure
@@ -724,6 +718,16 @@ def build_period_metric_combo_chart(
     entity_label = str(frame["entity_label"].iloc[0])
     unit = str(units[0]) if len(units) else "Không xác định"
     x_values = frame["period_label"]
+    hover_rows = frame[
+        ["entity_label", "display_total", "display_error", "display_rate", "period_range"]
+    ].to_numpy()
+    hovertemplate = (
+        "<b>%{x}</b><br>Khoảng: %{customdata[4]}"
+        "<br><span style='color:#8ecae6'>■</span> Tổng số/Cảnh báo: %{customdata[1]}"
+        "<br><span style='color:#d1495b'>■</span> Báo sai/Lỗi: %{customdata[2]}"
+        "<br><span style='color:#ff9f1c'>━●━</span> % báo sai: %{customdata[3]}"
+        "<extra></extra>"
+    )
     for column, name, color, opacity, position in [
         ("total_sum", "Tổng số", "#8ecae6", 0.72, "inside"),
         ("error_sum", "Báo sai/Lỗi", "#d1495b", 0.95, "outside"),
@@ -741,7 +745,8 @@ def build_period_metric_combo_chart(
                 ),
                 textposition=position,
                 cliponaxis=False,
-                hoverinfo="skip",
+                customdata=hover_rows,
+                hovertemplate=hovertemplate,
             ),
             secondary_y=False,
         )
@@ -758,45 +763,24 @@ def build_period_metric_combo_chart(
             textposition="top center",
             cliponaxis=False,
             connectgaps=False,
-            hoverinfo="skip",
+            customdata=hover_rows,
+            hovertemplate=hovertemplate,
         ),
         secondary_y=True,
-    )
-    hover_rows = frame[
-        ["entity_label", "display_total", "display_error", "display_rate", "period_range"]
-    ].to_numpy()
-    figure.add_trace(
-        go.Scatter(
-            x=x_values,
-            y=[0] * len(frame),
-            name="",
-            mode="markers",
-            marker={"size": 1, "opacity": 0},
-            showlegend=False,
-            customdata=hover_rows,
-            hovertemplate=(
-                "Khoảng: %{customdata[4]}"
-                "<br><span style='color:#8ecae6'>■</span> Tổng số/Cảnh báo: %{customdata[1]}"
-                "<br><span style='color:#d1495b'>■</span> Báo sai/Lỗi: %{customdata[2]}"
-                "<br><span style='color:#ff9f1c'>━●━</span> % báo sai: %{customdata[3]}"
-                "<extra></extra>"
-            ),
-        ),
-        secondary_y=False,
     )
     figure.update_layout(
         title=title or f"{entity_label} — {unit}",
         barmode="overlay",
         bargap=0.25,
         bargroupgap=0.08,
-        hovermode="x unified",
-        hoverdistance=20,
+        hovermode="closest",
+        hoverdistance=5,
         hoverlabel={"namelength": -1},
         legend=_interactive_legend(),
         margin={"t": 100},
         xaxis_title="Tuần" if group_by == "week" else "Tháng",
     )
-    figure.update_xaxes(showspikes=False, unifiedhovertitle={"text": "<b>%{x}</b>"})
+    figure.update_xaxes(showspikes=False)
     figure.update_yaxes(title_text=f"Số lượng ({unit})", rangemode="tozero", secondary_y=False)
     figure.update_yaxes(
         title_text="% báo sai",
@@ -825,6 +809,8 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
     entity_id = str(entity_ids[0])
     unit = str(units[0]) if len(units) else "Không xác định"
     figure = make_subplots(specs=[[{"secondary_y": True}]])
+    hover_lookup = _metric_hover_lookup(data, entity_id)
+    hovertemplate = "<b>Ngày %{x|%d/%m/%Y}</b><br>" + COMBO_HOVER_TEMPLATE
     metric_specs = [
         ("Tổng số", "Tổng số", "#8ecae6", 0.72, 18 * 60 * 60 * 1000),
         ("Báo sai/Lỗi", "Báo sai/Lỗi", "#d1495b", 0.95, 18 * 60 * 60 * 1000),
@@ -833,6 +819,10 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         metric_data = frame[frame["metric_normalized"] == metric].sort_values("date")
         if metric_data.empty:
             continue
+        hover_rows = [
+            _hover_row(hover_lookup, date, entity_label)
+            for date in metric_data["date"]
+        ]
         figure.add_trace(
             go.Bar(
                 x=metric_data["date"],
@@ -844,7 +834,8 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 text=_latest_labels(metric_data["display_value"]),
                 textposition="outside" if metric == "Báo sai/Lỗi" else "inside",
                 cliponaxis=False,
-                hoverinfo="skip",
+                customdata=hover_rows,
+                hovertemplate=hovertemplate,
                 **_exact_lineage_fields(metric_data),
             ),
             secondary_y=False,
@@ -852,6 +843,10 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
 
     rate_data = frame[frame["metric_normalized"] == "% báo sai"].sort_values("date")
     if not rate_data.empty:
+        hover_rows = [
+            _hover_row(hover_lookup, date, entity_label)
+            for date in rate_data["date"]
+        ]
         figure.add_trace(
             go.Scatter(
                 x=rate_data["date"],
@@ -864,35 +859,12 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
                 textposition="top center",
                 cliponaxis=False,
                 connectgaps=False,
-                hoverinfo="skip",
+                customdata=hover_rows,
+                hovertemplate=hovertemplate,
                 **_exact_lineage_fields(rate_data),
             ),
             secondary_y=True,
         )
-
-    hover_lookup = _metric_hover_lookup(data, entity_id)
-    hover_dates = sorted(
-        pd.to_datetime(
-            data.loc[
-                (data["entity_id"] == entity_id)
-                & data["metric_normalized"].isin(["Tổng số", "Báo sai/Lỗi", "% báo sai"]),
-                "date",
-            ]
-        ).unique()
-    )
-    figure.add_trace(
-        go.Scatter(
-            x=hover_dates,
-            y=[0] * len(hover_dates),
-            name="",
-            mode="markers",
-            marker={"size": 1, "opacity": 0},
-            showlegend=False,
-            customdata=[_hover_row(hover_lookup, date, entity_label) for date in hover_dates],
-            hovertemplate=COMBO_HOVER_TEMPLATE,
-        ),
-        secondary_y=False,
-    )
 
     figure.update_layout(
         title=title or f"{entity_label} — {unit}",
@@ -902,6 +874,9 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         legend=_interactive_legend(),
         margin={"t": 100},
         xaxis_title="Ngày",
+        hovermode="closest",
+        hoverdistance=5,
+        hoverlabel={"namelength": -1},
     )
     figure.update_yaxes(title_text=f"Số lượng ({unit})", rangemode="tozero", secondary_y=False)
     figure.update_yaxes(
@@ -911,7 +886,8 @@ def build_metric_combo_chart(data: pd.DataFrame, title: str | None = None) -> Fi
         ticksuffix="%",
         secondary_y=True,
     )
-    return _enable_unified_date_hover(_format_date_axes(figure))
+    figure.update_xaxes(showspikes=False)
+    return _format_date_axes(figure)
 
 
 def build_multi_entity_metric_chart(

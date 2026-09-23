@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import asdict
 from datetime import date
 from io import BytesIO
+from functools import lru_cache
 import json
 import os
 from pathlib import Path
 import sys
+from threading import RLock
+from time import perf_counter
 
 import pandas as pd
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
@@ -31,6 +35,7 @@ from excel_visualization_pipeline.storage import (
     StorageImportError,
     import_pipeline_result,
     initialize_database,
+    latest_committed_run_id,
     load_current_data,
     load_current_entities,
     load_import_history,
@@ -48,6 +53,8 @@ from excel_visualization_pipeline.visualization import (
     build_multi_entity_metric_chart,
     build_period_metric_combo_chart,
     build_period_statistics_chart,
+    prepare_period_metric_summary,
+    prepare_period_statistics,
 )
 
 SOURCE_KEY = os.environ.get("EVP_SOURCE_KEY", "cx_report_master")
@@ -61,7 +68,19 @@ AUDIT_COLUMNS = (
     "parser_rule", "parser_confidence", "validation_status",
 )
 
-app = FastAPI(title="CX Analytics API", version="1.0.0")
+app = FastAPI(title="Automated CX Report API", version="1.0.0")
+
+
+@app.middleware("http")
+async def add_server_timing(request: Request, call_next):
+    """Expose end-to-end API timing without changing response payload contracts."""
+    started = perf_counter()
+    response = await call_next(request)
+    total_ms = (perf_counter() - started) * 1000
+    existing = response.headers.get("Server-Timing")
+    total_metric = f"total;dur={total_ms:.1f}"
+    response.headers["Server-Timing"] = f"{existing}, {total_metric}" if existing else total_metric
+    return response
 
 
 def _lineage_response(operation):
@@ -89,9 +108,24 @@ def _figure(figure) -> dict:
     return json.loads(figure.to_json())
 
 
+_SOURCE_CACHE_LOCK = RLock()
+_WORKSPACE_CACHE_LOCK = RLock()
+_WORKSPACE_CACHE: OrderedDict[tuple, dict] = OrderedDict()
+_WORKSPACE_CACHE_LIMIT = 24
+
+
+@lru_cache(maxsize=4)
+def _load_source_snapshot(db_path: str, source_key: str, revision: int | None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    del revision  # The committed run is the cache key; readers still load from SQLite.
+    path = Path(db_path)
+    initialize_database(path)
+    return load_current_data(path, source_key), load_current_entities(path, source_key)
+
+
 def _source() -> tuple[pd.DataFrame, pd.DataFrame]:
-    initialize_database(DB_PATH)
-    return load_current_data(DB_PATH, SOURCE_KEY), load_current_entities(DB_PATH, SOURCE_KEY)
+    revision = latest_committed_run_id(DB_PATH, SOURCE_KEY)
+    with _SOURCE_CACHE_LOCK:
+        return _load_source_snapshot(str(DB_PATH.resolve()), SOURCE_KEY, revision)
 
 
 def _project(project: str) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -162,6 +196,8 @@ def project_entities(project: str):
 @app.get("/api/projects/{project}/workspace")
 def workspace(
     project: str,
+    response: Response,
+    view: str = Query("all", pattern="^(all|overview|statistics|comparison|audit)$"),
     mode: str = Query("recent", pattern="^(recent|week|month|custom)$"),
     count: int = Query(8, ge=1, le=60),
     start: date | None = None,
@@ -179,7 +215,32 @@ def workspace(
     audit_offset: int = Query(0, ge=0),
     audit_limit: int = Query(100, ge=1, le=500),
 ):
+    started = perf_counter()
+    last_checkpoint = started
+    timings: list[tuple[str, float]] = []
+
+    def checkpoint(name: str) -> None:
+        nonlocal last_checkpoint
+        now = perf_counter()
+        timings.append((name, (now - last_checkpoint) * 1000))
+        last_checkpoint = now
+
+    revision = latest_committed_run_id(DB_PATH, SOURCE_KEY)
+    cache_key = (
+        str(DB_PATH.resolve()), SOURCE_KEY, revision, project, view, mode, count,
+        start, end, entity, scope, statistics_group, statistics_mode,
+        include_incomplete, statistics_count, statistics_from, statistics_to,
+        comparison_metric, comparison_entities, audit_offset, audit_limit,
+    )
+    with _WORKSPACE_CACHE_LOCK:
+        cached = _WORKSPACE_CACHE.get(cache_key)
+        if cached is not None:
+            _WORKSPACE_CACHE.move_to_end(cache_key)
+            response.headers["Server-Timing"] = f"cache;desc=hit;dur={(perf_counter() - started) * 1000:.1f}"
+            return cached
+
     project_data, entities = _project(project)
+    checkpoint("source")
     entities = entities.sort_values(["source_row", "entity_depth"])
     entity_lookup = entities.set_index("entity_id")
     start_date, end_date, group_by = _window(project_data, mode, count, start, end)
@@ -193,102 +254,130 @@ def workspace(
     metric_data = detail[detail["metric_normalized"].isin(METRICS)]
     metric_dates = pd.to_datetime(metric_data["date"]).dt.date
     range_data = metric_data[(metric_dates >= start_date) & (metric_dates <= end_date)]
+    checkpoint("filter")
 
     overview = []
-    for entity_id in scope_ids:
-        rows = range_data[range_data["entity_id"] == entity_id]
-        if rows.empty:
-            continue
-        item = entity_lookup.loc[entity_id]
-        title = f"{item['entity_label']} — {item['effective_unit']}"
-        chart = (build_period_metric_combo_chart(rows, start_date, end_date, group_by, title)
-                 if group_by else build_metric_combo_chart(rows, title))
-        if group_by:
-            attach_aggregate_lineage(
-                DB_PATH, SOURCE_KEY, project, chart, rows, entities,
-                kind="overview", group_by=group_by,
-                start_date=start_date, end_date=end_date,
-            )
-        overview.append({"entityId": entity_id, "title": title, "figure": _figure(chart)})
-
-    statistic_rows = metric_data[metric_data["metric_normalized"].isin(METRICS[:2])]
-    statistic_dates = sorted(pd.to_datetime(statistic_rows["date"]).dt.date.unique())
-    periods = aggregation_period_ranges(statistic_dates, statistics_group) if statistic_dates else []
-    periods = [period for period in periods if include_incomplete or period.is_complete]
-    if statistics_from or statistics_to:
-        periods = [period for period in periods
-                   if (not statistics_from or period.start >= statistics_from)
-                   and (not statistics_to or period.start <= statistics_to)]
-    else:
-        periods = periods[-statistics_count:]
-    modes = {"both": ["SUM", "AVG/ngày"], "sum": ["SUM"], "average": ["AVG/ngày"]}[statistics_mode]
-    statistics = []
-    if periods:
-        period_start = max(periods[0].start, statistic_dates[0])
-        period_end = min(periods[-1].end, statistic_dates[-1])
+    if view in {"all", "overview"}:
         for entity_id in scope_ids:
-            rows = statistic_rows[statistic_rows["entity_id"] == entity_id]
+            rows = range_data[range_data["entity_id"] == entity_id]
             if rows.empty:
                 continue
             item = entity_lookup.loc[entity_id]
-            chart = build_period_statistics_chart(
-                rows, period_start, period_end, statistics_group, modes,
-                f"{item['entity_label']} — {statistics_group}", coverage_data=project_data,
+            title = f"{item['entity_label']} — {item['effective_unit']}"
+            prepared_overview = (
+                prepare_period_metric_summary(rows, start_date, end_date, group_by)
+                if group_by else None
             )
-            attach_aggregate_lineage(
-                DB_PATH, SOURCE_KEY, project, chart, rows, entities,
-                kind="statistics", group_by=statistics_group,
-                start_date=period_start, end_date=period_end,
-                coverage_data=project_data,
-            )
-            statistics.append({
-                "entityId": entity_id,
-                "title": item["entity_label"],
-                "figure": _figure(chart),
-            })
+            chart = (build_period_metric_combo_chart(
+                rows, start_date, end_date, group_by, title, prepared_frame=prepared_overview
+            ) if group_by else build_metric_combo_chart(rows, title))
+            if group_by:
+                attach_aggregate_lineage(
+                    DB_PATH, SOURCE_KEY, project, chart, rows, entities,
+                    kind="overview", group_by=group_by,
+                    start_date=start_date, end_date=end_date,
+                    prepared_summary=prepared_overview,
+                )
+            overview.append({"entityId": entity_id, "title": title, "figure": _figure(chart)})
+    checkpoint("overview")
+
+    statistic_rows = metric_data.iloc[0:0]
+    periods = []
+    statistics = []
+    if view in {"all", "statistics"}:
+        statistic_rows = metric_data[metric_data["metric_normalized"].isin(METRICS[:2])]
+        statistic_dates = sorted(pd.to_datetime(statistic_rows["date"]).dt.date.unique())
+        periods = aggregation_period_ranges(statistic_dates, statistics_group) if statistic_dates else []
+        periods = [period for period in periods if include_incomplete or period.is_complete]
+        if statistics_from or statistics_to:
+            periods = [period for period in periods
+                       if (not statistics_from or period.start >= statistics_from)
+                       and (not statistics_to or period.start <= statistics_to)]
+        else:
+            periods = periods[-statistics_count:]
+        modes = {"both": ["SUM", "AVG/ngày"], "sum": ["SUM"], "average": ["AVG/ngày"]}[statistics_mode]
+        if periods:
+            period_start = max(periods[0].start, statistic_dates[0])
+            period_end = min(periods[-1].end, statistic_dates[-1])
+            for entity_id in scope_ids:
+                rows = statistic_rows[statistic_rows["entity_id"] == entity_id]
+                if rows.empty:
+                    continue
+                item = entity_lookup.loc[entity_id]
+                prepared_statistics = prepare_period_statistics(
+                    rows, period_start, period_end, statistics_group,
+                    coverage_data=project_data,
+                )
+                chart = build_period_statistics_chart(
+                    rows, period_start, period_end, statistics_group, modes,
+                    f"{item['entity_label']} — {statistics_group}", coverage_data=project_data,
+                    prepared_frame=prepared_statistics,
+                )
+                attach_aggregate_lineage(
+                    DB_PATH, SOURCE_KEY, project, chart, rows, entities,
+                    kind="statistics", group_by=statistics_group,
+                    start_date=period_start, end_date=period_end,
+                    coverage_data=project_data,
+                    prepared_summary=prepared_statistics,
+                )
+                statistics.append({
+                    "entityId": entity_id,
+                    "title": item["entity_label"],
+                    "figure": _figure(chart),
+                })
+    checkpoint("statistics")
 
     if comparison_metric not in METRICS:
         raise HTTPException(422, "Metric so sánh không hợp lệ")
-    project_dates = pd.to_datetime(project_data["date"]).dt.date
-    candidate_rows = project_data[
-        (project_data["metric_normalized"] == comparison_metric)
-        & project_data["chart_value"].notna()
-        & (project_dates >= start_date) & (project_dates <= end_date)
-    ]
-    candidates = entities[
-        entities["entity_id"].isin(candidate_rows["entity_id"])
-        & entities["effective_unit"].notna()
-    ]
-    chosen = [value for value in comparison_entities.split(",") if value in set(candidates["entity_id"])]
-    chosen = list(dict.fromkeys(chosen))[:3]
+    candidates = entities.iloc[0:0]
     comparison = None
-    if len(chosen) >= 2:
-        units = candidates[candidates["entity_id"].isin(chosen)]["effective_unit"].unique()
-        if len(units) != 1:
-            raise HTTPException(422, "Các entity so sánh phải cùng Effective Unit")
-        rows = project_data[
-            project_data["entity_id"].isin(chosen)
-            & project_data["metric_normalized"].isin(METRICS)
+    if view in {"all", "comparison"}:
+        project_dates = pd.to_datetime(project_data["date"]).dt.date
+        candidate_rows = project_data[
+            (project_data["metric_normalized"] == comparison_metric)
+            & project_data["chart_value"].notna()
             & (project_dates >= start_date) & (project_dates <= end_date)
         ]
-        comparison_chart = build_multi_entity_metric_chart(
-            rows, comparison_metric, f"So sánh {comparison_metric}",
-            group_by=group_by, start_date=start_date, end_date=end_date,
-        )
-        if group_by:
-            attach_aggregate_lineage(
-                DB_PATH, SOURCE_KEY, project, comparison_chart, rows, entities,
-                kind="comparison", group_by=group_by,
-                start_date=start_date, end_date=end_date,
-                comparison_metric=comparison_metric,
+        candidates = entities[
+            entities["entity_id"].isin(candidate_rows["entity_id"])
+            & entities["effective_unit"].notna()
+        ]
+        chosen = [value for value in comparison_entities.split(",") if value in set(candidates["entity_id"])]
+        chosen = list(dict.fromkeys(chosen))[:3]
+        if len(chosen) >= 2:
+            units = candidates[candidates["entity_id"].isin(chosen)]["effective_unit"].unique()
+            if len(units) != 1:
+                raise HTTPException(422, "Các entity so sánh phải cùng Effective Unit")
+            rows = project_data[
+                project_data["entity_id"].isin(chosen)
+                & project_data["metric_normalized"].isin(METRICS)
+                & (project_dates >= start_date) & (project_dates <= end_date)
+            ]
+            comparison_chart = build_multi_entity_metric_chart(
+                rows, comparison_metric, f"So sánh {comparison_metric}",
+                group_by=group_by, start_date=start_date, end_date=end_date,
             )
-        comparison = _figure(comparison_chart)
+            if group_by:
+                attach_aggregate_lineage(
+                    DB_PATH, SOURCE_KEY, project, comparison_chart, rows, entities,
+                    kind="comparison", group_by=group_by,
+                    start_date=start_date, end_date=end_date,
+                    comparison_metric=comparison_metric,
+                )
+            comparison = _figure(comparison_chart)
+    checkpoint("comparison")
 
-    audit = range_data.loc[:, AUDIT_COLUMNS].sort_values(
-        ["entity_path", "date", "metric_normalized"]
-    ).copy()
-    audit["raw_value"] = audit["raw_value"].astype("string")
-    return {
+    audit = range_data.iloc[0:0].loc[:, AUDIT_COLUMNS].copy()
+    if view in {"all", "audit"}:
+        audit = range_data.loc[:, AUDIT_COLUMNS].sort_values(
+            ["entity_path", "date", "metric_normalized"]
+        ).copy()
+        audit["raw_value"] = audit["raw_value"].astype("string")
+    checkpoint("audit")
+    response.headers["Server-Timing"] = ", ".join(
+        f"{name};dur={duration:.1f}" for name, duration in timings
+    )
+    payload = {
         "window": {"start": start_date.isoformat(), "end": end_date.isoformat()},
         "selectedEntity": entity,
         "scopeIds": scope_ids,
@@ -308,6 +397,12 @@ def workspace(
         "audit": {"total": len(audit), "offset": audit_offset,
                   "rows": _records(audit.iloc[audit_offset:audit_offset + audit_limit])},
     }
+    with _WORKSPACE_CACHE_LOCK:
+        _WORKSPACE_CACHE[cache_key] = payload
+        _WORKSPACE_CACHE.move_to_end(cache_key)
+        while len(_WORKSPACE_CACHE) > _WORKSPACE_CACHE_LIMIT:
+            _WORKSPACE_CACHE.popitem(last=False)
+    return payload
 
 
 @app.get("/api/projects/{project}/observations/{observation_ref}/provenance")
