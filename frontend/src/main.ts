@@ -1,7 +1,15 @@
 import './style.css';
-import { accessibleChartPoints } from './chart-accessibility';
 import { clearChartSelection, purgeChart, renderChart, selectChartPoint } from './chart';
 import { entityCardTitle, entityTrail } from './presentation';
+import {
+  getChildrenScopeLabel,
+  getComparisonButtonDescription,
+  getComparisonTerminology,
+  getCurrentScopeLabel,
+  getEligibilityReasonMessage,
+  getEntityDisplayName,
+  getEntityLevelLabel,
+} from './terminology';
 import type { ChartPointSelection, Entity, Figure } from './types';
 import {
   beginWorkspaceTrace,
@@ -15,17 +23,84 @@ import {
 type Project = { label: string; records: number; chartable: number; entities: number; units: number; minDate: string | null; maxDate: string | null };
 type Chart = { entityId: string; title: string; figure: Figure };
 type AuditRow = Record<string, string | number | null>;
+type DataVersion = { committedImportRef: string; committedAt: string } | null;
+type ComparisonCandidate = {
+  entity_id: string; entity_label: string; effective_unit: string | null;
+  eligible?: boolean; reason?: string | null; comparablePeriodCount?: number;
+};
+type ComparisonContext = {
+  anchor: { entityId: string; entityLabel: string; parentEntityId: string | null; effectiveUnit: string | null };
+  lens?: 'metric' | 'statistics'; metric: string | null; metrics?: string[];
+  calculation: 'sum' | 'weighted_rate' | 'average_per_day'; grain: 'day' | 'week' | 'month' | 'quarter';
+  range: { start: string | null; end: string | null };
+  anchorEligible: boolean; anchorReason: string | null;
+};
 type Workspace = {
+  dataVersion: DataVersion;
   window: { start: string; end: string };
   selectedEntity: string;
   scopeIds: string[];
   overview: Chart[];
   statistics: Chart[];
   statisticsPeriods: { start: string; label: string; complete: boolean }[];
-  comparisonCandidates: { entity_id: string; entity_label: string; effective_unit: string }[];
+  comparisonCandidates: ComparisonCandidate[];
   comparison: Figure | null;
+  comparisonContext?: ComparisonContext | null;
+  comparisonSelection?: { accepted: string[]; removed: { entityId: string; reason: string }[]; limit: number } | null;
   audit: { total: number; offset: number; rows: AuditRow[] };
   capabilities?: { lineage?: { contractVersion: number; exactObservation: boolean; aggregateObservation: boolean } };
+};
+type ContextualComparison = {
+  anchorId: string; sourceButtonId: string; sourceScrollY: number;
+  sourceDataVersion: DataVersion; latestDataVersion: DataVersion;
+  lens: 'metric' | 'statistics'; calculation: 'sum' | 'average_per_day';
+  metric: string | null; selected: string[];
+  status: 'choosing' | 'loading' | 'ready' | 'error' | 'stale';
+  response: Workspace | null; error: string; notice: string;
+};
+type AIStatus = {
+  enabled: boolean; configured: boolean; externalAllowed: boolean;
+  provider: string; model: string; availability: string; privacyMode: string;
+};
+type AIEvidence = {
+  evidenceId: string; period: 'series'; periodIndex: number; periodStart: string; periodEnd: string;
+  periodLabel: string; observedDate: string;
+  target: { kind: 'exact'; observationRef: string; lineageRef: string }
+    | { kind: 'aggregate'; aggregateRef: string };
+};
+type AIFact = {
+  factId: string; kind: string; value: number | string; unit: string;
+  displayValue: string; evidenceIds: string[];
+};
+type AISeriesPoint = {
+  periodStart: string; periodEnd: string; periodLabel: string;
+  value: number; displayValue: string; observedDayCount: number; expectedDayCount: number;
+  coverageRatio: number; evidenceId: string; factId: string;
+  change: null | {
+    fromPeriodStart: string; absolute: number; absoluteDisplay: string;
+    relativePercent: number | null; relativeDisplay: string;
+    direction: 'increasing' | 'decreasing' | 'unchanged'; factIds: string[];
+  };
+};
+type AIAnalysis = {
+  schemaVersion: string; analysisId: string;
+  status: 'ready' | 'insufficient_data' | 'provider_unavailable' | 'rejected_output' | 'stale';
+  scope: { project: string; entityRef: string; entityLabel: string; mode: 'node'; metricCode: string; metricDisplayName: string };
+  window: { start: string; end: string; groupBy: 'day' | 'week' | 'month'; comparisonBasis: string; previousDate: string | null; currentDate: string | null };
+  dataAsOf: { committedImportRef: string; snapshotId: string; generatedAt: string; stale: boolean; checksum: string };
+  metric: { unit: string; aggregationRule: string };
+  facts: AIFact[];
+  series: AISeriesPoint[];
+  quality: { status: string; validPointCount: number; validPeriodCount: number; expectedPeriodCount: number; expectedCalendarDayCount: number; coverageRatio: number; limitations: string[] };
+  evidence: AIEvidence[];
+  provider: { name: string; model: string };
+  validation: { status: string; errors: string[] };
+  narrative: {
+    mode: 'ai' | 'deterministic';
+    summary: { text: string; factIds: string[]; claimType: string };
+    insights: { type: string; text: string; factIds: string[]; claimType: string }[];
+    limitations: string[]; suggestedChecks: string[];
+  };
 };
 type Tab = 'overview' | 'statistics' | 'comparison' | 'audit' | 'import' | 'history';
 type State = {
@@ -36,6 +111,8 @@ type State = {
   statisticsRange: 'recent' | 'all' | 'custom'; statisticsCount: number;
   statisticsFrom: string; statisticsTo: string; includeIncomplete: boolean;
   comparisonMetric: string; comparisonEntities: string[]; auditOffset: number; tab: Tab;
+  aiMetricCode: 'total' | 'error' | 'error_rate';
+  aiGroupBy: 'day' | 'week' | 'month';
 };
 type ValidationIssue = { severity: string; code: string; message: string };
 type Preview = {
@@ -87,7 +164,6 @@ type SelectionOrigin = {
   plotKey: string; tab: Tab; entityRef: string; seriesName: string; observedDate: string;
   displayedValue: string; curveNumber: number; pointNumber: number;
   viewport?: { xRange?: unknown[]; yRange?: unknown[]; y2Range?: unknown[] };
-  focusTargetId?: string;
 };
 type InvestigationSelection = { kind: 'exact-observation' | 'aggregate'; aggregateRef: string | null; observationRef: string | null; lineageRef: string | null; origin: SelectionOrigin };
 type InvestigationState =
@@ -104,22 +180,29 @@ type AuditFocus =
   | { status: 'error'; selection: InvestigationSelection; error: string };
 
 const STORAGE_KEY = 'excel_visualization_pipeline.workspace.v1';
-const tabs: { key: Tab; icon: string; label: string }[] = [
+const CONTEXTUAL_LENS_KEY = 'excel_visualization_pipeline.contextual_lens.v1';
+const tabDefinitions: { key: Tab; icon: string; label: string }[] = [
   { key: 'overview', icon: '◫', label: 'Tổng quan' },
   { key: 'statistics', icon: '▥', label: 'Thống kê' },
   { key: 'comparison', icon: '⇄', label: 'So sánh' },
-  { key: 'audit', icon: '▤', label: 'Audit dữ liệu' },
+  { key: 'audit', icon: '▤', label: 'Đối chiếu dữ liệu' },
   { key: 'import', icon: '↥', label: 'Nhập Excel' },
   { key: 'history', icon: '◷', label: 'Lịch sử nhập' },
 ];
+const visibleTabs = tabDefinitions.filter(tab => tab.key !== 'comparison' && tab.key !== 'audit');
 const defaults: State = {
   project: '', mode: 'recent', count: 8, start: '', end: '', entity: '', scope: 'node',
   statisticsGroup: 'week', statisticsMode: 'both', statisticsRange: 'recent', statisticsCount: 8,
   statisticsFrom: '', statisticsTo: '', includeIncomplete: true,
   comparisonMetric: 'Báo sai/Lỗi', comparisonEntities: [], auditOffset: 0, tab: 'overview',
+  aiMetricCode: 'error',
+  aiGroupBy: 'day',
 };
 let state: State = { ...defaults };
 try { state = { ...defaults, ...JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}') }; } catch { /* Browser storage may be disabled. */ }
+// Hai workspace cũ chỉ còn là luồng nội bộ. Không khôi phục chúng như tab cấp cao
+// từ session trước; Đối chiếu vẫn được mở đúng ngữ cảnh qua bảng Điều tra.
+if (state.tab === 'comparison' || state.tab === 'audit') state.tab = 'statistics';
 let projects: Project[] = [];
 let entities: Entity[] = [];
 let workspace: Workspace | null = null;
@@ -153,7 +236,16 @@ let investigationLiveMessage = '';
 let aggregateParent: Extract<InvestigationState, { status: 'aggregate-ready' }> | null = null;
 let revisionHistory: { status: 'loading' | 'ready' | 'error'; observationRef: string; data?: RevisionHistory; error?: string } | null = null;
 let importDetail: { status: 'loading' | 'ready' | 'error'; importRef: string; data?: ImportRun; error?: string } | null = null;
-const accessiblePointRegistry = new Map<string, { plotKey: string; entityRef: string; point: ChartPointSelection }>();
+let aiStatus: AIStatus | null = null;
+let aiStatusError = '';
+let aiAnalysis: AIAnalysis | null = null;
+let aiAnalysisError = '';
+let aiLoading = false;
+let aiLocallyStale = false;
+let aiRequest: AbortController | null = null;
+let contextualComparison: ContextualComparison | null = null;
+let contextualComparisonRequest: AbortController | null = null;
+let contextualFocusId = '';
 const chartFingerprints = new Map<string, string>();
 let pendingChartRenders: Promise<void>[] = [];
 let renderingWorkspaceTrace: WorkspacePerformanceTrace | null = null;
@@ -183,7 +275,7 @@ async function api<T>(path: string, init?: RequestInit, trace?: WorkspacePerform
     const body = await response.json().catch(() => ({}));
     const detail = body.detail;
     const detailMessage = typeof detail === 'object' && detail && typeof detail.message === 'string' ? detail.message : null;
-    throw new Error(typeof detail === 'string' ? detail : detailMessage || `HTTP ${response.status}`);
+    throw new Error(typeof detail === 'string' ? detail : detailMessage || `Máy chủ trả về lỗi ${response.status}`);
   }
   if (!trace) return response.json() as Promise<T>;
   const body = await response.text();
@@ -198,23 +290,44 @@ function select(options: { value: string; label: string }[], current: string): s
   return options.map(option => `<option value="${esc(option.value)}" ${option.value === current ? 'selected' : ''}>${esc(option.label)}</option>`).join('');
 }
 function currentProject(): Project | undefined { return projects.find(project => project.label === state.project); }
+function currentEntity(): Entity | undefined { return entities.find(entity => entity.entity_id === state.entity); }
+function displayEntityName(entity: Entity | undefined, fallback = ''): string {
+  return entity ? getEntityDisplayName(entity) : fallback;
+}
+function displayEntityPath(entityId: string): string {
+  return entityTrail(entities, entityId).map(getEntityDisplayName).join(' / ');
+}
+function displayRawEntityPath(rawPath: unknown): string {
+  const raw = String(rawPath ?? '');
+  const matching = entities.find(entity => entity.entity_path === raw);
+  return matching ? displayEntityPath(matching.entity_id) : raw;
+}
+function displayHierarchyParts(parts: string[]): string[] {
+  return parts.map(part => {
+    const matching = entities.find(entity => entity.entity_label === part);
+    return matching ? getEntityDisplayName(matching) : part;
+  });
+}
 function renderShell(): void {
   app.innerHTML = `<div class="shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}">
     <aside class="sidebar">
-      <div class="brand"><div class="brand-mark">CX</div><div class="brand-copy"><strong>Automated CX Report</strong><span>Analytics workspace</span></div><button class="sidebar-toggle" data-action="toggle-sidebar" aria-label="Thu gọn hoặc mở sidebar" title="Thu gọn hoặc mở sidebar">☰</button></div>
+      <div class="brand"><div class="brand-mark">CX</div><div class="brand-copy"><strong>Báo cáo CX tự động</strong><span>Không gian phân tích</span></div><button class="sidebar-toggle" data-action="toggle-sidebar" aria-label="Thu gọn hoặc mở thanh bên" title="Thu gọn hoặc mở thanh bên">☰</button></div>
       <div class="side-scroll"><div id="side-filters"></div></div>
-    <div class="side-bottom"><span class="status-dot"></span><span class="status-copy">Kho dữ liệu nội bộ</span> <small>v1.0 · Internal</small></div>
+    <div class="side-bottom"><span class="status-dot"></span><span class="status-copy">Kho dữ liệu nội bộ</span> <small>v1.0 · Nội bộ</small></div>
     </aside>
-    <div class="main-column"><header class="topbar"><div class="breadcrumb">Không gian làm việc <span aria-hidden="true">/</span> <strong>Analytics</strong></div><div class="top-actions"><span class="environment">INTERNAL</span><div class="avatar">CX</div></div></header>
+    <div class="main-column"><header class="topbar"><div class="breadcrumb">Không gian làm việc <span aria-hidden="true">/</span> <strong>Phân tích</strong></div><div class="top-actions"><span class="environment">NỘI BỘ</span><div class="avatar">CX</div></div></header>
     <main class="workspace"><div id="workspace"></div></main></div>
     <aside id="investigation-drawer" class="investigation-drawer" aria-hidden="true"></aside>
+    <div id="contextual-comparison-root"></div>
   </div>`;
 }
 function renderSidebar(): void {
   const root = document.querySelector<HTMLDivElement>('#side-filters')!;
   const activeField = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.field : undefined;
   const project = currentProject();
-  root.innerHTML = `<div class="side-heading">Dự án & bộ lọc</div>
+  const selectedEntity = currentEntity();
+  const selectedLevel = selectedEntity?.entity_level;
+  root.innerHTML = `<div class="side-heading">Bộ lọc báo cáo</div>
     <label class="field"><span>Dự án</span><select data-field="project">${select(projects.map(p => ({ value: p.label, label: p.label })), state.project)}</select></label>
     <div class="side-section"><div class="section-caption">Khoảng thời gian</div>
       <label class="field"><span>Xem theo</span><select data-field="mode">${select([
@@ -225,15 +338,15 @@ function renderSidebar(): void {
       ${state.mode === 'custom' ? `<div class="date-pair"><label class="field"><span>Từ ngày</span><input data-field="start" type="date" min="${esc(project?.minDate)}" max="${esc(project?.maxDate)}" value="${esc(state.start)}"></label><label class="field"><span>Đến ngày</span><input data-field="end" type="date" min="${esc(project?.minDate)}" max="${esc(project?.maxDate)}" value="${esc(state.end)}"></label></div>` : ''}
       ${workspace ? `<div class="range-note">◷ ${dateLabel(workspace.window.start)} — ${dateLabel(workspace.window.end)}</div>` : ''}
     </div>
-    <div class="side-section"><div class="section-caption">Cây entity</div>
-      <label class="field"><span>Entity</span><select data-field="entity">${select(entities.map(e => ({ value: e.entity_id, label: `${'　'.repeat(e.entity_depth)}${e.entity_label}${e.effective_unit ? ` · ${e.effective_unit}` : ''}` })), state.entity)}</select></label>
-      <label class="field"><span>Phạm vi</span><select data-field="scope">${select([{ value: 'node', label: 'Entity đã chọn' }, { value: 'children', label: 'Entity con trực tiếp' }], state.scope)}</select></label>
+    <div class="side-section">
+      <label class="field"><span>Nội dung theo dõi</span><select data-field="entity">${select(entities.map(e => ({ value: e.entity_id, label: `${'　'.repeat(e.entity_depth)}${getEntityDisplayName(e)}${e.effective_unit ? ` · ${e.effective_unit}` : ''}` })), state.entity)}</select></label>
+      <label class="field"><span>Mức hiển thị</span><select data-field="scope">${select([{ value: 'node', label: getCurrentScopeLabel(selectedLevel) }, { value: 'children', label: getChildrenScopeLabel(selectedLevel) }], state.scope)}</select></label>
     </div>
     <div class="side-tip"><span>✦</span><strong>Bộ lọc được giữ khi tải lại trang</strong><p>Thiết lập chỉ lưu trong thẻ trình duyệt này, không xuất hiện trên đường dẫn.</p></div>`;
   if (activeField) requestAnimationFrame(() => root.querySelector<HTMLElement>(`[data-field="${activeField}"]`)?.focus());
 }
 function header(title: string, subtitle: string): string {
-  return `<div class="page-head"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><div class="head-actions"><button class="ghost" data-action="refresh">↻ Làm mới dữ liệu</button>${state.project ? `<a class="primary" href="/api/projects/${encodeURIComponent(state.project)}/export.csv">↓ Tải dữ liệu CSV</a>` : ''}</div></div>`;
+  return `<div class="page-head"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><div class="head-actions"><button class="ghost" data-action="refresh">↻ Làm mới dữ liệu</button>${state.project ? `<a class="primary" href="/api/projects/${encodeURIComponent(state.project)}/export.csv">↓ Tải dữ liệu (.csv)</a>` : ''}</div></div>`;
 }
 
 function selectionViewport(element: HTMLElement): SelectionOrigin['viewport'] {
@@ -253,25 +366,26 @@ function validationLabel(status: string): string {
   return status === 'valid' ? 'Hợp lệ' : status === 'warning' ? 'Có cảnh báo' : status === 'error' ? 'Không hợp lệ' : status;
 }
 const auditHeaders: Record<string, string> = {
-  date: 'Ngày', entity_path: 'Đường dẫn entity', metric_normalized: 'Chỉ số',
+  date: 'Ngày', entity_path: 'Dự án / Nhóm vấn đề / Vấn đề', metric_normalized: 'Chỉ số',
   raw_value: 'Giá trị gốc trong Excel', display_value: 'Giá trị hiển thị',
-  chart_value: 'Giá trị dùng để vẽ', value_kind: 'Loại giá trị',
-  sheet_name: 'Sheet nguồn', cell_address: 'Ô nguồn', validation_status: 'Kiểm tra',
+  chart_value: 'Giá trị trên biểu đồ', value_kind: 'Tình trạng dữ liệu',
+  sheet_name: 'Trang tính nguồn', cell_address: 'Ô nguồn', validation_status: 'Kiểm tra',
 };
 const valueKinds: Record<string, string> = {
-  numeric: 'Số', number: 'Số', source_marker: 'Dấu nguồn', not_recorded: 'Chưa ghi nhận',
+  numeric: 'Số', number: 'Số', source_marker: 'Ký hiệu từ tệp Excel', not_recorded: 'Chưa ghi nhận',
   default_zero_rate: 'Tỷ lệ 0% mặc định', blank: 'Ô trống', text: 'Văn bản',
 };
 function auditCell(column: string, value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === '') return '—';
   if (column === 'date' && typeof value === 'string') return dateLabel(value.slice(0, 10));
+  if (column === 'entity_path') return displayRawEntityPath(value);
   if (column === 'validation_status') return validationLabel(String(value));
   if (column === 'value_kind') return valueKinds[String(value)] || String(value);
   return String(value);
 }
 const historyHeaders: Record<string, string> = {
-  attempt_status: 'Kết quả', submitted_file_name: 'Workbook', requested_mode: 'Chế độ',
-  input_record_count: 'Quan sát đầu vào', inserted_count: 'Thêm mới', updated_count: 'Cập nhật',
+  attempt_status: 'Kết quả', submitted_file_name: 'Tệp Excel', requested_mode: 'Chế độ',
+  input_record_count: 'Điểm dữ liệu trong tệp', inserted_count: 'Thêm mới', updated_count: 'Cập nhật',
   unchanged_count: 'Giữ nguyên', started_at: 'Bắt đầu lúc',
 };
 const importStatuses: Record<string, string> = {
@@ -280,7 +394,7 @@ const importStatuses: Record<string, string> = {
 function historyCell(column: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
   if (column === 'attempt_status') return importStatuses[String(value)] || String(value);
-  if (column === 'requested_mode') return value === 'full_snapshot' ? 'Snapshot đầy đủ' : value === 'incremental' ? 'Dữ liệu bổ sung' : String(value);
+  if (column === 'requested_mode') return value === 'full_snapshot' ? 'Bản chụp đầy đủ' : value === 'incremental' ? 'Dữ liệu bổ sung' : String(value);
   if (column === 'started_at') {
     const date = new Date(String(value));
     return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('vi-VN');
@@ -298,15 +412,15 @@ function confidenceLabel(confidence: string | null): string {
 }
 
 function aggregateMarkup(p: AggregateProvenance, contributors: Contributor[], nextCursor: string | null, pageStatus: string): string {
-  const roleLabel: Record<string, string> = { value: 'Giá trị', numerator: 'Tử số', denominator: 'Mẫu số', coverage: 'Ngày hợp lệ', excluded_marker: 'Dấu nguồn', missing: 'Thiếu giá trị' };
+  const roleLabel: Record<string, string> = { value: 'Giá trị', numerator: 'Tử số', denominator: 'Mẫu số', coverage: 'Ngày hợp lệ', excluded_marker: 'Ký hiệu từ tệp Excel', missing: 'Thiếu giá trị' };
   return `<div class="drawer-body">
-    ${p.freshness.newerDataAvailable ? '<div class="lineage-banner">Đã có lần nhập dữ liệu mới hơn sau snapshot này. Giá trị tổng hợp đang xem vẫn giữ nguyên; hãy tải lại workspace để đối chiếu.</div>' : ''}
-    <section class="provenance-context"><div class="entity-path">${p.context.entity.hierarchyPath.map(esc).join('<span>›</span>')}</div><dl><div><dt>Dự án</dt><dd>${esc(p.context.project)}</dd></div><div><dt>Đơn vị</dt><dd>${esc(p.context.entity.effectiveUnit || '—')}</dd></div><div><dt>Khoảng thời gian</dt><dd>${dateLabel(p.context.period.start)} – ${dateLabel(p.context.period.end)}</dd></div></dl></section>
-    <section><h3>Cách tính</h3><p>${esc(p.aggregation.explanation)}</p><dl class="provenance-grid compact"><div><dt>Quy tắc</dt><dd>${esc(p.aggregation.ruleCode)}</dd></div><div><dt>Giá trị tổng hợp</dt><dd>${esc(p.result.displayValue)}</dd></div><div><dt>Observation giá trị</dt><dd>${fmt(p.aggregation.valueObservationCount)}</dd></div><div><dt>Observation ngày hợp lệ</dt><dd>${fmt(p.aggregation.coverageObservationCount)}</dd></div>${p.aggregation.eligibleDayCount !== null ? `<div><dt>Ngày hợp lệ</dt><dd>${fmt(p.aggregation.eligibleDayCount)}</dd></div>` : ''}${p.aggregation.inferredZero ? '<div class="wide-row"><dt>Lưu ý</dt><dd>Giá trị 0 được suy ra theo quy tắc biểu đồ; không có ô Excel chứa giá trị 0 tương ứng.</dd></div>' : ''}</dl></section>
-    <section><h3>Observation đóng góp <span class="muted-copy">${fmt(contributors.length)}/${fmt(p.contributors.total)}</span></h3><p class="muted-copy">Điểm tổng hợp không tương ứng với một ô Excel. Chọn một observation để xem nguồn chính xác.</p>
-    <div class="contributor-list">${contributors.map((item, index) => `<button class="contributor-item" data-action="open-contributor" data-index="${index}"><span><strong>${esc(item.entityLabel)} · ${esc(item.metric)}</strong><small>${dateLabel(item.date)} · ${esc(roleLabel[item.role] || item.role)}${item.included ? '' : ' · không đưa vào phép tính'}</small></span><span>${esc(item.displayValue)} ›</span></button>`).join('') || '<p>Không có observation được lưu cho điểm này.</p>'}</div>
+    ${p.freshness.newerDataAvailable ? '<div class="lineage-banner">Đã có lần nhập dữ liệu mới hơn sau bản dữ liệu này. Giá trị tổng hợp đang xem vẫn giữ nguyên; hãy tải lại không gian phân tích để đối chiếu.</div>' : ''}
+    <section class="provenance-context"><div class="entity-path">${displayHierarchyParts(p.context.entity.hierarchyPath).map(esc).join('<span>›</span>')}</div><dl><div><dt>Dự án</dt><dd>${esc(p.context.project)}</dd></div><div><dt>Đơn vị đo</dt><dd>${esc(p.context.entity.effectiveUnit || '—')}</dd></div><div><dt>Khoảng thời gian</dt><dd>${dateLabel(p.context.period.start)} – ${dateLabel(p.context.period.end)}</dd></div></dl></section>
+    <section><h3>Cách tính</h3><p>${esc(p.aggregation.explanation)}</p><dl class="provenance-grid compact"><div><dt>Giá trị tổng hợp</dt><dd>${esc(p.result.displayValue)}</dd></div><div><dt>Số giá trị được dùng</dt><dd>${fmt(p.aggregation.valueObservationCount)}</dd></div><div><dt>Điểm dữ liệu xác định ngày hợp lệ</dt><dd>${fmt(p.aggregation.coverageObservationCount)}</dd></div>${p.aggregation.eligibleDayCount !== null ? `<div><dt>Ngày hợp lệ</dt><dd>${fmt(p.aggregation.eligibleDayCount)}</dd></div>` : ''}${p.aggregation.inferredZero ? '<div class="wide-row"><dt>Lưu ý</dt><dd>Giá trị 0 được suy ra theo quy tắc biểu đồ; không có ô Excel chứa giá trị 0 tương ứng.</dd></div>' : ''}</dl></section>
+    <section><h3>Dữ liệu dùng để tính <span class="muted-copy">${fmt(contributors.length)}/${fmt(p.contributors.total)}</span></h3><p class="muted-copy">Điểm tổng hợp không tương ứng với một ô Excel. Chọn một điểm dữ liệu để xem nguồn chính xác.</p>
+    <div class="contributor-list">${contributors.map((item, index) => `<button class="contributor-item" data-action="open-contributor" data-index="${index}"><span><strong>${esc(displayEntityName(entities.find(entity => entity.entity_label === item.entityLabel), item.entityLabel))} · ${esc(item.metric)}</strong><small>${dateLabel(item.date)} · ${esc(roleLabel[item.role] || item.role)}${item.included ? '' : ' · không đưa vào phép tính'}</small></span><span>${esc(item.displayValue)} ›</span></button>`).join('') || '<p>Không có điểm dữ liệu nào được lưu cho điểm này.</p>'}</div>
     ${nextCursor ? `<button class="ghost" data-action="load-contributors" ${pageStatus === 'loading' ? 'disabled' : ''}>${pageStatus === 'loading' ? 'Đang tải…' : 'Xem thêm'}</button>` : ''}${pageStatus === 'error' ? '<p class="lineage-error">Không tải được trang tiếp theo. Bạn có thể thử lại.</p>' : ''}
-    </section><section><h3>Độ mới dữ liệu</h3><p>Đến ngày ${esc(p.freshness.observedThrough ? dateLabel(p.freshness.observedThrough) : '—')} · Lưu snapshot ${esc(new Date(p.freshness.snapshotCreatedAt).toLocaleString('vi-VN'))}</p></section>
+    </section><section><h3>Thời điểm dữ liệu</h3><p>Đến ngày ${esc(p.freshness.observedThrough ? dateLabel(p.freshness.observedThrough) : '—')} · Lưu phiên bản lúc ${esc(new Date(p.freshness.snapshotCreatedAt).toLocaleString('vi-VN'))}</p></section>
   </div>`;
 }
 
@@ -322,7 +436,7 @@ function importMarkup(): string {
   if (importDetail.status === 'loading') return '<section aria-live="polite">Đang tải lần nhập dữ liệu…</section>';
   if (importDetail.status === 'error') return `<section><p class="lineage-error">${esc(importDetail.error)}</p><button class="ghost" data-action="show-import" data-import-ref="${esc(importDetail.importRef)}">Thử lại</button></section>`;
   const run = importDetail.data!;
-  return `<section><h3>Lần nhập dữ liệu</h3><dl class="provenance-grid compact"><div><dt>Workbook</dt><dd>${esc(run.workbookName)}</dd></div><div><dt>Cách nhập</dt><dd>${run.mode === 'full_snapshot' ? 'Snapshot đầy đủ' : 'Dữ liệu bổ sung'}</dd></div><div><dt>Ghi lúc</dt><dd>${esc(new Date(run.committedAt).toLocaleString('vi-VN'))}</dd></div><div><dt>Khoảng dữ liệu</dt><dd>${esc(run.dataRange.start || '—')} – ${esc(run.dataRange.end || '—')}</dd></div><div><dt>Thêm / cập nhật / giữ nguyên</dt><dd>${fmt(run.outcome.inserted)} / ${fmt(run.outcome.updated)} / ${fmt(run.outcome.unchanged)}</dd></div><div class="wide-row"><dt>SHA-256 workbook</dt><dd><code title="${esc(run.workbookHash)}">${esc(shortHash(run.workbookHash))}</code></dd></div></dl></section>`;
+  return `<section><h3>Lần nhập dữ liệu</h3><dl class="provenance-grid compact"><div><dt>Tệp Excel</dt><dd>${esc(run.workbookName)}</dd></div><div><dt>Cách nhập</dt><dd>${run.mode === 'full_snapshot' ? 'Bản chụp đầy đủ' : 'Dữ liệu bổ sung'}</dd></div><div><dt>Ghi lúc</dt><dd>${esc(new Date(run.committedAt).toLocaleString('vi-VN'))}</dd></div><div><dt>Khoảng dữ liệu</dt><dd>${esc(run.dataRange.start || '—')} – ${esc(run.dataRange.end || '—')}</dd></div><div><dt>Thêm / cập nhật / giữ nguyên</dt><dd>${fmt(run.outcome.inserted)} / ${fmt(run.outcome.updated)} / ${fmt(run.outcome.unchanged)}</dd></div><div class="wide-row"><dt>Mã nhận diện tệp</dt><dd><code title="${esc(run.workbookHash)}">${esc(shortHash(run.workbookHash))}</code></dd></div></dl></section>`;
 }
 
 function renderInvestigation(): void {
@@ -332,6 +446,8 @@ function renderInvestigation(): void {
   const priorAction = drawer.contains(document.activeElement)
     ? (document.activeElement as HTMLElement).dataset.action : null;
   const open = investigation.status !== 'closed';
+  const contextualOpen = open && investigationSelection()?.origin.plotKey === 'contextual-comparison';
+  document.querySelector('#contextual-comparison-dialog')?.classList.toggle('contextual-investigation-open', contextualOpen);
   shell.classList.toggle('drawer-open', open);
   drawer.setAttribute('aria-hidden', String(!open));
   if (investigation.status === 'closed') {
@@ -346,7 +462,7 @@ function renderInvestigation(): void {
   const live = `<div class="sr-live" role="status" aria-live="polite" aria-atomic="true">${esc(investigationLiveMessage)}</div>`;
   if (activeInvestigation.status === 'aggregate-ready') {
     const p = activeInvestigation.provenance;
-    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn điểm tổng hợp</span><h2 id="investigation-title">${esc(p.context.metric)} <strong>${esc(p.result.displayValue)}</strong></h2><p>${dateLabel(p.context.period.start)} – ${dateLabel(p.context.period.end)} · ${esc(origin.seriesName)}</p></div>${close}</div>${live}${aggregateMarkup(p, activeInvestigation.contributors, activeInvestigation.nextCursor, activeInvestigation.pageStatus)}`;
+    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu tổng hợp</span><h2 id="investigation-title">${esc(p.context.metric)} <strong>${esc(p.result.displayValue)}</strong></h2><p>${dateLabel(p.context.period.start)} – ${dateLabel(p.context.period.end)} · ${esc(origin.seriesName)}</p></div>${close}</div>${live}${aggregateMarkup(p, activeInvestigation.contributors, activeInvestigation.nextCursor, activeInvestigation.pageStatus)}`;
   } else if (activeInvestigation.status === 'loading') {
     drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu</span><h2 id="investigation-title">${esc(origin.seriesName)}</h2><p>${esc(dateLabel(origin.observedDate))} · ${esc(origin.displayedValue)}</p></div>${close}</div>${live}<div class="drawer-body" aria-busy="true"><div class="lineage-loading"><strong>Đang xác minh nguồn dữ liệu…</strong><span>Đối chiếu điểm biểu đồ với ô Excel và lần nhập tương ứng.</span><i></i><i></i><i></i></div></div>`;
   } else if (activeInvestigation.status === 'unavailable') {
@@ -356,17 +472,17 @@ function renderInvestigation(): void {
   } else {
     const p = activeInvestigation.provenance;
     const warnings = p.validation.issues.length
-      ? `<div class="provenance-issues">${p.validation.issues.map(issue => `<div><strong>${esc(issue.code)}</strong><p>${esc(issue.message)}</p></div>`).join('')}</div>`
+      ? `<div class="provenance-issues">${p.validation.issues.map(issue => `<div><p>${esc(issue.message)}</p></div>`).join('')}</div>`
       : '<p class="muted-copy">Không có cảnh báo nào gắn trực tiếp với ô nguồn của giá trị này.</p>';
     drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu</span><h2 id="investigation-title">${esc(p.context.metric.label)} <strong>${esc(p.values.display)}</strong></h2><p>${esc(dateLabel(p.context.observedDate))} · Chuỗi ${esc(origin.seriesName)}</p></div>${close}</div>${live}
       <div class="drawer-body">
         ${p.freshness.newerSnapshotAvailable ? '<div class="lineage-banner">Nguồn của điểm này đã có lần nhập mới hơn. Giá trị đang xem vẫn là phiên bản tại thời điểm chọn.</div>' : ''}
-        <section class="provenance-context"><div class="entity-path">${p.context.entity.hierarchyPath.map(esc).join('<span>›</span>')}</div><dl><div><dt>Dự án</dt><dd>${esc(p.context.project.label)}</dd></div><div><dt>Đơn vị tính</dt><dd>${esc(p.context.entity.effectiveUnit || 'Chưa xác định')}</dd></div></dl></section>
-        <section><h3>Nguồn Excel</h3><dl class="provenance-grid"><div><dt>Workbook</dt><dd>${esc(p.source.workbookName)}</dd></div><div><dt>Sheet và ô</dt><dd><code>${esc(p.source.cellReference)}</code></dd></div><div class="wide-row"><dt>SHA-256 workbook</dt><dd title="${esc(p.source.workbookHash.value)}"><code>${esc(shortHash(p.source.workbookHash.value))}</code></dd></div></dl><div class="inline-actions"><button data-action="copy-cell">Sao chép tham chiếu ô</button><button data-action="copy-value">Sao chép giá trị hiển thị</button></div></section>
-        <section><h3>Giá trị và chuyển đổi</h3><div class="value-flow"><div><span>Gốc trong Excel</span><strong>${esc(p.values.raw.text ?? '—')}</strong></div><b>→</b><div><span>Hiển thị</span><strong>${esc(p.values.display)}</strong></div><b>→</b><div><span>Dùng để vẽ</span><strong>${esc(p.values.chart ?? '—')}</strong></div></div><p class="value-help">Giá trị gốc giữ nguyên nội dung ô; giá trị hiển thị dành cho người đọc; giá trị dùng để vẽ là số sau chuẩn hóa.</p><dl class="provenance-grid compact"><div><dt>Quy tắc đọc file</dt><dd>${esc(p.transformation.parserRule || 'Không ghi nhận')}</dd></div><div><dt>Định dạng Excel</dt><dd>${esc(p.values.numberFormat || 'Không có')}</dd></div>${p.transformation.note ? `<div class="wide-row"><dt>Ghi chú xử lý</dt><dd>${esc(p.transformation.note)}</dd></div>` : ''}</dl></section>
+        <section class="provenance-context"><div class="entity-path">${displayHierarchyParts(p.context.entity.hierarchyPath).map(esc).join('<span>›</span>')}</div><dl><div><dt>Dự án</dt><dd>${esc(p.context.project.label)}</dd></div><div><dt>Đơn vị đo</dt><dd>${esc(p.context.entity.effectiveUnit || 'Chưa xác định')}</dd></div></dl></section>
+        <section><h3>Nguồn Excel</h3><dl class="provenance-grid"><div><dt>Tệp Excel</dt><dd>${esc(p.source.workbookName)}</dd></div><div><dt>Trang tính và ô</dt><dd><code>${esc(p.source.cellReference)}</code></dd></div><div class="wide-row"><dt>Mã nhận diện tệp</dt><dd title="${esc(p.source.workbookHash.value)}"><code>${esc(shortHash(p.source.workbookHash.value))}</code></dd></div></dl><div class="inline-actions"><button data-action="copy-cell">Sao chép vị trí ô</button><button data-action="copy-value">Sao chép giá trị hiển thị</button></div></section>
+        <section><h3>Giá trị từ Excel đến biểu đồ</h3><div class="value-flow"><div><span>Giá trị gốc</span><strong>${esc(p.values.raw.text ?? '—')}</strong></div><b>→</b><div><span>Giá trị hiển thị</span><strong>${esc(p.values.display)}</strong></div><b>→</b><div><span>Giá trị trên biểu đồ</span><strong>${esc(p.values.chart ?? '—')}</strong></div></div><p class="value-help">Giá trị gốc giữ nguyên nội dung ô; giá trị hiển thị dành cho người đọc; giá trị trên biểu đồ là số sau chuẩn hóa.</p><dl class="provenance-grid compact"><div><dt>Định dạng Excel</dt><dd>${esc(p.values.numberFormat || 'Không có')}</dd></div>${p.transformation.note ? `<div class="wide-row"><dt>Ghi chú xử lý</dt><dd>${esc(p.transformation.note)}</dd></div>` : ''}</dl></section>
         <section><h3>Kiểm tra dữ liệu</h3><div class="validation-line"><span class="validation-badge ${esc(p.validation.status)}">${esc(validationLabel(p.validation.status))}</span><span>${esc(confidenceLabel(p.transformation.parserConfidence))}</span></div>${warnings}</section>
         <section><h3>Lần nhập và phiên bản</h3><dl class="provenance-grid compact"><div><dt>Thay đổi</dt><dd>${esc(revisionChangeLabel(p.revision.changeType))}</dd></div><div><dt>Trạng thái phiên bản</dt><dd>${p.revision.revisionCurrent && !p.revision.sourcePresenceCurrent ? 'Còn hiệu lực · nguồn đã mới hơn' : esc(revisionStateLabel(p.revision.state))}</dd></div><div><dt>Ghi lúc</dt><dd>${esc(p.import.committedAt ? new Date(p.import.committedAt).toLocaleString('vi-VN') : '—')}</dd></div><div><dt>Dữ liệu đến ngày</dt><dd>${esc(p.freshness.observedThrough ? dateLabel(p.freshness.observedThrough) : '—')}</dd></div></dl></section>
-      </div><div class="drawer-actions"><button class="primary" data-action="open-exact-audit">Mở đúng dòng Audit</button></div>`;
+      </div><div class="drawer-actions"><button class="primary" data-action="open-exact-audit">Mở đúng dòng đối chiếu</button></div>`;
   }
   if (activeInvestigation.status === 'ready') {
     const p = activeInvestigation.provenance;
@@ -388,7 +504,7 @@ async function loadProvenance(selection: InvestigationSelection): Promise<void> 
   if (selection.kind === 'aggregate') { await loadAggregate(selection); return; }
   if (!selection.observationRef || !selection.lineageRef) {
     investigation = { status: 'unavailable', selection };
-    investigationLiveMessage = 'Điểm đã chọn chưa có thông tin provenance.';
+    investigationLiveMessage = 'Điểm đã chọn chưa có thông tin nguồn dữ liệu.';
     renderInvestigation();
     return;
   }
@@ -401,7 +517,7 @@ async function loadProvenance(selection: InvestigationSelection): Promise<void> 
     const params = new URLSearchParams({ lineageRef: selection.lineageRef });
     const provenance = await api<Provenance>(`/projects/${encodeURIComponent(state.project)}/observations/${encodeURIComponent(selection.observationRef)}/provenance?${params}`, { signal: current.signal });
     if (current !== investigationRequest) return;
-    if (provenance.observationRef !== selection.observationRef || provenance.lineageRef !== selection.lineageRef) throw new Error('API trả về lineage không khớp điểm đã chọn.');
+    if (provenance.observationRef !== selection.observationRef || provenance.lineageRef !== selection.lineageRef) throw new Error('Máy chủ trả về nguồn tham chiếu không khớp điểm đã chọn.');
     investigation = { status: 'ready', selection, provenance };
     investigationLiveMessage = `Đã tải nguồn cho ${provenance.context.metric.label}, ngày ${dateLabel(provenance.context.observedDate)}.`;
   } catch (error) {
@@ -432,7 +548,7 @@ async function loadAggregate(selection: InvestigationSelection): Promise<void> {
     if (current !== investigationRequest) return;
     if (provenance.aggregateRef !== selection.aggregateRef || page.aggregateRef !== selection.aggregateRef) throw new Error('Bằng chứng tổng hợp không khớp với điểm đã chọn.');
     investigation = { status: 'aggregate-ready', selection, provenance, contributors: page.items, nextCursor: page.nextCursor, pageStatus: 'idle' };
-    investigationLiveMessage = `Đã tải ${page.items.length} trong ${page.total} observation đóng góp.`;
+    investigationLiveMessage = `Đã tải ${page.items.length} trong ${page.total} điểm dữ liệu dùng để tính.`;
   } catch (error) {
     if (current.signal.aborted) return;
     investigation = { status: 'error', selection, error: (error as Error).message };
@@ -450,7 +566,7 @@ async function loadMoreContributors(): Promise<void> {
     const page = await api<ContributorPage>(`${path}?${new URLSearchParams({ cursor: before.nextCursor! })}`);
     if (investigation.status !== 'aggregate-ready' || investigation.provenance.aggregateRef !== page.aggregateRef) return;
     investigation = { ...investigation, contributors: [...investigation.contributors, ...page.items], nextCursor: page.nextCursor, pageStatus: 'idle' };
-    investigationLiveMessage = `Đã tải ${investigation.contributors.length} trong ${page.total} observation.`;
+    investigationLiveMessage = `Đã tải ${investigation.contributors.length} trong ${page.total} điểm dữ liệu.`;
   } catch {
     if (investigation.status === 'aggregate-ready' && investigation.provenance.aggregateRef === before.provenance.aggregateRef) investigation = { ...investigation, pageStatus: 'error' };
   }
@@ -463,7 +579,7 @@ async function loadRevisions(): Promise<void> {
   revisionHistory = { status: 'loading', observationRef }; renderInvestigation();
   try {
     const data = await api<RevisionHistory>(`/projects/${encodeURIComponent(state.project)}/observations/${encodeURIComponent(observationRef)}/revisions`);
-    if (data.observationRef !== observationRef) throw new Error('Lịch sử revision không khớp observation.');
+    if (data.observationRef !== observationRef) throw new Error('Lịch sử phiên bản không khớp điểm dữ liệu đã chọn.');
     revisionHistory = { status: 'ready', observationRef, data };
   } catch (error) { revisionHistory = { status: 'error', observationRef, error: (error as Error).message }; }
   if (investigation.status === 'ready' && investigation.provenance.observationRef === observationRef) renderInvestigation();
@@ -479,15 +595,7 @@ async function loadImport(importRef: string): Promise<void> {
   if (investigation.status !== 'closed') renderInvestigation();
 }
 
-function updateAccessiblePointSelection(plotKey: string, selectedKey: string | null): void {
-  document.querySelectorAll<HTMLButtonElement>(`[data-chart-point][data-plot-key="${plotKey}"]`).forEach(button => {
-    const selected = selectedKey !== null && button.dataset.pointKey === selectedKey;
-    button.classList.toggle('selected', selected);
-    button.setAttribute('aria-pressed', String(selected));
-  });
-}
-
-function openInvestigation(plotKey: string, entityRef: string, point: ChartPointSelection, focusTargetId?: string): void {
+function openInvestigation(plotKey: string, entityRef: string, point: ChartPointSelection): void {
   const plot = document.querySelector<HTMLElement>(`[data-plot="${plotKey}"]`);
   if (!plot) return;
   const selection: InvestigationSelection = {
@@ -500,23 +608,26 @@ function openInvestigation(plotKey: string, entityRef: string, point: ChartPoint
       observedDate: String(point.x).slice(0, 10), displayedValue: String(point.y ?? '—'),
       curveNumber: point.curveNumber, pointNumber: point.pointNumber,
       viewport: selectionViewport(plot),
-      focusTargetId,
     },
   };
   aggregateParent = null; revisionHistory = null; importDetail = null;
   selectChartPoint(plot, point.curveNumber, point.pointNumber);
-  updateAccessiblePointSelection(plotKey, `${point.curveNumber}:${point.pointNumber}`);
   void loadProvenance(selection);
 }
 
 async function loadAuditLookup(selection: InvestigationSelection): Promise<void> {
   if (!selection.observationRef || !selection.lineageRef) return;
   auditFocus = { status: 'loading', selection };
+  if (selection.origin.plotKey === 'contextual-comparison') {
+    restoreInvestigationDrawerHost();
+    document.querySelector<HTMLDialogElement>('#contextual-comparison-dialog')?.close();
+    document.body.classList.remove('modal-open');
+  }
   state.tab = 'audit'; save(); renderMain(); renderInvestigation();
   try {
     const params = new URLSearchParams({ observationRef: selection.observationRef, lineageRef: selection.lineageRef });
     const lookup = await api<AuditLookup>(`/projects/${encodeURIComponent(state.project)}/audit/lookup?${params}`);
-    if (lookup.observationRef !== selection.observationRef || lookup.lineageRef !== selection.lineageRef) throw new Error('API trả về Audit row không khớp điểm đã chọn.');
+    if (lookup.observationRef !== selection.observationRef || lookup.lineageRef !== selection.lineageRef) throw new Error('Máy chủ trả về dòng đối chiếu không khớp điểm đã chọn.');
     auditFocus = { status: 'ready', selection, lookup };
     pendingFocusId = 'focused-audit-row';
   } catch (error) {
@@ -529,12 +640,13 @@ function returnToChart(): void {
   if (!auditFocus) return;
   const selection = auditFocus.selection;
   auditFocus = null;
-  state.tab = selection.origin.tab; save(); renderMain(); renderInvestigation();
+  state.tab = selection.origin.tab; save(); renderMain();
+  if (selection.origin.plotKey === 'contextual-comparison' && contextualComparison) {
+    renderContextualComparison();
+  }
+  renderInvestigation();
   requestAnimationFrame(() => {
-    const target = selection.origin.focusTargetId
-      ? document.getElementById(selection.origin.focusTargetId)
-      : document.querySelector<HTMLElement>(`[data-plot="${selection.origin.plotKey}"]`);
-    target?.focus();
+    document.querySelector<HTMLElement>(`[data-plot="${selection.origin.plotKey}"]`)?.scrollIntoView({ block: 'nearest' });
   });
 }
 
@@ -553,17 +665,17 @@ function renderMain(): void {
   const root = document.querySelector<HTMLDivElement>('#workspace')!;
   disposeCharts(root);
   const project = currentProject();
-  const chosenTab = tabs.find(tab => tab.key === state.tab)!;
+  const chosenTab = tabDefinitions.find(tab => tab.key === state.tab)!;
   const trail = entityTrail(entities, state.entity);
-  root.innerHTML = `<nav class="tabbar" aria-label="Tính năng workspace">${tabs.map(tab => `<button class="tab ${tab.key === state.tab ? 'active' : ''}" data-tab="${tab.key}" aria-current="${tab.key === state.tab ? 'page' : 'false'}"><span>${tab.icon}</span>${tab.label}</button>`).join('')}</nav>
-    ${header(state.project || 'Không gian phân tích', project ? `${fmt(project.records)} quan sát đã lưu · ${fmt(project.chartable)} quan sát có thể vẽ` : bootstrapError ? 'Chưa kết nối được kho dữ liệu.' : bootstrapLoaded ? 'Chưa có workbook nào được nhập.' : 'Đang kiểm tra dữ liệu…')}
+  root.innerHTML = `<nav class="tabbar" aria-label="Tính năng của không gian phân tích">${visibleTabs.map(tab => `<button class="tab ${tab.key === state.tab ? 'active' : ''}" data-tab="${tab.key}" aria-current="${tab.key === state.tab ? 'page' : 'false'}"><span>${tab.icon}</span>${tab.label}</button>`).join('')}</nav>
+    ${header(state.project || 'Không gian phân tích', project ? `${fmt(project.records)} điểm dữ liệu đã lưu · ${fmt(project.chartable)} điểm có thể hiển thị trên biểu đồ` : bootstrapError ? 'Chưa kết nối được kho dữ liệu.' : bootstrapLoaded ? 'Chưa có tệp Excel nào được nhập.' : 'Đang kiểm tra dữ liệu…')}
     <div id="workspace-hierarchy">${hierarchyMarkup(trail)}</div>
     <div id="workspace-message">${message ? `<div class="notice">${esc(message)}</div>` : ''}</div>
     ${project ? `<div class="kpi-grid">
       <div class="kpi"><div class="kpi-icon violet">◈</div><span>DỰ ÁN</span><strong>${esc(project.label)}</strong><small>Đang xem</small></div>
-      <div class="kpi"><div class="kpi-icon blue">◇</div><span>ENTITY</span><strong>${fmt(project.entities)}</strong><small>Trong cây phân cấp</small></div>
-      <div class="kpi"><div class="kpi-icon teal">▣</div><span>ĐƠN VỊ</span><strong>${fmt(project.units)}</strong><small>Đơn vị của entity</small></div>
-      <div class="kpi"><div class="kpi-icon amber">▤</div><span>QUAN SÁT</span><strong>${fmt(project.records)}</strong><small>Đã lưu, gồm cả ô không vẽ được</small></div>
+      <div class="kpi"><div class="kpi-icon blue">◇</div><span>NỘI DUNG THEO DÕI</span><strong>${fmt(project.entities)}</strong><small>Gồm nhóm vấn đề, vấn đề và tình trạng</small></div>
+      <div class="kpi"><div class="kpi-icon teal">▣</div><span>ĐƠN VỊ ĐO</span><strong>${fmt(project.units)}</strong><small>${fmt(project.units)} loại trong dự án</small></div>
+      <div class="kpi"><div class="kpi-icon amber">▤</div><span>ĐIỂM DỮ LIỆU</span><strong>${fmt(project.records)}</strong><small>Đã lưu, gồm cả giá trị chưa hiển thị</small></div>
     </div>` : ''}
     <div class="content-card" aria-busy="${loading}"><div class="tab-content"><div class="section-title"><div><h2>${chosenTab.label}</h2></div><span id="workspace-loading" class="loading" ${loading ? '' : 'hidden'}>Đang cập nhật biểu đồ…</span></div><div id="workspace-request-status" class="workspace-request-status" role="status" aria-live="polite" aria-atomic="true"></div><div id="tab-body"></div></div></div>`;
   renderTab();
@@ -571,7 +683,7 @@ function renderMain(): void {
 }
 
 function hierarchyMarkup(trail = entityTrail(entities, state.entity)): string {
-  return trail.length ? `<div class="hierarchy-context"><span class="context-label">Vị trí trong hierarchy</span><div class="entity-breadcrumb" aria-label="Đường dẫn entity">${trail.map((entity, index) => `<span class="crumb ${index === trail.length - 1 ? 'current' : ''}">${esc(entity.entity_label)}</span>${index < trail.length - 1 ? '<span class="crumb-separator" aria-hidden="true">›</span>' : ''}`).join('')}</div></div>` : '';
+  return trail.length ? `<div class="hierarchy-context"><span class="context-label">Đang xem</span><div class="entity-breadcrumb" aria-label="Nội dung đang xem">${trail.map((entity, index) => `<span class="crumb ${index === trail.length - 1 ? 'current' : ''}">${esc(getEntityDisplayName(entity))}</span>${index < trail.length - 1 ? '<span class="crumb-separator" aria-hidden="true">›</span>' : ''}`).join('')}</div></div>` : '';
 }
 
 function updateWorkspaceChrome(): void {
@@ -580,8 +692,8 @@ function updateWorkspaceChrome(): void {
   const subtitle = document.querySelector<HTMLElement>('.page-head p');
   if (heading) heading.textContent = state.project || 'Không gian phân tích';
   if (subtitle) subtitle.textContent = project
-    ? `${fmt(project.records)} quan sát đã lưu · ${fmt(project.chartable)} quan sát có thể vẽ`
-    : bootstrapError ? 'Chưa kết nối được kho dữ liệu.' : bootstrapLoaded ? 'Chưa có workbook nào được nhập.' : 'Đang kiểm tra dữ liệu…';
+    ? `${fmt(project.records)} điểm dữ liệu đã lưu · ${fmt(project.chartable)} điểm có thể hiển thị trên biểu đồ`
+    : bootstrapError ? 'Chưa kết nối được kho dữ liệu.' : bootstrapLoaded ? 'Chưa có tệp Excel nào được nhập.' : 'Đang kiểm tra dữ liệu…';
   const hierarchy = document.querySelector<HTMLElement>('#workspace-hierarchy');
   if (hierarchy) hierarchy.innerHTML = hierarchyMarkup();
   const messageRoot = document.querySelector<HTMLElement>('#workspace-message');
@@ -604,8 +716,9 @@ function updateWorkspaceRequestStatus(): void {
 }
 
 function workspaceFilterLabel(value: Workspace): string {
-  const entity = entities.find(item => item.entity_id === value.selectedEntity)?.entity_label || value.selectedEntity;
-  const scope = state.scope === 'children' ? 'các entity con' : entity;
+  const selected = entities.find(item => item.entity_id === value.selectedEntity);
+  const entity = displayEntityName(selected, value.selectedEntity);
+  const scope = state.scope === 'children' ? getChildrenScopeLabel(selected?.entity_level).toLowerCase() : entity;
   return `${scope}, ${dateLabel(value.window.start)}–${dateLabel(value.window.end)}`;
 }
 
@@ -616,33 +729,25 @@ function disposeCharts(root: ParentNode): void {
     purgeChart(element);
   });
 }
-function chartKeyboardLayer(figure: Figure, plotKey: string, entityRef: string): string {
-  const points = accessibleChartPoints(figure);
-  if (!points.length) return '<p class="chart-keyboard-empty">Biểu đồ này chưa có điểm dữ liệu hỗ trợ điều tra bằng bàn phím.</p>';
-  const selected = investigationSelection();
-  const keepOpen = selected?.origin.plotKey === plotKey && Boolean(selected.origin.focusTargetId);
-  const hintId = `chart-keyboard-hint-${plotKey}`;
-  const buttons = points.map(item => {
-    const registryKey = `${plotKey}:${item.key}`;
-    const id = `chart-point-${plotKey}-${item.key.replace(':', '-')}`;
-    accessiblePointRegistry.set(registryKey, { plotKey, entityRef, point: item.selection });
-    const activeRef = item.selection.aggregateRef || item.selection.observationRef;
-    const selectedRef = selected?.aggregateRef || selected?.observationRef;
-    const isSelected = selected?.origin.plotKey === plotKey && activeRef !== null && activeRef === selectedRef;
-    return `<li><button id="${esc(id)}" class="chart-point-option ${isSelected ? 'selected' : ''}" data-action="open-chart-point" data-chart-point data-plot-key="${esc(plotKey)}" data-point-key="${esc(item.key)}" data-registry-key="${esc(registryKey)}" aria-pressed="${isSelected}" ${item.hasProvenance ? '' : 'data-lineage-unavailable="true"'}>${esc(item.label)}</button></li>`;
-  }).join('');
-  return `<details class="chart-keyboard" ${keepOpen ? 'open' : ''}><summary>Điều tra điểm bằng bàn phím <span>${fmt(points.length)} điểm</span></summary><p id="${esc(hintId)}">Dùng Tab để chọn điểm. Nhấn Enter hoặc Space để mở nguồn dữ liệu.</p><ul class="chart-point-list" aria-describedby="${esc(hintId)}">${buttons}</ul></details>`;
-}
-
 function chartPlotKey(section: string, entityId: string): string {
   return `${section}-${encodeURIComponent(entityId)}`;
 }
+function structuralSiblings(anchorId: string): Entity[] {
+  const anchor = entities.find(item => item.entity_id === anchorId);
+  if (!anchor?.parent_entity_id) return [];
+  return entities.filter(item => item.parent_entity_id === anchor.parent_entity_id && item.entity_id !== anchorId);
+}
 function chartCard(chart: Chart, section: string): string {
   const entity = entities.find(item => item.entity_id === chart.entityId);
-  const path = entityTrail(entities, chart.entityId).map(item => item.entity_label).join(' / ');
-  const metadata = `${path}${entity?.effective_unit ? ` · Đơn vị: ${entity.effective_unit}` : ''}`;
+  const path = displayEntityPath(chart.entityId);
+  const metadata = `${path}${entity?.effective_unit ? ` · Đơn vị đo: ${entity.effective_unit}` : ''}`;
   const plotKey = chartPlotKey(section, chart.entityId);
-  return `<article class="chart-card" data-chart-key="${esc(plotKey)}"><div class="card-top"><div><h3>${esc(entityCardTitle(entity, chart.title))}</h3><span>${esc(metadata)}</span></div><span class="pill">Theo bộ lọc</span></div><div class="plot" data-plot="${esc(plotKey)}" tabindex="0" aria-label="Biểu đồ ${esc(entityCardTitle(entity, chart.title))}"></div>${chartKeyboardLayer(chart.figure, plotKey, chart.entityId)}</article>`;
+  const contextualAction = section === 'statistics' && state.scope === 'children';
+  const siblingCount = structuralSiblings(chart.entityId).length;
+  const action = contextualAction
+    ? `<button id="compare-action-${encodeURIComponent(chart.entityId)}" class="compare-action" data-action="open-contextual-comparison" data-entity-id="${esc(chart.entityId)}" aria-haspopup="dialog" ${siblingCount ? '' : 'disabled'} title="${esc(getComparisonButtonDescription(entity?.entity_level, siblingCount > 0))}">So sánh</button>`
+    : '<span class="pill">Theo bộ lọc</span>';
+  return `<article class="chart-card" data-chart-key="${esc(plotKey)}"><div class="card-top"><div><h3>${esc(entityCardTitle(entity, chart.title))}</h3><span>${esc(metadata)}</span></div>${action}</div><div class="plot" data-plot="${esc(plotKey)}" aria-label="Biểu đồ ${esc(entityCardTitle(entity, chart.title))}"></div></article>`;
 }
 function hasSiblingCharts(charts: Chart[]): boolean {
   return state.scope === 'children' && (workspace?.scopeIds.length || 0) > 1 && charts.length > 1;
@@ -651,17 +756,177 @@ function statePanel(title: string, detail: string, retry = false, retryAction = 
   return `<div class="empty ${retry ? 'state-error' : ''}" role="${retry ? 'alert' : 'status'}"><h3>${esc(title)}</h3><p>${esc(detail)}</p>${retry ? `<button class="ghost" data-action="${retryAction}">Thử tải lại</button>` : ''}</div>`;
 }
 
-function analyticsHost(body: HTMLDivElement, tab: Tab, preamble: string): HTMLDivElement {
-  if (body.dataset.workspaceTab !== tab) {
+function statisticsReceipt(): string {
+  const group = ({ day: 'ngày', week: 'tuần', month: 'tháng', quarter: 'quý' })[state.statisticsGroup];
+  const calculation = ({ both: 'Tổng và trung bình/ngày', sum: 'Tổng', average: 'Trung bình/ngày' })[state.statisticsMode];
+  const range = state.statisticsRange === 'all'
+    ? 'Toàn bộ dữ liệu'
+    : state.statisticsRange === 'custom'
+      ? `${dateLabel(state.statisticsFrom)}–${dateLabel(state.statisticsTo)}`
+      : `${fmt(state.statisticsCount)} kỳ gần nhất`;
+  return `<div class="statistics-receipt" aria-label="Ngữ cảnh thống kê hiện tại"><span>Theo ${esc(group)}</span><span>${esc(calculation)}</span><span>${esc(range)}</span><span>${state.includeIncomplete ? 'Có kỳ chưa đầy đủ' : 'Chỉ kỳ đầy đủ'}</span></div>`;
+}
+
+function aiStatusLabel(value: AIAnalysis['status']): string {
+  return ({
+    ready: 'Đã kiểm chứng', insufficient_data: 'Chưa đủ dữ liệu',
+    provider_unavailable: 'Tóm tắt dự phòng', rejected_output: 'Đã loại phần thiếu căn cứ', stale: 'Cần phân tích lại',
+  })[value];
+}
+
+function aiFactLabel(kind: string): string {
+  return ({ previous: 'Kỳ đầu', current: 'Kỳ cuối', absolute_change: 'Thay đổi toàn khoảng', relative_change: 'Tỷ lệ toàn khoảng', direction: 'Chiều thay đổi' } as Record<string, string>)[kind] || kind;
+}
+
+function aiFactValue(fact: AIFact): string {
+  if (fact.kind !== 'direction') return fact.displayValue;
+  return ({ increasing: 'Tăng', decreasing: 'Giảm', unchanged: 'Không đổi' } as Record<string, string>)[String(fact.value)] || String(fact.value);
+}
+
+function aiGroupLabel(value: 'day' | 'week' | 'month'): string {
+  return ({ day: 'ngày', week: 'tuần', month: 'tháng' })[value];
+}
+
+function aiPatternLabel(value: unknown): string {
+  return ({
+    consistently_increasing: 'Tăng liên tục', consistently_decreasing: 'Giảm liên tục',
+    unchanged: 'Không đổi qua các kỳ', fluctuating: 'Dao động tăng giảm',
+  } as Record<string, string>)[String(value)] || String(value);
+}
+
+function aiPeriodChange(point: AISeriesPoint): string {
+  if (!point.change) return '<span class="ai-change baseline">Mốc đầu</span>';
+  const direction = ({ increasing: 'Tăng', decreasing: 'Giảm', unchanged: 'Không đổi' })[point.change.direction];
+  const absolute = point.change.absoluteDisplay.replace(/^[+-]/, '');
+  const relative = point.change.relativePercent === null ? 'không tính được %' : point.change.relativeDisplay.replace(/^[+-]/, '');
+  return `<span class="ai-change ${esc(point.change.direction)}"><strong>${esc(direction)} ${esc(absolute)}</strong><small>${esc(relative)}</small></span>`;
+}
+
+function aiFriendlyError(): string {
+  return 'Dịch vụ phân tích tạm thời không phản hồi. Dữ liệu trên bảng điều khiển không bị ảnh hưởng; hãy thử lại.';
+}
+
+function focusAIAction(): void {
+  requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('[data-action="generate-ai-insight"]')?.focus());
+}
+
+function announceAI(message: string): void {
+  requestAnimationFrame(() => {
+    const status = document.querySelector<HTMLElement>('#ai-status-message');
+    if (status) status.textContent = message;
+  });
+}
+
+function renderAIInsights(): string {
+  const scopeBlocked = state.scope !== 'node';
+  const statusUnavailable = aiStatus && !aiStatus.enabled;
+  const notConfigured = aiStatus && !aiStatus.configured;
+  const hardDisabled = !aiStatus || statusUnavailable || notConfigured || scopeBlocked || !workspace;
+  const disabled = hardDisabled || aiLoading;
+  const actionLabel = aiLoading ? 'Đang phân tích…' : aiAnalysis ? 'Phân tích lại' : 'Phân tích khoảng đang xem';
+  const statusCopy = aiStatusError
+    ? '<p id="ai-availability-note" class="ai-inline-error">Không kiểm tra được tính sẵn sàng của tính năng. Hãy tải lại trang hoặc liên hệ người vận hành.</p>'
+    : !aiStatus
+      ? '<p id="ai-availability-note" class="ai-muted">Đang kiểm tra tính sẵn sàng của tính năng…</p>'
+      : !aiStatus.enabled
+        ? '<p id="ai-availability-note" class="ai-muted">Tính năng phân tích đang tắt ở môi trường này.</p>'
+        : !aiStatus.configured
+          ? '<p id="ai-availability-note" class="ai-inline-error">Tính năng phân tích chưa sẵn sàng. Liên hệ người vận hành để hoàn tất cấu hình.</p>'
+          : !aiStatus.externalAllowed
+            ? '<p id="ai-availability-note" class="ai-privacy-note">Chế độ riêng tư đang bật: hệ thống chỉ dùng số liệu đã kiểm chứng trong máy chủ và không gọi dịch vụ trí tuệ nhân tạo bên ngoài.</p>'
+            : '<p id="ai-availability-note" class="ai-trust-note">Chỉ số liệu đã chuẩn hóa và mã định danh thay thế được gửi đến dịch vụ trí tuệ nhân tạo. Tệp Excel gốc và thông tin truy vết luôn ở lại máy chủ.</p>';
+  const selectedEntity = currentEntity();
+  const selectedName = displayEntityName(selectedEntity, aiAnalysis?.scope.entityLabel || 'Nội dung đang xem');
+  const selectedScope = getCurrentScopeLabel(selectedEntity?.entity_level);
+  const scopeCopy = scopeBlocked
+    ? `<div id="ai-scope-note" class="ai-scope-note"><div><strong>Mức hiển thị này chưa hỗ trợ phân tích tự động.</strong><p>Hiện tại tính năng phân tích từng nội dung. Chuyển về “${esc(selectedScope)}” để tiếp tục.</p></div><button class="ghost" data-action="use-selected-entity">Dùng nội dung đang chọn</button></div>`
+    : '';
+  const error = aiAnalysisError ? `<div class="ai-callout error" role="alert"><strong>Không tạo được phân tích.</strong><p>${esc(aiAnalysisError)}</p></div>` : '';
+  let result = scopeBlocked
+    ? `<div class="ai-empty compact"><strong>Chưa có kết quả cho mức hiển thị này.</strong><p>Biểu đồ phía trên vẫn hiển thị bình thường. Chọn “${esc(selectedScope)}” để tạo nhận xét xu hướng.</p></div>`
+    : aiLoading
+      ? '<div class="ai-empty compact"><strong>Đang đối chiếu các kỳ dữ liệu…</strong><p>Kết quả sẽ xuất hiện tại đây sau khi số liệu và bằng chứng được kiểm tra.</p></div>'
+      : '<div class="ai-empty"><strong>Chưa có phân tích cho bộ lọc này.</strong><p>Tính năng chỉ chạy khi bạn chủ động yêu cầu; đổi bộ lọc không tự gửi dữ liệu ra ngoài.</p></div>';
+  if (aiAnalysis && !scopeBlocked) {
+    const stale = aiLocallyStale || aiAnalysis.status === 'stale' || aiAnalysis.dataAsOf.stale;
+    const stateValue: AIAnalysis['status'] = stale ? 'stale' : aiAnalysis.status;
+    const facts = aiAnalysis.facts.filter(fact => ['previous', 'current', 'absolute_change', 'relative_change'].includes(fact.kind)).map(fact => `<div><dt>${esc(aiFactLabel(fact.kind))}</dt><dd>${esc(aiFactValue(fact))}</dd></div>`).join('');
+    const direction = aiAnalysis.facts.find(fact => fact.kind === 'direction');
+    const pattern = aiAnalysis.facts.find(fact => fact.kind === 'trend_pattern');
+    const periods = aiAnalysis.series.map(point => {
+      const evidence = aiAnalysis?.evidence.find(item => item.evidenceId === point.evidenceId);
+      return `<tr><th scope="row"><strong>${esc(point.periodLabel)}</strong><small>${fmt(point.observedDayCount)}/${fmt(point.expectedDayCount)} ngày dữ liệu</small></th><td>${esc(point.displayValue)}</td><td>${aiPeriodChange(point)}</td><td>${evidence ? `<button class="text-action" data-action="open-ai-evidence" data-evidence-id="${esc(point.evidenceId)}" aria-label="Mở nguồn kỳ ${esc(point.periodLabel)}">Nguồn</button>` : '—'}</td></tr>`;
+    }).join('');
+    const limitations = [...new Set([...(aiAnalysis.quality.limitations || []), ...(aiAnalysis.narrative.limitations || [])])];
+    const providerNotice = aiAnalysis.status === 'provider_unavailable'
+      ? '<div class="ai-callout warning"><strong>Dịch vụ phân tích tự động tạm thời không phản hồi.</strong><p>Kết quả bên dưới vẫn được tạo từ số liệu đã kiểm chứng và bảng điều khiển tiếp tục hoạt động.</p></div>'
+      : aiAnalysis.status === 'rejected_output'
+        ? '<div class="ai-callout warning"><strong>Phần diễn giải tự động không đủ căn cứ.</strong><p>Hệ thống đã loại phần đó và chỉ hiển thị kết quả có thể đối chiếu với dữ liệu nguồn.</p></div>'
+        : '';
+    const trendCopy = direction && pattern
+      ? `<p class="ai-direction"><span>Xu hướng theo ${esc(aiGroupLabel(aiAnalysis.window.groupBy))}</span><strong>${esc(aiPatternLabel(pattern.value))}</strong><small>Toàn khoảng: ${esc(aiFactValue(direction).toLowerCase())}</small></p>`
+      : '<p class="ai-section-empty">Chưa đủ kỳ hợp lệ để xác định xu hướng toàn chuỗi.</p>';
+    const narrativeInsights = aiAnalysis.narrative.insights
+      .map(item => `<p class="ai-insight-copy">${esc(item.text)}</p>`)
+      .join('');
+    const qualityAlert = limitations.length
+      ? `<div class="ai-quality-alert"><strong>Dữ liệu cần lưu ý</strong><p>${esc(limitations[0])}${limitations.length > 1 ? ` Còn ${fmt(limitations.length - 1)} giới hạn khác trong phần chi tiết.` : ''}</p></div>`
+      : '';
+    result = `<div class="ai-result ${stale ? 'stale' : ''}">
+      <div class="ai-result-head"><span class="ai-state ${esc(stateValue)}">${esc(aiStatusLabel(stateValue))}</span><span>${fmt(aiAnalysis.quality.validPeriodCount)}/${fmt(aiAnalysis.quality.expectedPeriodCount)} kỳ ${esc(aiGroupLabel(aiAnalysis.window.groupBy))} có dữ liệu hợp lệ</span></div>
+      <dl class="ai-scope-receipt" aria-label="Mức hiển thị của kết quả phân tích"><div><dt>${esc(getEntityLevelLabel(selectedEntity?.entity_level))}</dt><dd>${esc(selectedName)}</dd></div><div><dt>Khoảng ngày</dt><dd>${dateLabel(aiAnalysis.window.start)}–${dateLabel(aiAnalysis.window.end)}</dd></div><div><dt>Chỉ số</dt><dd>${esc(aiAnalysis.scope.metricDisplayName)}</dd></div><div><dt>Xem theo</dt><dd>${esc(aiGroupLabel(aiAnalysis.window.groupBy))}</dd></div></dl>
+      ${stale ? '<div class="ai-callout warning"><strong>Kết quả cũ hơn dữ liệu đang xem.</strong><p>Bộ lọc hoặc dữ liệu đã nhập đã thay đổi. Kết quả cũ được giữ để đối chiếu; hãy chọn “Phân tích lại”.</p></div>' : ''}
+      ${providerNotice}
+      <section class="ai-executive" aria-labelledby="ai-executive-title">
+        <div class="ai-section-heading"><h4 id="ai-executive-title">Tổng quan phân tích</h4><span>${aiAnalysis.narrative.mode === 'ai' ? 'Đã đối chiếu bằng chứng' : 'Tóm tắt từ số liệu'}</span></div>
+        <p>${esc(aiAnalysis.narrative.summary.text)}</p>
+      </section>
+      ${qualityAlert}
+      <div class="ai-reading-grid">
+        <section class="ai-trend-block" aria-labelledby="ai-trend-title"><h4 id="ai-trend-title">Diễn giải xu hướng</h4>${trendCopy}${narrativeInsights}</section>
+        <section class="ai-fact-block" aria-labelledby="ai-facts-title"><h4 id="ai-facts-title">Các mốc so sánh</h4>${facts ? `<dl class="ai-facts">${facts}</dl>` : '<p class="ai-section-empty">Chưa có đủ hai kỳ hợp lệ để tạo các mốc so sánh.</p>'}</section>
+      </div>
+      <details class="ai-disclosure ai-periods"><summary><span>Biến động từng ${esc(aiGroupLabel(aiAnalysis.window.groupBy))}</span><small>${fmt(aiAnalysis.series.length)} kỳ · mở để xem bằng chứng</small></summary><div class="ai-disclosure-body"><div class="ai-period-table"><table><thead><tr><th>Kỳ</th><th>Giá trị</th><th>So với kỳ trước</th><th>Bằng chứng</th></tr></thead><tbody>${periods}</tbody></table></div></div></details>
+      <details class="ai-disclosure ai-quality"><summary><span>Bằng chứng &amp; chất lượng dữ liệu</span><small>${limitations.length ? `${fmt(limitations.length)} giới hạn` : 'Không có cảnh báo về độ đầy đủ'}</small></summary><div class="ai-disclosure-body">
+        <p class="ai-evidence-note">Mỗi kỳ có thể mở đúng điểm dữ liệu hoặc nhóm dữ liệu nguồn trong bảng biến động.</p>
+        ${limitations.length ? `<div class="ai-limitations"><h5>Giới hạn dữ liệu</h5><ul>${limitations.map(item => `<li>${esc(item)}</li>`).join('')}</ul></div>` : '<p class="ai-quality-ok">Các kỳ đang hiển thị không có cảnh báo chất lượng bổ sung.</p>'}
+        <details class="ai-technical"><summary>Thông tin kỹ thuật</summary><dl class="ai-meta"><div><dt>Dữ liệu đến</dt><dd>${dateLabel(aiAnalysis.window.currentDate || aiAnalysis.window.end)}</dd></div><div><dt>Tạo lúc</dt><dd>${esc(new Date(aiAnalysis.dataAsOf.generatedAt).toLocaleString('vi-VN'))}</dd></div><div><dt>Dịch vụ</dt><dd>${esc(aiAnalysis.provider.name)}</dd></div><div><dt>Mô hình trí tuệ nhân tạo</dt><dd>${esc(aiAnalysis.provider.model)}</dd></div><div><dt>Mã phiên dữ liệu</dt><dd><code title="${esc(aiAnalysis.dataAsOf.snapshotId)}">${esc(shortHash(aiAnalysis.dataAsOf.snapshotId))}</code></dd></div></dl></details>
+      </div></details>
+    </div>`;
+  }
+  return `<section id="ai-insights" class="ai-panel" aria-labelledby="ai-insights-title">
+    <div class="ai-panel-head"><div><h3 id="ai-insights-title">Nhận định xu hướng tự động</h3><p>Tóm tắt biến động từ dữ liệu đã chuẩn hóa và kiểm chứng. Phần diễn giải không thay đổi số liệu trên biểu đồ.</p></div>${aiAnalysis && !scopeBlocked ? `<span class="ai-mode">${aiAnalysis.narrative.mode === 'ai' ? 'Tự động · đã kiểm chứng' : 'Tóm tắt từ số liệu'}</span>` : ''}</div>
+    <div class="ai-controls"><label class="ai-metric">Chỉ số<select data-field="aiMetricCode">${select([{value:'total',label:'Tổng số'},{value:'error',label:'Báo sai/Lỗi'},{value:'error_rate',label:'% báo sai'}], state.aiMetricCode)}</select></label><label class="ai-metric">Nhóm dữ liệu<select data-field="aiGroupBy">${select([{value:'day',label:'Theo ngày'},{value:'week',label:'Theo tuần'},{value:'month',label:'Theo tháng'}], state.aiGroupBy)}</select></label><button class="primary ai-generate" data-action="generate-ai-insight" aria-disabled="${disabled}" aria-describedby="ai-availability-note${scopeBlocked ? ' ai-scope-note' : ''}" ${hardDisabled ? 'disabled' : ''}>${actionLabel}</button></div>
+    ${statusCopy}${scopeCopy}${error}
+    <p id="ai-status-message" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+    <div class="ai-output" aria-busy="${aiLoading}">${result}</div>
+  </section>`;
+}
+
+function replaceInteractiveMarkup(root: HTMLElement, markup: string): void {
+  const active = root.contains(document.activeElement) && document.activeElement instanceof HTMLElement
+    ? { field: document.activeElement.dataset.field, action: document.activeElement.dataset.action }
+    : null;
+  root.innerHTML = markup;
+  if (!active?.field && !active?.action) return;
+  requestAnimationFrame(() => {
+    const next = Array.from(root.querySelectorAll<HTMLElement>('[data-field], [data-action]')).find(item => (
+      (active.field && item.dataset.field === active.field) || (active.action && item.dataset.action === active.action)
+    ));
+    next?.focus();
+  });
+}
+
+function analyticsHost(body: HTMLDivElement, tab: Tab, preamble: string, postamble = ''): HTMLDivElement {
+  if (body.dataset.workspaceTab !== tab || !body.querySelector('[data-analytics-postamble]')) {
     disposeCharts(body);
-    body.innerHTML = '<div data-analytics-preamble></div><div data-chart-host></div>';
+    body.innerHTML = '<div data-analytics-preamble></div><div data-chart-host></div><div data-analytics-postamble></div>';
     body.dataset.workspaceTab = tab;
   }
   const preambleRoot = body.querySelector<HTMLDivElement>('[data-analytics-preamble]')!;
-  const activeField = preambleRoot.contains(document.activeElement) && document.activeElement instanceof HTMLElement
-    ? document.activeElement.dataset.field : undefined;
-  preambleRoot.innerHTML = preamble;
-  if (activeField) requestAnimationFrame(() => preambleRoot.querySelector<HTMLElement>(`[data-field="${activeField}"]`)?.focus());
+  const postambleRoot = body.querySelector<HTMLDivElement>('[data-analytics-postamble]')!;
+  replaceInteractiveMarkup(preambleRoot, preamble);
+  replaceInteractiveMarkup(postambleRoot, postamble);
   return body.querySelector<HTMLDivElement>('[data-chart-host]')!;
 }
 
@@ -672,10 +937,6 @@ function replaceChartCardPresentation(card: HTMLElement, markup: string): void {
   const currentTop = card.querySelector('.card-top');
   const freshTop = fresh.querySelector('.card-top');
   if (currentTop && freshTop) currentTop.replaceWith(freshTop);
-  const currentKeyboard = card.querySelector('.chart-keyboard, .chart-keyboard-empty');
-  const freshKeyboard = fresh.querySelector('.chart-keyboard, .chart-keyboard-empty');
-  if (currentKeyboard && freshKeyboard) currentKeyboard.replaceWith(freshKeyboard);
-  else if (!currentKeyboard && freshKeyboard) card.append(freshKeyboard);
   const plot = card.querySelector<HTMLElement>('[data-plot]');
   const freshPlot = fresh.querySelector<HTMLElement>('[data-plot]');
   if (plot && freshPlot) plot.setAttribute('aria-label', freshPlot.getAttribute('aria-label') || 'Biểu đồ');
@@ -722,12 +983,11 @@ function reconcileComparison(host: HTMLDivElement): void {
     disposeCharts(host);
     const candidates = workspace?.comparisonCandidates || [];
     host.innerHTML = state.comparisonEntities.length >= 2
-      ? statePanel('Không tạo được biểu đồ so sánh', 'Các entity được chọn cần cùng đơn vị và có dữ liệu cho chỉ số, khoảng thời gian hiện tại.')
-      : statePanel('Chưa đủ entity để so sánh', candidates.length < 2 ? 'Không đủ entity có dữ liệu cho chỉ số và khoảng thời gian hiện tại. Hãy đổi bộ lọc.' : 'Chọn thêm entity cùng đơn vị; cần ít nhất 2 và tối đa 3 entity.');
+      ? statePanel('Không tạo được biểu đồ so sánh', 'Các nội dung được chọn cần cùng đơn vị đo và có dữ liệu cho chỉ số, khoảng thời gian hiện tại.')
+      : statePanel('Chưa đủ nội dung để so sánh', candidates.length < 2 ? 'Không đủ nội dung có dữ liệu cho chỉ số và khoảng thời gian hiện tại. Hãy đổi bộ lọc.' : 'Chọn từ 2 đến 3 nội dung có cùng đơn vị đo.');
     return;
   }
-  const keyboard = chartKeyboardLayer(workspace.comparison, 'comparison', 'comparison');
-  const markup = `<article class="chart-card" data-chart-key="comparison"><div class="card-top"><h3>So sánh ${esc(state.comparisonMetric)}</h3><span class="pill">Cùng đơn vị</span></div><div class="plot" data-plot="comparison" tabindex="0" aria-label="Biểu đồ so sánh ${esc(state.comparisonMetric)}"></div>${keyboard}</article>`;
+  const markup = `<article class="chart-card" data-chart-key="comparison"><div class="card-top"><h3>So sánh ${esc(state.comparisonMetric)}</h3><span class="pill">Cùng đơn vị</span></div><div class="plot" data-plot="comparison" aria-label="Biểu đồ so sánh ${esc(state.comparisonMetric)}"></div></article>`;
   let grid = host.querySelector<HTMLDivElement>(':scope > .chart-grid');
   if (!grid) { host.innerHTML = '<div class="chart-grid one"></div>'; grid = host.querySelector<HTMLDivElement>(':scope > .chart-grid')!; }
   let card = grid.querySelector<HTMLElement>(':scope > [data-chart-key="comparison"]');
@@ -742,18 +1002,18 @@ function reconcileComparison(host: HTMLDivElement): void {
 function renderTab(): void {
   const body = document.querySelector<HTMLDivElement>('#tab-body');
   if (!body) return;
+  delete body.dataset.workspaceScope;
   pendingChartRenders = [];
-  accessiblePointRegistry.clear();
   if (!bootstrapLoaded) { body.innerHTML = statePanel('Đang kiểm tra dữ liệu', 'Vui lòng chờ trong khi kết nối kho dữ liệu.'); return; }
   if (bootstrapError) {
     if (state.tab === 'import' && importResult) {
       renderImport(body);
-      body.insertAdjacentHTML('afterbegin', statePanel('Chưa tải lại được dashboard', 'Kết quả nhập bên dưới vẫn được giữ trong thẻ này. Kiểm tra kết nối rồi thử tải lại dữ liệu.', true));
-    } else body.innerHTML = statePanel('Không kết nối được kho dữ liệu', 'Máy chủ chưa phản hồi. Kiểm tra kết nối hoặc thử lại; chưa cần nhập lại workbook.', true);
+      body.insertAdjacentHTML('afterbegin', statePanel('Chưa tải lại được bảng điều khiển', 'Kết quả nhập bên dưới vẫn được giữ trong thẻ này. Kiểm tra kết nối rồi thử tải lại dữ liệu.', true));
+    } else body.innerHTML = statePanel('Không kết nối được kho dữ liệu', 'Máy chủ chưa phản hồi. Kiểm tra kết nối hoặc thử lại; chưa cần nhập lại tệp Excel.', true);
     return;
   }
   if (!currentProject()) {
-    body.innerHTML = statePanel('Chưa có dữ liệu đã nhập', 'Mở Nhập Excel để chọn workbook đầu tiên.');
+    body.innerHTML = statePanel('Chưa có dữ liệu đã nhập', 'Mở Nhập Excel để chọn tệp đầu tiên.');
     if (state.tab === 'import') renderImport(body);
     if (state.tab === 'history') renderHistory(body);
     return;
@@ -768,43 +1028,49 @@ function renderTab(): void {
     return;
   }
   if (loading && !workspace && ['overview', 'statistics', 'comparison', 'audit'].includes(state.tab)) {
-    body.innerHTML = statePanel('Đang tải dữ liệu', 'Đang áp dụng dự án, entity và khoảng thời gian đã chọn.');
+    body.innerHTML = statePanel('Đang tải dữ liệu', 'Đang áp dụng dự án, nội dung theo dõi và khoảng thời gian đã chọn.');
     return;
   }
   if (state.tab === 'overview') {
-    const host = analyticsHost(body, state.tab, `<p class="section-desc">Biểu đồ Tổng số, Báo sai/Lỗi và % báo sai theo ${state.scope === 'children' ? 'từng entity con trực tiếp' : 'entity đã chọn'}.</p>`);
+    body.dataset.workspaceScope = state.scope;
+    const host = analyticsHost(
+      body,
+      state.tab,
+      `<p class="section-desc">Biểu đồ Tổng số, Báo sai/Lỗi và % báo sai theo ${state.scope === 'children' ? getChildrenScopeLabel(currentEntity()?.entity_level).toLowerCase() : getCurrentScopeLabel(currentEntity()?.entity_level).toLowerCase()}.</p>`,
+      renderAIInsights(),
+    );
     reconcileChartCollection(host, workspace?.overview || [], 'overview');
   } else if (state.tab === 'statistics') {
-    const host = analyticsHost(body, state.tab, `<div class="control-bar"><label>Nhóm theo<select data-field="statisticsGroup">${select([{value:'day',label:'Ngày'},{value:'week',label:'Tuần'},{value:'month',label:'Tháng'},{value:'quarter',label:'Quý'}], state.statisticsGroup)}</select></label>
-      <label>Hiển thị<select data-field="statisticsMode">${select([{value:'both',label:'SUM & AVG/ngày'},{value:'sum',label:'Chỉ SUM'},{value:'average',label:'Chỉ AVG/ngày'}], state.statisticsMode)}</select></label>
-      <label>Phạm vi<select data-field="statisticsRange">${select([{value:'recent',label:'Các kỳ gần nhất'},{value:'all',label:'Toàn bộ dữ liệu'},{value:'custom',label:'Chọn khoảng kỳ'}], state.statisticsRange)}</select></label>
+    const host = analyticsHost(body, state.tab, `<div class="control-bar"><label>Xem theo<select data-field="statisticsGroup">${select([{value:'day',label:'Ngày'},{value:'week',label:'Tuần'},{value:'month',label:'Tháng'},{value:'quarter',label:'Quý'}], state.statisticsGroup)}</select></label>
+      <label>Cách tính<select data-field="statisticsMode">${select([{value:'both',label:'Tổng và trung bình/ngày'},{value:'sum',label:'Tổng'},{value:'average',label:'Trung bình/ngày'}], state.statisticsMode)}</select></label>
+      <label>Khoảng thống kê<select data-field="statisticsRange">${select([{value:'recent',label:'Các kỳ gần nhất'},{value:'all',label:'Toàn bộ dữ liệu'},{value:'custom',label:'Chọn khoảng kỳ'}], state.statisticsRange)}</select></label>
       ${state.statisticsRange === 'recent' ? `<label>Số kỳ<input data-field="statisticsCount" type="number" min="1" max="60" value="${state.statisticsCount}"></label>` : ''}
       ${state.statisticsRange === 'custom' ? `<label>Từ kỳ<input data-field="statisticsFrom" type="date" value="${esc(state.statisticsFrom)}"></label><label>Đến kỳ<input data-field="statisticsTo" type="date" value="${esc(state.statisticsTo)}"></label>` : ''}
-      <label class="check"><input data-field="includeIncomplete" type="checkbox" ${state.includeIncomplete ? 'checked' : ''}> Kỳ chưa đầy đủ</label></div>
-      <p class="section-desc">SUM và AVG/ngày dùng toàn bộ lịch sử của entity, độc lập với khoảng ngày sidebar. ${workspace?.statisticsPeriods.length || 0} kỳ đang hiển thị.</p>`);
+      <label class="check"><input data-field="includeIncomplete" type="checkbox" ${state.includeIncomplete ? 'checked' : ''}> Bao gồm kỳ chưa đầy đủ</label></div>
+      ${statisticsReceipt()}<p class="section-desc">Kết quả tổng và trung bình mỗi ngày được tính từ toàn bộ lịch sử của ${getCurrentScopeLabel(currentEntity()?.entity_level).toLowerCase()}, độc lập với khoảng ngày ở thanh bên. ${workspace?.statisticsPeriods.length || 0} kỳ đang hiển thị.</p>`);
     reconcileChartCollection(host, workspace?.statistics || [], 'statistics');
   } else if (state.tab === 'comparison') {
     const candidates = workspace?.comparisonCandidates || [];
-    const host = analyticsHost(body, state.tab, `<div class="control-bar"><label>Chỉ số<select data-field="comparisonMetric">${select(['Tổng số','Báo sai/Lỗi','% báo sai'].map(value => ({value,label:value})), state.comparisonMetric)}</select></label><div class="comparison-hint">Chọn 2–3 entity có dữ liệu trong khoảng thời gian đang xem và cùng đơn vị. Tối đa 3 entity.</div></div>
-      <div class="entity-picks">${candidates.map(item => `<label class="entity-pick"><input type="checkbox" data-compare="${esc(item.entity_id)}" ${state.comparisonEntities.includes(item.entity_id) ? 'checked' : ''}><span>${esc(item.entity_label)}<small>${esc(item.effective_unit)}</small></span></label>`).join('')}</div>`);
+    const host = analyticsHost(body, state.tab, `<div class="control-bar"><label>Chỉ số<select data-field="comparisonMetric">${select(['Tổng số','Báo sai/Lỗi','% báo sai'].map(value => ({value,label:value})), state.comparisonMetric)}</select></label><div class="comparison-hint">Chọn 2–3 nội dung theo dõi có dữ liệu trong khoảng thời gian đang xem và cùng đơn vị đo.</div></div>
+      <div class="entity-picks">${candidates.map(item => `<label class="entity-pick"><input type="checkbox" data-compare="${esc(item.entity_id)}" ${state.comparisonEntities.includes(item.entity_id) ? 'checked' : ''}><span>${esc(displayEntityName(entities.find(entity => entity.entity_id === item.entity_id), item.entity_label))}<small>${esc(item.effective_unit)}</small></span></label>`).join('')}</div>`);
     reconcileComparison(host);
   } else if (state.tab === 'audit') {
     const audit = workspace?.audit;
     const columns = ['date','entity_path','metric_normalized','raw_value','display_value','chart_value','value_kind','sheet_name','cell_address','validation_status'];
     const focused = auditFocus?.status === 'ready' ? auditFocus.lookup.row : null;
     const focusPanel = !auditFocus ? '' : auditFocus.status === 'loading'
-      ? '<section class="audit-focus" aria-busy="true"><strong>Đang mở đúng observation và revision…</strong></section>'
+      ? '<section class="audit-focus" aria-busy="true"><strong>Đang mở đúng điểm dữ liệu và phiên bản…</strong></section>'
       : auditFocus.status === 'error'
-        ? `<section class="audit-focus error"><strong>Không mở được dòng Audit</strong><p>${esc(auditFocus.error)}</p><button class="ghost" data-action="retry-audit-lookup">Thử lại</button><button class="ghost" data-action="return-to-chart">Quay lại biểu đồ</button></section>`
-        : `<section class="audit-focus"><div><strong>Dòng Audit của điểm đã chọn</strong><p>Đã mở đúng quan sát và phiên bản nguồn của điểm biểu đồ, kể cả khi dòng này không nằm trong trang Audit hiện tại.</p></div><button class="ghost" data-action="return-to-chart">Quay lại biểu đồ</button><div class="table-wrap"><table><thead><tr>${columns.map(col => `<th>${esc(auditHeaders[col])}</th>`).join('')}</tr></thead><tbody><tr id="focused-audit-row" class="focused-audit-row" tabindex="-1">${columns.map(col => `<td title="${esc(auditCell(col, focused?.[col]))}">${esc(auditCell(col, focused?.[col]))}</td>`).join('')}</tr></tbody></table></div></section>`;
-    body.innerHTML = `${focusPanel}<p class="section-desc">Đối chiếu giá trị đã nhập với sheet và ô Excel nguồn · ${fmt(audit?.total || 0)} quan sát theo bộ lọc.</p>
+        ? `<section class="audit-focus error"><strong>Không mở được dòng đối chiếu</strong><p>${esc(auditFocus.error)}</p><button class="ghost" data-action="retry-audit-lookup">Thử lại</button><button class="ghost" data-action="return-to-chart">Quay lại biểu đồ</button></section>`
+        : `<section class="audit-focus"><div><strong>Dòng đối chiếu của điểm đã chọn</strong><p>Đã mở đúng điểm dữ liệu và phiên bản nguồn của điểm biểu đồ, kể cả khi dòng này không nằm trong trang đối chiếu hiện tại.</p></div><button class="ghost" data-action="return-to-chart">Quay lại biểu đồ</button><div class="table-wrap"><table><thead><tr>${columns.map(col => `<th>${esc(auditHeaders[col])}</th>`).join('')}</tr></thead><tbody><tr id="focused-audit-row" class="focused-audit-row" tabindex="-1">${columns.map(col => `<td title="${esc(auditCell(col, focused?.[col]))}">${esc(auditCell(col, focused?.[col]))}</td>`).join('')}</tr></tbody></table></div></section>`;
+    body.innerHTML = `${focusPanel}<p class="section-desc">Đối chiếu giá trị đã nhập với trang tính và ô Excel nguồn · ${fmt(audit?.total || 0)} điểm dữ liệu theo bộ lọc.</p>
       ${audit?.total ? `<div class="table-wrap"><table><thead><tr>${columns.map(col => `<th>${esc(auditHeaders[col])}</th>`).join('')}</tr></thead><tbody>${audit.rows.map(row => `<tr>${columns.map(col => `<td title="${esc(auditCell(col, row[col]))}">${esc(auditCell(col, row[col]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
-      <div class="pager"><button data-action="audit-prev" ${!audit.offset ? 'disabled' : ''}>← Trước</button><span>${fmt(audit.offset + 1)}–${fmt(Math.min(audit.offset + audit.rows.length, audit.total))} / ${fmt(audit.total)}</span><button data-action="audit-next" ${audit.offset + audit.rows.length >= audit.total ? 'disabled' : ''}>Sau →</button></div>` : statePanel('Không có dòng Audit theo bộ lọc', 'Hãy đổi entity hoặc khoảng thời gian để xem dữ liệu nguồn.')}`;
+      <div class="pager"><button data-action="audit-prev" ${!audit.offset ? 'disabled' : ''}>← Trước</button><span>${fmt(audit.offset + 1)}–${fmt(Math.min(audit.offset + audit.rows.length, audit.total))} / ${fmt(audit.total)}</span><button data-action="audit-next" ${audit.offset + audit.rows.length >= audit.total ? 'disabled' : ''}>Sau →</button></div>` : statePanel('Không có dòng đối chiếu theo bộ lọc', 'Hãy đổi nội dung theo dõi hoặc khoảng thời gian để xem dữ liệu nguồn.')}`;
   } else if (state.tab === 'import') renderImport(body);
   else renderHistory(body);
   restorePendingFocus();
 }
-function empty(messageText: string): string { return `<div class="empty"><div class="empty-icon">▥</div><h3>${esc(messageText)}</h3><p>Thử đổi project, entity hoặc khoảng thời gian trong sidebar.</p></div>`; }
+function empty(messageText: string): string { return `<div class="empty"><div class="empty-icon">▥</div><h3>${esc(messageText)}</h3><p>Thử đổi dự án, nội dung theo dõi hoặc khoảng thời gian trong thanh bên.</p></div>`; }
 function draw(key: string, figure: Figure, entityRef: string, chartIdentity = key): void {
   const element = document.querySelector<HTMLElement>(`[data-plot="${key}"]`);
   if (!element) return;
@@ -839,6 +1105,265 @@ function draw(key: string, figure: Figure, entityRef: string, chartIdentity = ke
     console.error(`Không thể cập nhật biểu đồ ${key}.`, error);
   }));
 }
+
+function dataVersionKey(value: DataVersion): string {
+  return value ? `${value.committedImportRef}:${value.committedAt}` : 'none';
+}
+
+function inferContextualMetric(chart: Chart | undefined): string | null {
+  if (!chart) return null;
+  const metrics = ['Tổng số', 'Báo sai/Lỗi', '% báo sai'].filter(metric =>
+    chart.figure.data.some(trace => String(trace.name || '').includes(metric))
+  );
+  return metrics.length === 1 ? metrics[0] : null;
+}
+
+function defaultContextualMetric(chart: Chart | undefined): string {
+  const inherited = inferContextualMetric(chart);
+  if (inherited) return inherited;
+  return ['Tổng số', 'Báo sai/Lỗi', '% báo sai'].includes(state.comparisonMetric)
+    ? state.comparisonMetric : 'Báo sai/Lỗi';
+}
+
+function comparisonReason(reason: string | null | undefined, level?: string): string {
+  return getEligibilityReasonMessage(reason, level);
+}
+
+function contextualCandidateList(session: ContextualComparison): ComparisonCandidate[] {
+  if (session.response) return session.response.comparisonCandidates;
+  return structuralSiblings(session.anchorId).map(item => ({
+    entity_id: item.entity_id, entity_label: item.entity_label,
+    effective_unit: item.effective_unit, eligible: undefined,
+  }));
+}
+
+function contextualRangeLabel(context: ComparisonContext | null | undefined): string {
+  if (!context?.range.start || !context.range.end) return 'Chưa có kỳ dữ liệu phù hợp';
+  return `${dateLabel(context.range.start)}–${dateLabel(context.range.end)}`;
+}
+
+function contextualCalculationLabel(context: ComparisonContext | null | undefined): string {
+  if (!context) return 'Theo phép tính hiện có';
+  if (context.calculation === 'weighted_rate') return 'Tỷ lệ có trọng số';
+  return context.calculation === 'average_per_day' ? 'Trung bình mỗi ngày' : 'Tổng trong kỳ';
+}
+
+function restoreInvestigationDrawerHost(): void {
+  const drawer = document.querySelector<HTMLElement>('#investigation-drawer');
+  const shell = app.querySelector<HTMLElement>('.shell');
+  if (drawer && shell && drawer.closest('#contextual-comparison-dialog')) shell.appendChild(drawer);
+}
+
+function dockInvestigationDrawerInContextualDialog(): void {
+  const drawer = document.querySelector<HTMLElement>('#investigation-drawer');
+  const host = document.querySelector<HTMLElement>('.contextual-investigation-host');
+  if (drawer && host) host.appendChild(drawer);
+}
+
+function closeContextualInvestigation(): void {
+  if (investigationSelection()?.origin.plotKey !== 'contextual-comparison') return;
+  investigationRequest?.abort(); investigation = { status: 'closed' };
+  aggregateParent = null; revisionHistory = null; importDetail = null; investigationLiveMessage = '';
+  renderInvestigation();
+}
+
+function renderContextualComparison(): void {
+  const root = document.querySelector<HTMLDivElement>('#contextual-comparison-root');
+  if (!root) return;
+  restoreInvestigationDrawerHost();
+  disposeCharts(root);
+  if (!contextualComparison) { root.replaceChildren(); document.body.classList.remove('modal-open'); return; }
+  const session = contextualComparison;
+  const anchor = entities.find(item => item.entity_id === session.anchorId);
+  if (!anchor) { closeContextualComparison(); return; }
+  const response = session.response;
+  const context = response?.comparisonContext;
+  const terminology = getComparisonTerminology(anchor.entity_level);
+  const candidates = contextualCandidateList(session);
+  const stale = session.status === 'stale';
+  const busy = session.status === 'loading';
+  const controlsDisabled = stale;
+  const atLimit = session.selected.length >= 3;
+  const hasComparisonBasis = session.lens === 'statistics' || Boolean(session.metric);
+  const removed = response?.comparisonSelection?.removed || [];
+  const candidateMarkup = candidates.map(item => {
+    const candidateEntity = entities.find(entity => entity.entity_id === item.entity_id);
+    const checked = session.selected.includes(item.entity_id);
+    const eligibilityKnown = typeof item.eligible === 'boolean';
+    const eligible = item.eligible !== false;
+    const disabled = controlsDisabled || !hasComparisonBasis || !eligible || (!checked && atLimit);
+    const detail = !hasComparisonBasis
+      ? 'Chọn chỉ số để kiểm tra điều kiện'
+      : !eligibilityKnown ? 'Đang kiểm tra điều kiện…'
+        : eligible ? `${fmt(item.comparablePeriodCount || 0)} kỳ có thể đối chiếu`
+          : comparisonReason(item.reason, candidateEntity?.entity_level || anchor.entity_level);
+    return `<label class="contextual-entity ${eligible ? '' : 'ineligible'}">
+      <input type="checkbox" data-context-compare="${esc(item.entity_id)}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+      <span><strong>${esc(displayEntityName(candidateEntity, item.entity_label))}</strong><small>${esc(item.effective_unit || 'Chưa xác định đơn vị đo')} · ${esc(detail)}</small></span>
+    </label>`;
+  }).join('');
+  const anchorEligible = context?.anchorEligible !== false;
+  const statusMarkup = stale
+    ? `<div class="contextual-banner warning" role="alert"><div><strong>Có dữ liệu mới hơn.</strong><p>Dữ liệu mới đã được nhập. Kết quả đang xem vẫn thuộc phiên bản trước.</p></div><button class="primary" data-action="update-contextual-data">Cập nhật dữ liệu</button></div>`
+    : session.status === 'error'
+      ? `<div class="contextual-banner error" role="alert"><div><strong>Không tải được phép so sánh.</strong><p>${esc(session.error)}</p></div><button class="ghost" data-action="retry-contextual-comparison">Thử lại</button></div>`
+      : session.notice
+        ? `<div class="contextual-banner notice" role="status">${esc(session.notice)}</div>` : '';
+  let resultMarkup = '';
+  if (session.lens === 'metric' && !session.metric) {
+    resultMarkup = `<div class="contextual-empty"><strong>Chọn chỉ số cần so sánh</strong><p>Biểu đồ nguồn có nhiều chỉ số hoặc chuỗi dữ liệu nên hệ thống không tự suy đoán. Mức thời gian, phạm vi kỳ và đơn vị sẽ được kế thừa tự động.</p></div>`;
+  } else if (context && !anchorEligible) {
+    resultMarkup = `<div class="contextual-empty"><strong>${esc(terminology.anchorLabel)} chưa thể so sánh</strong><p>${esc(comparisonReason(context.anchorReason, anchor.entity_level))} ${session.lens === 'statistics' ? 'Hãy đổi cách tính hoặc kiểm tra dữ liệu nguồn.' : 'Hãy chọn chỉ số khác hoặc kiểm tra dữ liệu nguồn.'}</p></div>`;
+  } else if (response?.comparison) {
+    resultMarkup = `<div class="contextual-results"><div class="contextual-chart-frame"><div class="contextual-plot" data-plot="contextual-comparison" role="img" aria-label="${session.lens === 'statistics' ? 'Biểu đồ so sánh thống kê' : `Biểu đồ so sánh ${esc(session.metric)}`}"></div>${busy ? '<div class="contextual-loading">Đang cập nhật kết quả…</div>' : ''}</div></div>`;
+  } else if (busy) {
+    resultMarkup = `<div class="contextual-empty" aria-busy="true"><strong>Đang kiểm tra ${esc(terminology.candidatePlural)} có thể so sánh…</strong><p>Kết quả từ yêu cầu cũ sẽ không ghi đè kết quả mới hơn.</p></div>`;
+  } else {
+    resultMarkup = `<div class="contextual-empty"><strong>${esc(terminology.emptyMessage)}</strong><p>Các nội dung được chọn cần cùng đơn vị đo và có khoảng thời gian chung.</p></div>`;
+  }
+  const removedText = removed.length
+    ? `<p class="contextual-removal-note">Đã bỏ ${removed.map(item => { const entity = entities.find(candidate => candidate.entity_id === item.entityId); return `${displayEntityName(entity, item.entityId)}: ${comparisonReason(item.reason, entity?.entity_level || anchor.entity_level)}`; }).join('; ')}.</p>`
+    : '';
+  const versionLabel = session.sourceDataVersion?.committedImportRef || 'Chưa có phiên bản';
+  root.innerHTML = `<dialog id="contextual-comparison-dialog" class="contextual-comparison-dialog" aria-labelledby="contextual-title">
+    <div class="contextual-shell">
+      <header class="contextual-header"><div><span class="contextual-eyebrow">Thống kê · So sánh</span><h2 id="contextual-title">${esc(terminology.title)}</h2><p>${esc(terminology.description)}</p></div><button class="dialog-close" data-action="close-contextual-comparison" aria-label="Đóng so sánh">Đóng</button></header>
+      <div class="contextual-status-slot">${statusMarkup}</div>
+      <div class="contextual-lenses" role="tablist" aria-label="Cách xem so sánh"><button role="tab" aria-selected="${session.lens === 'metric'}" class="${session.lens === 'metric' ? 'active' : ''}" data-action="contextual-lens-metric">Chỉ số gốc</button><button role="tab" aria-selected="${session.lens === 'statistics'}" class="${session.lens === 'statistics' ? 'active' : ''}" data-action="contextual-lens-statistics">Thống kê</button></div>
+      <div class="contextual-receipt"><span>Đang so sánh từ: <strong>${esc(getEntityDisplayName(anchor))}</strong></span><span>Theo ${esc(({ day: 'ngày', week: 'tuần', month: 'tháng', quarter: 'quý' })[state.statisticsGroup])}</span><span>${esc(contextualRangeLabel(context))}</span><span>${esc(contextualCalculationLabel(context))}</span></div>
+      <div class="contextual-layout">
+        <aside class="contextual-selector" aria-label="${esc(terminology.selectorLabel)}"><div class="contextual-selector-head"><div><span>${esc(terminology.selectorLabel)}</span><strong>Đã chọn ${fmt(session.selected.length)}/3 ${esc(terminology.candidatePlural)}</strong></div><p>Nội dung đang xem được giữ cố định.</p></div>
+          <label class="contextual-entity anchor"><input type="checkbox" checked disabled><span><strong>${esc(getEntityDisplayName(anchor))}</strong><small>Đang xem · ${esc(anchor.effective_unit || 'Chưa xác định đơn vị đo')}</small></span></label>
+          <div class="contextual-candidates">${candidateMarkup || `<p class="contextual-no-sibling">${esc(terminology.noCandidateMessage)}</p>`}</div>${removedText}
+        </aside>
+        <section class="contextual-main" aria-live="polite">
+          <div class="contextual-basis"><div><span class="contextual-eyebrow">Cơ sở so sánh</span><strong>${session.lens === 'statistics' ? 'Chọn một cách tính' : 'Chỉ số được chọn sẵn'}</strong><small>${session.lens === 'statistics' ? 'Áp dụng cho cả Tổng số và Báo sai/Lỗi; không cần chọn lại chỉ số.' : 'Đổi chỉ số khi cần; các nội dung còn phù hợp sẽ được giữ lại.'}</small></div><div class="contextual-basis-fields ${session.lens}">${session.lens === 'statistics' ? `<label>Cách tính<select id="contextual-calculation" data-context-field="calculation" ${controlsDisabled ? 'disabled' : ''}>${select([{ value: 'sum', label: 'Tổng trong kỳ' }, { value: 'average_per_day', label: 'Trung bình mỗi ngày' }], session.calculation)}</select></label>` : `<label>Chỉ số<select id="contextual-metric" data-context-field="metric" ${controlsDisabled ? 'disabled' : ''}>${select(['Tổng số','Báo sai/Lỗi','% báo sai'].map(value => ({ value, label:value })), session.metric || 'Báo sai/Lỗi')}</select></label>`}</div></div>
+          ${resultMarkup}
+        </section>
+        <div class="contextual-investigation-host" aria-label="Bằng chứng của điểm đang chọn"></div>
+      </div>
+      <footer class="contextual-footer"><span>Phiên bản dữ liệu: ${esc(shortHash(versionLabel))}</span><div><button class="primary" data-action="close-contextual-comparison">Xong</button></div></footer>
+    </div>
+  </dialog>`;
+  const dialog = root.querySelector<HTMLDialogElement>('#contextual-comparison-dialog')!;
+  dialog.showModal();
+  document.body.classList.add('modal-open');
+  dockInvestigationDrawerInContextualDialog();
+  renderInvestigation();
+  if (response?.comparison) {
+    const plot = root.querySelector<HTMLElement>('[data-plot="contextual-comparison"]');
+    if (plot) void renderChart(
+      plot, response.comparison, point => openInvestigation('contextual-comparison', session.anchorId, point), undefined,
+      Math.max(260, Math.min(380, plot.clientHeight || 380)),
+      `${state.project}:contextual:${session.anchorId}:${session.lens}:${session.metric}:${session.calculation}:${session.selected.join(',')}`,
+    ).catch(error => { console.error('Không thể cập nhật biểu đồ so sánh theo ngữ cảnh.', error); });
+  }
+  requestAnimationFrame(() => {
+    const focusTarget = contextualFocusId ? document.getElementById(contextualFocusId) : null;
+    contextualFocusId = '';
+    (focusTarget || root.querySelector<HTMLElement>(hasComparisonBasis ? '[data-context-compare]:not(:disabled)' : '#contextual-metric') || root.querySelector<HTMLElement>('.dialog-close'))?.focus();
+  });
+}
+
+function openContextualComparison(anchorId: string, sourceButtonId: string): void {
+  if (!workspace || state.tab !== 'statistics' || state.scope !== 'children') return;
+  if (investigation.status !== 'closed') {
+    investigationRequest?.abort(); investigation = { status: 'closed' };
+    aggregateParent = null; revisionHistory = null; importDetail = null; investigationLiveMessage = '';
+    renderInvestigation();
+  }
+  const sourceChart = workspace.statistics.find(chart => chart.entityId === anchorId);
+  let lens: ContextualComparison['lens'] = 'metric';
+  try { lens = sessionStorage.getItem(CONTEXTUAL_LENS_KEY) === 'statistics' ? 'statistics' : 'metric'; } catch { /* Optional preference. */ }
+  const inheritedMetric = defaultContextualMetric(sourceChart);
+  const metric = inheritedMetric;
+  contextualComparisonRequest?.abort();
+  contextualComparison = {
+    anchorId, sourceButtonId, sourceScrollY: window.scrollY,
+    sourceDataVersion: workspace.dataVersion, latestDataVersion: workspace.dataVersion,
+    lens, calculation: 'sum', metric, selected: [anchorId], status: 'loading',
+    response: null, error: '', notice: '',
+  };
+  renderContextualComparison();
+  void loadContextualComparison();
+}
+
+function closeContextualComparison(): void {
+  const session = contextualComparison;
+  contextualComparisonRequest?.abort(); contextualComparisonRequest = null;
+  contextualComparison = null;
+  restoreInvestigationDrawerHost();
+  closeContextualInvestigation();
+  const root = document.querySelector<HTMLDivElement>('#contextual-comparison-root');
+  if (root) { disposeCharts(root); root.replaceChildren(); }
+  document.body.classList.remove('modal-open');
+  if (session) requestAnimationFrame(() => {
+    window.scrollTo({ top: session.sourceScrollY });
+    document.getElementById(session.sourceButtonId)?.focus();
+  });
+}
+
+async function loadContextualComparison(): Promise<void> {
+  const session = contextualComparison;
+  if (!session || !workspace || (session.lens === 'metric' && !session.metric)) return;
+  contextualComparisonRequest?.abort();
+  const current = new AbortController(); contextualComparisonRequest = current;
+  session.status = 'loading'; session.error = ''; session.notice = '';
+  renderContextualComparison();
+  const params = new URLSearchParams({
+    view: 'comparison', mode: state.mode, count: String(state.count),
+    entity: workspace.selectedEntity, scope: 'children',
+    statistics_group: state.statisticsGroup, statistics_mode: state.statisticsMode,
+    statistics_count: String(state.statisticsRange === 'all' ? 3660 : state.statisticsCount),
+    include_incomplete: String(state.includeIncomplete),
+    comparison_anchor: session.anchorId, comparison_lens: 'metric',
+    comparison_calculation: session.calculation,
+    comparison_metric: session.metric || 'Báo sai/Lỗi', comparison_entities: session.selected.join(','),
+  });
+  params.set('comparison_lens', session.lens);
+  if (state.mode === 'custom' && state.start && state.end) { params.set('start', state.start); params.set('end', state.end); }
+  if (state.statisticsRange === 'custom') {
+    if (state.statisticsFrom) params.set('statistics_from', state.statisticsFrom);
+    if (state.statisticsTo) params.set('statistics_to', state.statisticsTo);
+  }
+  try {
+    const result = await api<Workspace>(`/projects/${encodeURIComponent(state.project)}/workspace?${params}`, { signal: current.signal });
+    if (current !== contextualComparisonRequest || session !== contextualComparison) return;
+    session.latestDataVersion = result.dataVersion;
+    if (dataVersionKey(result.dataVersion) !== dataVersionKey(session.sourceDataVersion)) {
+      session.status = 'stale'; session.response = null;
+      session.notice = 'Phiên bản dữ liệu nguồn đã thay đổi trong khi đang so sánh.';
+    } else {
+      session.response = result;
+      session.selected = result.comparisonSelection?.accepted || [session.anchorId];
+      session.status = 'ready';
+      const removed = result.comparisonSelection?.removed || [];
+      if (removed.length) {
+        const anchor = entities.find(entity => entity.entity_id === session.anchorId);
+        const terms = getComparisonTerminology(anchor?.entity_level);
+        session.notice = `${fmt(removed.length)} ${terms.candidatePlural} đã được bỏ vì không còn đáp ứng điều kiện so sánh.`;
+      }
+    }
+    contextualComparisonRequest = null; renderContextualComparison();
+  } catch (error) {
+    if (current.signal.aborted || current !== contextualComparisonRequest || session !== contextualComparison) return;
+    contextualComparisonRequest = null; session.status = 'error'; session.error = (error as Error).message;
+    renderContextualComparison();
+  }
+}
+
+async function updateContextualData(): Promise<void> {
+  const session = contextualComparison;
+  if (!session) return;
+  closeContextualInvestigation();
+  session.status = 'loading'; renderContextualComparison();
+  await loadWorkspace(0, true);
+  if (session !== contextualComparison || !workspace) return;
+  session.sourceDataVersion = workspace.dataVersion;
+  session.latestDataVersion = workspace.dataVersion;
+  session.response = null; session.selected = [session.anchorId];
+  await loadContextualComparison();
+}
 function previewDestination(value: Preview): string {
   return value.manifest.projects?.join(', ') || currentProject()?.label || 'Chưa xác định';
 }
@@ -851,39 +1376,39 @@ function previewDateRange(value: Preview): string {
 function importModeGuidance(mode: typeof importMode): { title: string; body: string } {
   return mode === 'full_snapshot'
     ? {
-        title: 'Snapshot đầy đủ · cần xác nhận bổ sung',
-        body: 'Giá trị trùng khóa trong workbook có thể tạo phiên bản mới, thay phiên bản hiện hành. Giá trị vắng mặt trong file không bị tự động xóa theo chính sách hiện tại.',
+        title: 'Bản chụp đầy đủ · cần xác nhận bổ sung',
+        body: 'Giá trị trùng khóa trong tệp Excel có thể tạo phiên bản mới, thay phiên bản hiện hành. Giá trị vắng mặt trong tệp không bị tự động xóa theo chính sách hiện tại.',
       }
     : {
         title: 'Dữ liệu bổ sung · rủi ro thấp hơn',
-        body: 'Chỉ giá trị xuất hiện trong workbook được thêm hoặc cập nhật. Dữ liệu hiện có nhưng không xuất hiện trong file vẫn được giữ nguyên.',
+        body: 'Chỉ giá trị xuất hiện trong tệp Excel được thêm hoặc cập nhật. Dữ liệu hiện có nhưng không xuất hiện trong tệp vẫn được giữ nguyên.',
       };
 }
 function validationIssues(value: Preview): string {
   const visible = showAllIssues ? value.issues : value.issues.slice(0, 8);
   if (!visible.length) return `<p class="issue-empty">${value.errorCount + value.warningCount ? 'Có lỗi hoặc cảnh báo, nhưng máy chủ chưa trả chi tiết trong phần xem trước.' : 'Không có lỗi hoặc cảnh báo.'}</p>`;
-  const rows = visible.map(issue => `<div class="issue-row"><span class="issue-severity ${issue.severity.toLowerCase()}">${esc(validationLabel(issue.severity.toLowerCase()))}</span><div><strong>${esc(issue.code)}</strong><p>${esc(issue.message)}</p></div></div>`).join('');
+  const rows = visible.map(issue => `<div class="issue-row"><span class="issue-severity ${issue.severity.toLowerCase()}">${esc(validationLabel(issue.severity.toLowerCase()))}</span><div><p>${esc(issue.message)}</p></div></div>`).join('');
   const hidden = value.issues.length - visible.length;
   return `${rows}${hidden > 0 ? `<button class="text-action" data-action="toggle-issues">Xem thêm ${fmt(hidden)} mục kiểm tra</button>` : showAllIssues && value.issues.length > 8 ? '<button class="text-action" data-action="toggle-issues">Thu gọn danh sách</button>' : ''}`;
 }
 function reportIsTruncated(value: Preview): boolean { return value.issues.length < value.errorCount + value.warningCount; }
-function reportDownloadLabel(value: Preview): string { return reportIsTruncated(value) ? 'Tải phần kết quả đã trả về (JSON)' : 'Tải kết quả kiểm tra (JSON)'; }
+function reportDownloadLabel(value: Preview): string { return reportIsTruncated(value) ? 'Tải phần kết quả đã trả về' : 'Tải kết quả kiểm tra'; }
 function importOutcomeCard(result: ImportResult): string {
   const outcome = result.outcome;
   const revisionId = outcome.run_id ?? outcome.duplicate_of_run_id;
   const isCommitted = outcome.status === 'committed';
-  const title = isCommitted ? 'Đã nhập workbook' : outcome.status === 'duplicate' ? 'Workbook đã được nhập trước đó' : 'Lần nhập đã kết thúc';
+  const title = isCommitted ? 'Đã nhập tệp Excel' : outcome.status === 'duplicate' ? 'Tệp Excel đã được nhập trước đó' : 'Lần nhập đã kết thúc';
   return `<section id="import-result" class="import-result ${isCommitted ? 'success' : 'neutral'}" role="status" aria-live="polite" aria-atomic="true" tabindex="-1">
-    <div class="result-heading"><div><span>Kết quả nhập dữ liệu</span><h3>${esc(title)}</h3><p>${isCommitted ? importPhase === 'committing' ? 'Dữ liệu đã được ghi. Đang tải lại biểu đồ và lịch sử nhập…' : bootstrapError || workspaceError ? 'Dữ liệu đã được ghi. Dashboard chưa tải lại được; thử làm mới khi kết nối ổn định.' : 'Dữ liệu đã được ghi vào kho nội bộ. Biểu đồ đã được tải lại.' : outcome.status === 'duplicate' ? 'Không ghi thêm dữ liệu trùng; bạn có thể xem lần nhập trước trong lịch sử.' : esc(outcome.message || 'Hãy xem lịch sử nhập để kiểm tra kết quả.')}</p></div><strong>${new Date(result.committedAt).toLocaleString('vi-VN')}</strong></div>
+    <div class="result-heading"><div><span>Kết quả nhập dữ liệu</span><h3>${esc(title)}</h3><p>${isCommitted ? importPhase === 'committing' ? 'Dữ liệu đã được ghi. Đang tải lại biểu đồ và lịch sử nhập…' : bootstrapError || workspaceError ? 'Dữ liệu đã được ghi. Bảng điều khiển chưa tải lại được; thử làm mới khi kết nối ổn định.' : 'Dữ liệu đã được ghi vào kho nội bộ. Biểu đồ đã được tải lại.' : outcome.status === 'duplicate' ? 'Không ghi thêm dữ liệu trùng; bạn có thể xem lần nhập trước trong lịch sử.' : esc(outcome.message || 'Hãy xem lịch sử nhập để kiểm tra kết quả.')}</p></div><strong>${new Date(result.committedAt).toLocaleString('vi-VN')}</strong></div>
     <dl class="outcome-grid">
       <div><dt>Thêm mới</dt><dd>${fmt(outcome.inserted_count)}</dd></div><div><dt>Cập nhật phiên bản</dt><dd>${fmt(outcome.updated_count)}</dd></div>
       <div><dt>Giữ nguyên</dt><dd>${fmt(outcome.unchanged_count)}</dd></div><div><dt>Khôi phục</dt><dd>${fmt(outcome.restored_count)}</dd></div>
       <div><dt>Không còn hiệu lực</dt><dd>${fmt(outcome.deleted_count)}</dd></div><div><dt>Đổi nguồn tham chiếu</dt><dd>${fmt(outcome.lineage_changed_count)}</dd></div>
     </dl>
-    <div class="result-context"><span><strong>Workbook:</strong> ${esc(result.fileName)}</span><span><strong>Project:</strong> ${esc(previewDestination(result.preview))}</span><span><strong>Phạm vi:</strong> ${esc(previewDateRange(result.preview))}</span><span><strong>Hash:</strong> <code title="${esc(result.preview.manifest.source_hash)}">${esc(shortHash(result.preview.manifest.source_hash))}</code></span></div>
+    <div class="result-context"><span><strong>Tệp Excel:</strong> ${esc(result.fileName)}</span><span><strong>Dự án:</strong> ${esc(previewDestination(result.preview))}</span><span><strong>Phạm vi:</strong> ${esc(previewDateRange(result.preview))}</span><span><strong>Mã nhận diện tệp:</strong> <code title="${esc(result.preview.manifest.source_hash)}">${esc(shortHash(result.preview.manifest.source_hash))}</code></span></div>
     <div class="result-actions">
       <button class="primary" data-action="view-revision" ${revisionId ? '' : 'disabled'}>Xem lịch sử nhập</button>
-      <button class="ghost" data-action="audit-import">Xem Audit hiện hành</button>
+      <button class="ghost" data-action="audit-import">Xem dữ liệu đối chiếu hiện hành</button>
       <button class="ghost" data-action="show-validation">Xem kết quả kiểm tra</button>
       <button class="ghost" data-action="download-validation">${reportDownloadLabel(result.preview)}</button>
     </div>
@@ -895,23 +1420,23 @@ function renderImport(body: HTMLDivElement): void {
   const report = preview || importResult?.preview || null;
   const commitDisabled = !preview?.valid || busy || (importMode === 'full_snapshot' && !fullSnapshotConfirmed);
   body.innerHTML = `${importResult ? importOutcomeCard(importResult) : ''}
-    <div id="import-live-status" class="import-live-status" role="status" aria-live="polite" aria-atomic="true">${importPhase === 'previewing' ? 'Đang đọc workbook và kiểm tra dữ liệu…' : importPhase === 'committing' ? importResult ? 'Đã ghi dữ liệu. Đang tải lại biểu đồ và lịch sử nhập…' : 'Đang ghi dữ liệu và lưu phiên bản… Không đóng tab.' : ''}</div>
-    ${importError ? `<div class="import-error" role="alert"><strong>${lastImportAction === 'preview' ? 'Không xem trước được workbook.' : 'Chưa xác nhận được kết quả nhập.'}</strong><p>${esc(importError)}</p><p>${lastImportAction === 'preview' ? 'Kiểm tra file .xlsx rồi thử lại. Chưa có dữ liệu nào được ghi ở bước xem trước.' : 'Hãy xem Lịch sử nhập trước khi thử ghi lại, vì yêu cầu có thể đã được máy chủ xử lý.'}</p><button class="ghost" data-action="${lastImportAction === 'preview' ? 'retry-import' : 'check-import-history'}">${lastImportAction === 'preview' ? 'Thử xem trước lại' : 'Kiểm tra lịch sử nhập'}</button></div>` : ''}
-    <div class="import-layout"><div class="upload-card"><div class="upload-symbol" aria-hidden="true">↥</div><h3>Nhập workbook Excel</h3><p>Kiểm tra chất lượng trước khi ghi vào kho dữ liệu. File .xlsx tối đa 50 MB.</p>
-      <input id="file-input" type="file" accept=".xlsx" ${busy ? 'disabled' : ''} aria-describedby="file-constraints"/><label class="upload-button" for="file-input">Chọn file Excel</label><p id="file-constraints" class="field-hint">Bước xem trước chỉ đọc file, chưa ghi dữ liệu.</p>
+    <div id="import-live-status" class="import-live-status" role="status" aria-live="polite" aria-atomic="true">${importPhase === 'previewing' ? 'Đang đọc tệp Excel và kiểm tra dữ liệu…' : importPhase === 'committing' ? importResult ? 'Đã ghi dữ liệu. Đang tải lại biểu đồ và lịch sử nhập…' : 'Đang ghi dữ liệu và lưu phiên bản… Không đóng thẻ này.' : ''}</div>
+    ${importError ? `<div class="import-error" role="alert"><strong>${lastImportAction === 'preview' ? 'Không xem trước được tệp Excel.' : 'Chưa xác nhận được kết quả nhập.'}</strong><p>${esc(importError)}</p><p>${lastImportAction === 'preview' ? 'Kiểm tra tệp .xlsx rồi thử lại. Chưa có dữ liệu nào được ghi ở bước xem trước.' : 'Hãy xem Lịch sử nhập trước khi thử ghi lại, vì yêu cầu có thể đã được máy chủ xử lý.'}</p><button class="ghost" data-action="${lastImportAction === 'preview' ? 'retry-import' : 'check-import-history'}">${lastImportAction === 'preview' ? 'Thử xem trước lại' : 'Kiểm tra lịch sử nhập'}</button></div>` : ''}
+    <div class="import-layout"><div class="upload-card"><div class="upload-symbol" aria-hidden="true">↥</div><h3>Nhập tệp Excel</h3><p>Kiểm tra chất lượng trước khi ghi vào kho dữ liệu. Tệp .xlsx tối đa 50 MB.</p>
+      <input id="file-input" type="file" accept=".xlsx" ${busy ? 'disabled' : ''} aria-describedby="file-constraints"/><label class="upload-button" for="file-input">Chọn tệp Excel</label><p id="file-constraints" class="field-hint">Bước xem trước chỉ đọc tệp, chưa ghi dữ liệu.</p>
       ${selectedFile ? `<div class="selected-file"><strong>${esc(selectedFile.name)}</strong><span>${fmt(Math.round(selectedFile.size / 1024))} KB</span></div>` : ''}
-      <label class="field import-mode"><span>Cách nhập dữ liệu</span><select id="import-mode" ${busy ? 'disabled' : ''}>${select([{value:'incremental',label:'Chỉ dữ liệu bổ sung'},{value:'full_snapshot',label:'Snapshot đầy đủ'}], importMode)}</select></label>
+      <label class="field import-mode"><span>Cách nhập dữ liệu</span><select id="import-mode" ${busy ? 'disabled' : ''}>${select([{value:'incremental',label:'Chỉ dữ liệu bổ sung'},{value:'full_snapshot',label:'Bản chụp đầy đủ'}], importMode)}</select></label>
       <div class="mode-guidance ${importMode === 'full_snapshot' ? 'high-risk' : ''}"><strong>${esc(guidance.title)}</strong><p>${esc(guidance.body)}</p></div>
-      <button id="preview-action" class="primary wide" data-action="preview" ${selectedFile && !busy ? '' : 'disabled'}>${preview ? 'Kiểm tra lại workbook' : 'Xem trước và kiểm tra'}</button></div>
+      <button id="preview-action" class="primary wide" data-action="preview" ${selectedFile && !busy ? '' : 'disabled'}>${preview ? 'Kiểm tra lại tệp Excel' : 'Xem trước và kiểm tra'}</button></div>
       <div class="preview-card" aria-busy="${busy}"><h3 id="preview-result-heading" tabindex="-1">Kết quả xem trước</h3>${preview ? `<div class="preview-status ${preview.valid ? 'valid' : 'invalid'}" role="${preview.valid ? 'status' : 'alert'}">${preview.valid ? 'Đạt kiểm tra · có thể xác nhận nhập' : 'Không đạt kiểm tra · chưa ghi dữ liệu'}</div>
-      <dl class="preview-identity"><div><dt>Dự án đích</dt><dd>${esc(previewDestination(preview))}</dd></div><div><dt>Workbook</dt><dd>${esc(selectedFile?.name || preview.manifest.source_file)}</dd></div><div><dt>Phạm vi ngày</dt><dd>${esc(previewDateRange(preview))}</dd></div><div><dt>SHA-256 workbook</dt><dd><code title="${esc(preview.manifest.source_hash)}">${esc(shortHash(preview.manifest.source_hash))}</code></dd></div></dl>
-      <div class="preview-metrics"><div><strong>${fmt(preview.manifest.record_count)}</strong><span>Quan sát đầu vào</span></div><div><strong>${fmt(preview.manifest.date_count)}</strong><span>Ngày có dữ liệu</span></div><div><strong>${fmt(preview.errorCount)}</strong><span>Lỗi</span></div><div><strong>${fmt(preview.warningCount)}</strong><span>Cảnh báo</span></div></div>
+      <dl class="preview-identity"><div><dt>Dự án đích</dt><dd>${esc(previewDestination(preview))}</dd></div><div><dt>Tệp Excel</dt><dd>${esc(selectedFile?.name || preview.manifest.source_file)}</dd></div><div><dt>Phạm vi ngày</dt><dd>${esc(previewDateRange(preview))}</dd></div><div><dt>Mã nhận diện tệp</dt><dd><code title="${esc(preview.manifest.source_hash)}">${esc(shortHash(preview.manifest.source_hash))}</code></dd></div></dl>
+      <div class="preview-metrics"><div><strong>${fmt(preview.manifest.record_count)}</strong><span>Điểm dữ liệu trong tệp</span></div><div><strong>${fmt(preview.manifest.date_count)}</strong><span>Ngày có dữ liệu</span></div><div><strong>${fmt(preview.errorCount)}</strong><span>Lỗi</span></div><div><strong>${fmt(preview.warningCount)}</strong><span>Cảnh báo</span></div></div>
       <section class="impact-summary" aria-labelledby="impact-heading"><div class="subsection-heading"><h4 id="impact-heading">Tác động khi ghi</h4><span>Xác định sau khi xác nhận</span></div><dl><div><dt>Thêm mới</dt><dd>—</dd></div><div><dt>Cập nhật phiên bản</dt><dd>—</dd></div><div><dt>Giữ nguyên</dt><dd>—</dd></div><div><dt>Thay phiên bản</dt><dd>—</dd></div></dl><p>Hệ thống chưa tính được số thay đổi chính xác ở bước xem trước. Kết quả thực tế sẽ hiển thị sau khi nhập.</p></section>
-      <section class="revision-behavior"><h4>Cách lưu phiên bản</h4><p>${esc(guidance.body)}</p><p>Thay đổi giá trị được lưu thành phiên bản mới; workbook nguồn và lịch sử nhập vẫn được giữ để đối chiếu.</p></section>
+      <section class="revision-behavior"><h4>Cách lưu phiên bản</h4><p>${esc(guidance.body)}</p><p>Thay đổi giá trị được lưu thành phiên bản mới; tệp Excel nguồn và lịch sử nhập vẫn được giữ để đối chiếu.</p></section>
       <section class="validation-report" aria-labelledby="validation-heading"><div class="subsection-heading"><h4 id="validation-heading">Kết quả kiểm tra</h4><button class="text-action" data-action="download-validation">${reportDownloadLabel(preview)}</button></div><div class="issue-list">${validationIssues(preview)}</div>${reportIsTruncated(preview) ? `<p class="issue-limit">Chỉ hiển thị và tải được ${fmt(preview.issues.length)} / ${fmt(preview.errorCount + preview.warningCount)} mục kiểm tra; tổng lỗi và cảnh báo ở trên vẫn đầy đủ.</p>` : ''}</section>
-      ${importMode === 'full_snapshot' && preview.valid ? `<label class="snapshot-confirm"><input id="snapshot-confirm" type="checkbox" ${fullSnapshotConfirmed ? 'checked' : ''}><span><strong>Tôi xác nhận nhập snapshot đầy đủ.</strong>Tôi hiểu giá trị trùng khóa có thể tạo phiên bản mới; giá trị vắng mặt trong file không bị tự động xóa theo chính sách hiện tại.</span></label>` : ''}
-      <button class="primary wide commit-button" data-action="commit" ${commitDisabled ? 'disabled' : ''}>${importMode === 'full_snapshot' ? 'Xác nhận nhập snapshot' : 'Xác nhận nhập dữ liệu bổ sung'}</button>` : '<div class="preview-placeholder"><p>Chọn workbook rồi xem trước dự án đích, phạm vi ngày, định danh file và kết quả kiểm tra.</p><strong>Chỉ ghi dữ liệu sau khi bạn xác nhận.</strong></div>'}</div></div>
-    ${importResult && showAllIssues && report ? `<section id="committed-validation" class="committed-validation" tabindex="-1"><div class="subsection-heading"><h3>Kết quả kiểm tra của workbook vừa nhập</h3><button class="text-action" data-action="download-validation">${reportDownloadLabel(report)}</button></div><div class="issue-list">${validationIssues(report)}</div>${reportIsTruncated(report) ? `<p class="issue-limit">Chỉ có ${fmt(report.issues.length)} / ${fmt(report.errorCount + report.warningCount)} mục chi tiết trong bản xem trước này.</p>` : ''}</section>` : ''}`;
+      ${importMode === 'full_snapshot' && preview.valid ? `<label class="snapshot-confirm"><input id="snapshot-confirm" type="checkbox" ${fullSnapshotConfirmed ? 'checked' : ''}><span><strong>Tôi xác nhận nhập bản chụp đầy đủ.</strong>Tôi hiểu giá trị trùng khóa có thể tạo phiên bản mới; giá trị vắng mặt trong tệp không bị tự động xóa theo chính sách hiện tại.</span></label>` : ''}
+      <button class="primary wide commit-button" data-action="commit" ${commitDisabled ? 'disabled' : ''}>${importMode === 'full_snapshot' ? 'Xác nhận nhập bản chụp' : 'Xác nhận nhập dữ liệu bổ sung'}</button>` : '<div class="preview-placeholder"><p>Chọn tệp Excel rồi xem trước dự án đích, phạm vi ngày, mã nhận diện tệp và kết quả kiểm tra.</p><strong>Chỉ ghi dữ liệu sau khi bạn xác nhận.</strong></div>'}</div></div>
+    ${importResult && showAllIssues && report ? `<section id="committed-validation" class="committed-validation" tabindex="-1"><div class="subsection-heading"><h3>Kết quả kiểm tra của tệp Excel vừa nhập</h3><button class="text-action" data-action="download-validation">${reportDownloadLabel(report)}</button></div><div class="issue-list">${validationIssues(report)}</div>${reportIsTruncated(report) ? `<p class="issue-limit">Chỉ có ${fmt(report.issues.length)} / ${fmt(report.errorCount + report.warningCount)} mục chi tiết trong bản xem trước này.</p>` : ''}</section>` : ''}`;
   restorePendingFocus();
 }
 function renderHistory(body: HTMLDivElement): void {
@@ -919,7 +1444,7 @@ function renderHistory(body: HTMLDivElement): void {
   if (historyError) { body.innerHTML = statePanel('Không tải được lịch sử nhập', `${historyError} Dữ liệu đã nhập không bị thay đổi.`, true, 'retry-history'); return; }
   const cols = ['started_at','submitted_file_name','attempt_status','requested_mode','input_record_count','inserted_count','updated_count','unchanged_count'];
   const latestAttempt = importResult?.outcome.attempt_id;
-  body.innerHTML = `<p class="section-desc">Tối đa 100 lần nhập gần nhất, gồm lần đã ghi, trùng, không đạt kiểm tra và thất bại.</p>${historyItems.length ? `<div class="table-wrap"><table><thead><tr>${cols.map(col => `<th>${esc(historyHeaders[col])}</th>`).join('')}</tr></thead><tbody>${historyItems.map(item => { const current = Number(item.attempt_id) === latestAttempt; return `<tr ${current ? 'id="latest-import-row" class="current-import" tabindex="-1" aria-current="true"' : ''}>${cols.map(col => `<td title="${esc(historyCell(col, item[col]))}">${esc(historyCell(col, item[col]))}</td>`).join('')}</tr>`; }).join('')}</tbody></table></div>` : statePanel('Chưa có lần nhập nào', 'Sau khi kiểm tra và xác nhận workbook đầu tiên, kết quả sẽ xuất hiện ở đây.')}`;
+  body.innerHTML = `<p class="section-desc">Tối đa 100 lần nhập gần nhất, gồm lần đã ghi, trùng, không đạt kiểm tra và thất bại.</p>${historyItems.length ? `<div class="table-wrap"><table><thead><tr>${cols.map(col => `<th>${esc(historyHeaders[col])}</th>`).join('')}</tr></thead><tbody>${historyItems.map(item => { const current = Number(item.attempt_id) === latestAttempt; return `<tr ${current ? 'id="latest-import-row" class="current-import" tabindex="-1" aria-current="true"' : ''}>${cols.map(col => `<td title="${esc(historyCell(col, item[col]))}">${esc(historyCell(col, item[col]))}</td>`).join('')}</tr>`; }).join('')}</tbody></table></div>` : statePanel('Chưa có lần nhập nào', 'Sau khi kiểm tra và xác nhận tệp Excel đầu tiên, kết quả sẽ xuất hiện ở đây.')}`;
   restorePendingFocus();
 }
 function downloadValidationReport(): void {
@@ -946,7 +1471,7 @@ async function loadEntities(): Promise<void> {
   entities = response.entities;
   if (!entities.some(entity => entity.entity_id === state.entity)) state.entity = '';
 }
-async function loadWorkspace(debounceMs = 0): Promise<void> {
+async function loadWorkspace(debounceMs = 0, force = false): Promise<void> {
   request?.abort();
   workspaceError = '';
   if (!state.project) { workspace = null; renderSidebar(); renderMain(); return; }
@@ -974,13 +1499,32 @@ async function loadWorkspace(debounceMs = 0): Promise<void> {
   try {
     if (debounceMs > 0) await new Promise(resolve => setTimeout(resolve, debounceMs));
     if (current.signal.aborted || current !== request) { void finishWorkspaceTrace(trace, 'aborted'); return; }
-    if (workspace && workspaceView === requestedView && !workspaceError && requestKey === lastWorkspaceRequestKey) {
+    if (!force && workspace && workspaceView === requestedView && !workspaceError && requestKey === lastWorkspaceRequestKey) {
       loading = false; request = null; updateWorkspaceRequestStatus();
       await finishWorkspaceTrace(trace, 'success'); return;
     }
     const result = await api<Workspace>(`/projects/${encodeURIComponent(state.project)}/workspace?${params}`, { signal: current.signal }, trace);
     if (current !== request) { void finishWorkspaceTrace(trace, 'aborted'); return; }
     workspace = result; workspaceProject = state.project; workspaceView = requestedView; state.entity = result.selectedEntity;
+    if (requestedView === 'comparison' && !result.comparisonContext) {
+      const candidateIds = new Set(result.comparisonCandidates.map(item => item.entity_id));
+      const retained = state.comparisonEntities.filter(id => candidateIds.has(id)).slice(0, 3);
+      if (retained.join(',') !== state.comparisonEntities.join(',')) {
+        state.comparisonEntities = retained;
+      }
+    }
+    if (contextualComparison && dataVersionKey(result.dataVersion) !== dataVersionKey(contextualComparison.sourceDataVersion)) {
+      contextualComparison.latestDataVersion = result.dataVersion;
+      contextualComparison.status = 'stale';
+      contextualComparison.notice = 'Không gian phân tích đã nhận một phiên bản dữ liệu mới.';
+      renderContextualComparison();
+    }
+    if (aiAnalysis && (
+      aiAnalysis.scope.project !== state.project
+      || aiAnalysis.scope.entityRef !== result.selectedEntity
+      || aiAnalysis.window.start !== result.window.start
+      || aiAnalysis.window.end !== result.window.end
+    )) aiLocallyStale = true;
     displayedFilterLabel = workspaceFilterLabel(result); lastWorkspaceRequestKey = requestKey;
     workspaceError = ''; message = ''; save();
     renderSidebar(); updateWorkspaceChrome();
@@ -1006,14 +1550,95 @@ async function loadWorkspace(debounceMs = 0): Promise<void> {
     await finishWorkspaceTrace(trace, 'error', workspaceError);
   }
 }
-async function refreshProject(): Promise<void> {
+function invalidateAIAnalysis(clear = false): void {
+  aiRequest?.abort(); aiLoading = false; aiAnalysisError = '';
+  if (clear) { aiAnalysis = null; aiLocallyStale = false; }
+  else if (aiAnalysis) aiLocallyStale = true;
+}
+
+async function loadAIStatus(): Promise<void> {
+  aiStatusError = '';
+  try { aiStatus = await api<AIStatus>('/ai/status'); }
+  catch (error) { aiStatus = null; aiStatusError = (error as Error).message; }
+  if (state.tab === 'overview') renderTab();
+}
+
+async function refreshAIAnalysisFreshness(): Promise<void> {
+  if (!aiAnalysis) return;
+  try {
+    const refreshed = await api<AIAnalysis>(`/ai/analyses/${encodeURIComponent(aiAnalysis.analysisId)}`);
+    if (refreshed.analysisId !== aiAnalysis.analysisId) return;
+    aiAnalysis = refreshed;
+    aiLocallyStale = refreshed.status === 'stale' || refreshed.dataAsOf.stale;
+    if (state.tab === 'overview') renderTab();
+  } catch { /* A transient freshness check must not break the dashboard. */ }
+}
+
+async function generateAIInsight(): Promise<void> {
+  if (!workspace || !aiStatus?.enabled || !aiStatus.configured || state.scope !== 'node' || aiLoading) return;
+  aiRequest?.abort();
+  const current = new AbortController(); aiRequest = current;
+  let completionAnnouncement = '';
+  aiLoading = true; aiAnalysisError = ''; renderTab();
+  announceAI('Đang phân tích dữ liệu trong khoảng đã chọn.'); focusAIAction();
+  try {
+    const result = await api<AIAnalysis>(`/projects/${encodeURIComponent(state.project)}/ai/trend-summary`, {
+      method: 'POST', signal: current.signal, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entityRef: workspace.selectedEntity,
+        metricCode: state.aiMetricCode,
+        start: workspace.window.start,
+        end: workspace.window.end,
+        groupBy: state.aiGroupBy,
+        scope: 'node',
+      }),
+    });
+    if (current !== aiRequest) return;
+    aiAnalysis = result; aiLocallyStale = false; aiAnalysisError = '';
+    completionAnnouncement = `Phân tích hoàn tất. ${aiStatusLabel(result.status)}.`;
+  } catch {
+    if (current.signal.aborted || current !== aiRequest) return;
+    aiAnalysisError = aiFriendlyError();
+    completionAnnouncement = 'Không tạo được phân tích. Dữ liệu trên bảng điều khiển vẫn được giữ nguyên.';
+  } finally {
+    if (current === aiRequest) {
+      aiLoading = false; aiRequest = null; renderTab();
+      announceAI(completionAnnouncement); focusAIAction();
+    }
+  }
+}
+
+function openAIInsightEvidence(evidenceId: string): void {
+  const evidence = aiAnalysis?.evidence.find(item => item.evidenceId === evidenceId);
+  if (!evidence || aiLocallyStale && aiAnalysis?.scope.project !== state.project) return;
+  const exact = evidence.target.kind === 'exact' ? evidence.target : null;
+  const aggregate = evidence.target.kind === 'aggregate' ? evidence.target : null;
+  const selection: InvestigationSelection = {
+    kind: evidence.target.kind === 'exact' ? 'exact-observation' : 'aggregate',
+    aggregateRef: aggregate?.aggregateRef || null,
+    observationRef: exact?.observationRef || null,
+    lineageRef: exact?.lineageRef || null,
+    origin: {
+      plotKey: 'ai-insight', tab: 'overview', entityRef: aiAnalysis?.scope.entityRef || '',
+      seriesName: aiAnalysis?.scope.metricDisplayName || 'Nhận định tự động',
+      observedDate: evidence.observedDate, displayedValue: 'Dữ kiện phân tích', curveNumber: 0, pointNumber: 0,
+    },
+  };
+  aggregateParent = null; revisionHistory = null; importDetail = null;
+  void loadProvenance(selection);
+}
+
+async function refreshProject(forceWorkspace = false): Promise<void> {
   request?.abort();
   const changingProject = workspaceProject !== state.project;
   if (changingProject) {
     workspace = null; workspaceView = ''; displayedFilterLabel = ''; lastWorkspaceRequestKey = ''; workspaceError = ''; chartFingerprints.clear();
     renderSidebar(); renderMain();
   }
-  try { await loadEntities(); await loadWorkspace(); }
+  try {
+    await loadEntities(); await loadWorkspace(0, forceWorkspace);
+    if (forceWorkspace) await refreshAIAnalysisFreshness();
+  }
   catch (error) {
     workspaceError = (error as Error).message;
     if (workspace) updateWorkspaceRequestStatus(); else renderMain();
@@ -1034,24 +1659,57 @@ app.addEventListener('change', event => {
   }
   if (target.id === 'import-mode') { importMode = target.value as typeof importMode; fullSnapshotConfirmed = false; pendingFocusId = 'import-mode'; renderTab(); return; }
   if (target.id === 'snapshot-confirm' && target instanceof HTMLInputElement) { fullSnapshotConfirmed = target.checked; pendingFocusId = 'snapshot-confirm'; renderTab(); return; }
+  if (target.dataset.contextField === 'metric' && contextualComparison) {
+    closeContextualInvestigation();
+    contextualComparison.metric = target.value || null;
+    contextualComparison.response = null; contextualComparison.error = ''; contextualComparison.notice = '';
+    contextualComparison.status = contextualComparison.metric ? 'loading' : 'choosing';
+    contextualFocusId = 'contextual-metric';
+    if (contextualComparison.metric) void loadContextualComparison(); else renderContextualComparison();
+    return;
+  }
+  if (target.dataset.contextField === 'calculation' && contextualComparison) {
+    closeContextualInvestigation();
+    contextualComparison.calculation = target.value as ContextualComparison['calculation'];
+    contextualComparison.response = null; contextualComparison.error = ''; contextualComparison.notice = '';
+    contextualComparison.status = 'loading'; contextualFocusId = 'contextual-calculation';
+    void loadContextualComparison(); return;
+  }
+  if (target.dataset.contextCompare && contextualComparison && target instanceof HTMLInputElement) {
+    closeContextualInvestigation();
+    const id = target.dataset.contextCompare;
+    const selected = new Set(contextualComparison.selected);
+    if (target.checked) selected.add(id); else selected.delete(id);
+    if (selected.size > 3) { target.checked = false; return; }
+    contextualComparison.selected = [contextualComparison.anchorId, ...[...selected].filter(value => value !== contextualComparison?.anchorId)];
+    contextualFocusId = '';
+    void loadContextualComparison(); return;
+  }
   if (target.dataset.compare) {
     const id = target.dataset.compare;
     const selected = new Set(state.comparisonEntities);
     if (target instanceof HTMLInputElement && target.checked) selected.add(id); else selected.delete(id);
-    if (selected.size > 3) { message = 'Chỉ được chọn tối đa 3 entity.'; if (target instanceof HTMLInputElement) target.checked = false; renderMain(); return; }
+    if (selected.size > 3) { message = 'Chỉ được chọn tối đa 3 nội dung theo dõi.'; if (target instanceof HTMLInputElement) target.checked = false; renderMain(); return; }
     state.comparisonEntities = [...selected]; save();
     noteWorkspaceInteraction(`compare:${id}`, interactionAt, performance.now());
     void loadWorkspace(120); return;
   }
   const field = target.dataset.field as keyof State | undefined;
   if (!field) return;
+  if (contextualComparison) closeContextualComparison();
   const value: string | number | boolean = target instanceof HTMLInputElement && target.type === 'checkbox' ? target.checked : target.type === 'number' ? Number(target.value) : target.value;
   (state as unknown as Record<string, string | number | boolean>)[field] = value;
+  if (field === 'aiMetricCode' || field === 'aiGroupBy') {
+    invalidateAIAnalysis(); save(); renderTab(); return;
+  }
+  if (['project', 'mode', 'count', 'start', 'end', 'entity', 'scope'].includes(field)) {
+    invalidateAIAnalysis(field === 'project');
+  }
   if (field === 'project') {
+    closeContextualComparison();
     state.entity = ''; state.comparisonEntities = []; state.start = ''; state.end = '';
     investigationRequest?.abort(); investigation = { status: 'closed' }; auditFocus = null; renderInvestigation();
   }
-  if (field === 'comparisonMetric') state.comparisonEntities = [];
   if (field === 'mode') { state.count = state.mode === 'month' ? 6 : 8; const p = currentProject(); state.start = p?.minDate || ''; state.end = p?.maxDate || ''; }
   if (field === 'entity') state.scope = 'node';
   if (field !== 'auditOffset') state.auditOffset = 0;
@@ -1071,12 +1729,29 @@ app.addEventListener('click', event => {
     return;
   }
   if (element.dataset.tab) {
+    closeContextualComparison();
     state.tab = element.dataset.tab as Tab; save(); renderMain();
     if (state.tab === 'history') void refreshHistory();
     else if (['overview', 'statistics', 'comparison', 'audit'].includes(state.tab) && workspaceView !== state.tab) void loadWorkspace();
     return;
   }
   const action = element.dataset.action;
+  if (action === 'open-contextual-comparison' && element.dataset.entityId) {
+    openContextualComparison(element.dataset.entityId, element.id); return;
+  }
+  if (action === 'close-contextual-comparison') { closeContextualComparison(); return; }
+  if ((action === 'contextual-lens-metric' || action === 'contextual-lens-statistics') && contextualComparison) {
+    const lens = action === 'contextual-lens-statistics' ? 'statistics' : 'metric';
+    if (contextualComparison.lens === lens) return;
+    closeContextualInvestigation();
+    contextualComparison.lens = lens;
+    contextualComparison.response = null; contextualComparison.error = ''; contextualComparison.notice = '';
+    contextualComparison.status = 'loading';
+    try { sessionStorage.setItem(CONTEXTUAL_LENS_KEY, lens); } catch { /* Optional preference. */ }
+    void loadContextualComparison(); return;
+  }
+  if (action === 'retry-contextual-comparison') { void loadContextualComparison(); return; }
+  if (action === 'update-contextual-data') { void updateContextualData(); return; }
   if (action === 'close-investigation') {
     const selection = investigationSelection();
     investigationRequest?.abort(); investigation = { status: 'closed' }; aggregateParent = null; revisionHistory = null; importDetail = null; investigationLiveMessage = '';
@@ -1084,8 +1759,6 @@ app.addEventListener('click', event => {
       const plot = document.querySelector<HTMLElement>(`[data-plot="${selection.origin.plotKey}"]`);
       if (plot) {
         clearChartSelection(plot);
-        updateAccessiblePointSelection(selection.origin.plotKey, null);
-        requestAnimationFrame(() => (selection.origin.focusTargetId ? document.getElementById(selection.origin.focusTargetId) : plot)?.focus());
       }
     }
     renderInvestigation(); return;
@@ -1093,11 +1766,11 @@ app.addEventListener('click', event => {
   if (action === 'retry-provenance') {
     const selection = investigationSelection(); if (selection) void loadProvenance(selection); return;
   }
-  if (action === 'open-chart-point') {
-    const item = element.dataset.registryKey ? accessiblePointRegistry.get(element.dataset.registryKey) : undefined;
-    if (item) openInvestigation(item.plotKey, item.entityRef, item.point, element.id);
-    return;
+  if (action === 'use-selected-entity') {
+    state.scope = 'node'; invalidateAIAnalysis(); save(); void loadWorkspace(); return;
   }
+  if (action === 'generate-ai-insight') { void generateAIInsight(); return; }
+  if (action === 'open-ai-evidence' && element.dataset.evidenceId) { openAIInsightEvidence(element.dataset.evidenceId); return; }
   if (action === 'load-contributors') { void loadMoreContributors(); return; }
   if (action === 'open-contributor' && investigation.status === 'aggregate-ready') {
     const item = investigation.contributors[Number(element.dataset.index)];
@@ -1123,7 +1796,7 @@ app.addEventListener('click', event => {
   }
   if (action === 'return-to-chart') { returnToChart(); return; }
   if (action === 'retry-audit-lookup') { if (auditFocus) void loadAuditLookup(auditFocus.selection); return; }
-  if (action === 'refresh') { void bootstrap(); return; }
+  if (action === 'refresh') { void bootstrap(true); return; }
   if (action === 'retry-workspace') { void loadWorkspace(); return; }
   if (action === 'retry-history') { void refreshHistory(); return; }
   if (action === 'audit-prev' || action === 'audit-next') {
@@ -1139,7 +1812,7 @@ app.addEventListener('click', event => {
   if (action === 'audit-import') {
     state.tab = 'audit'; state.auditOffset = 0; save();
     const runId = importResult?.outcome.run_id ?? importResult?.outcome.duplicate_of_run_id;
-    message = runId ? 'Audit hiển thị các quan sát hiện hành sau lần nhập; đây không phải danh sách thay đổi riêng của lần đó.' : 'Audit hiển thị các quan sát hiện hành, không phải danh sách thay đổi riêng của lần nhập.';
+    message = runId ? 'Mục Đối chiếu dữ liệu hiển thị các điểm dữ liệu hiện hành sau lần nhập; đây không phải danh sách thay đổi riêng của lần đó.' : 'Mục Đối chiếu dữ liệu hiển thị các điểm dữ liệu hiện hành, không phải danh sách thay đổi riêng của lần nhập.';
     pendingFocusId = 'tab-body'; renderMain(); return;
   }
   if (action === 'retry-import') {
@@ -1150,10 +1823,22 @@ app.addEventListener('click', event => {
   if (action === 'commit' && selectedFile && preview?.valid && (importMode !== 'full_snapshot' || fullSnapshotConfirmed)) void commitFile();
 });
 app.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && contextualComparison && investigationSelection()?.origin.plotKey === 'contextual-comparison') {
+    event.preventDefault();
+    app.querySelector<HTMLButtonElement>('#investigation-drawer [data-action="close-investigation"]')?.click();
+    return;
+  }
+  if (event.key === 'Escape' && contextualComparison) {
+    event.preventDefault(); closeContextualComparison(); return;
+  }
   if (event.key === 'Escape' && investigation.status !== 'closed') {
     event.preventDefault();
     app.querySelector<HTMLButtonElement>('#investigation-drawer [data-action="close-investigation"]')?.click();
   }
+});
+app.addEventListener('cancel', event => {
+  if ((event.target as HTMLElement).id !== 'contextual-comparison-dialog') return;
+  event.preventDefault(); closeContextualComparison();
 });
 async function previewFile(): Promise<void> {
   if (!selectedFile || importPhase !== 'idle') return;
@@ -1177,14 +1862,16 @@ async function commitFile(): Promise<void> {
     const result = await api<ImportOutcome>('/imports', { method: 'POST', body: form });
     importResult = { outcome: result, preview: committedPreview, fileName: committedFile.name, fileSize: committedFile.size, mode: committedMode, committedAt: new Date().toISOString() };
     preview = null; selectedFile = null;
-    await bootstrap(); await refreshHistory();
+    if (result.status === 'committed') invalidateAIAnalysis();
+    await bootstrap(result.status === 'committed'); await refreshHistory();
     importPhase = 'idle'; fullSnapshotConfirmed = false; showAllIssues = false; pendingFocusId = 'import-result'; renderMain();
   } catch (error) {
     importPhase = 'idle'; importError = (error as Error).message; pendingFocusId = 'preview-result-heading'; renderMain();
   }
 }
-async function bootstrap(): Promise<void> {
+async function bootstrap(forceWorkspace = false): Promise<void> {
   bootstrapError = '';
+  void loadAIStatus();
   try {
     projects = (await api<{projects:Project[]}>('/bootstrap')).projects;
     bootstrapLoaded = true;
@@ -1192,7 +1879,7 @@ async function bootstrap(): Promise<void> {
     const p = currentProject();
     if (!state.start) state.start = p?.minDate || '';
     if (!state.end) state.end = p?.maxDate || '';
-    save(); await refreshProject();
+    save(); await refreshProject(forceWorkspace);
   } catch (error) { bootstrapLoaded = true; bootstrapError = (error as Error).message; renderSidebar(); renderMain(); }
 }
 renderShell(); renderSidebar(); renderMain(); void bootstrap();

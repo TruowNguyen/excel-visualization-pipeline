@@ -31,15 +31,15 @@ def decimal_text(value: Any) -> str | None:
     if _is_missing(value):
         return None
     if isinstance(value, bool):
-        raise ValueError("Boolean không phải numeric value hợp lệ.")
+        raise ValueError("Giá trị đúng/sai không phải là giá trị số hợp lệ.")
     if isinstance(value, float) and not math.isfinite(value):
-        raise ValueError("NaN/Infinity không được phép trong canonical numeric value.")
+        raise ValueError("Không chấp nhận giá trị không phải số hoặc giá trị vô hạn.")
     try:
         decimal = Decimal(str(value))
     except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"Không thể chuẩn hóa numeric value: {value!r}") from exc
+        raise ValueError(f"Không thể chuẩn hóa giá trị số: {value!r}") from exc
     if not decimal.is_finite():
-        raise ValueError("NaN/Infinity không được phép trong canonical numeric value.")
+        raise ValueError("Không chấp nhận giá trị không phải số hoặc giá trị vô hạn.")
     if decimal == 0:
         return "0"
     normalized = decimal.normalize()

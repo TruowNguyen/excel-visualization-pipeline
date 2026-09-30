@@ -39,9 +39,9 @@ class ImportScope:
         start = date.fromisoformat(str(self.date_from))
         end = date.fromisoformat(str(self.date_to))
         if start > end:
-            raise ValueError("date_from phải nhỏ hơn hoặc bằng date_to.")
+            raise ValueError("Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.")
         if self.missing_policy not in {"ignore", "tombstone"}:
-            raise ValueError("missing_policy phải là 'ignore' hoặc 'tombstone'.")
+            raise ValueError("Chính sách xử lý dữ liệu vắng mặt không hợp lệ.")
         return ImportScope(
             date_from=start.isoformat(),
             date_to=end.isoformat(),
@@ -177,12 +177,12 @@ def _auto_scopes(result: PipelineResult, mode: str) -> list[ImportScope]:
 
 def _validate_mode_and_scopes(mode: str, scopes: Sequence[ImportScope]) -> list[ImportScope]:
     if mode not in {"full_snapshot", "incremental"}:
-        raise ValueError("mode phải là 'full_snapshot' hoặc 'incremental'.")
+        raise ValueError("Cách nhập phải là bản chụp đầy đủ hoặc dữ liệu bổ sung.")
     normalized = [scope.normalized() for scope in scopes]
     if mode == "full_snapshot" and not normalized:
-        raise ValueError("full_snapshot phải có ít nhất một declared scope.")
+        raise ValueError("Bản chụp đầy đủ phải có ít nhất một phạm vi dữ liệu được khai báo.")
     if mode == "incremental" and any(scope.missing_policy == "tombstone" for scope in normalized):
-        raise ValueError("incremental không được sử dụng missing_policy='tombstone'.")
+        raise ValueError("Dữ liệu bổ sung không được đánh dấu xóa nội dung vắng mặt.")
     return normalized
 
 
@@ -408,7 +408,7 @@ def import_workbook(
     allow_replay: bool = False,
 ) -> ImportExecution:
     if mode not in {"full_snapshot", "incremental"}:
-        raise ValueError("mode phải là 'full_snapshot' hoặc 'incremental'.")
+        raise ValueError("Cách nhập phải là bản chụp đầy đủ hoặc dữ liệu bổ sung.")
     payload, source_name = _read_source(source)
     config = ParserConfig.from_yaml(config_path) if config_path else ParserConfig()
     parser_config_hash = _config_hash(config)
@@ -439,7 +439,7 @@ def import_workbook(
             failure_code="PARSE_FAILED",
             failure_message=str(exc),
         )
-        raise StorageImportError(f"Không thể parse workbook {source_name}: {exc}") from exc
+        raise StorageImportError(f"Không thể đọc tệp Excel {source_name}: {exc}") from exc
 
     effective_scopes = list(scopes) if scopes is not None else _auto_scopes(result, mode)
     if not result.report.is_valid:
@@ -455,7 +455,7 @@ def import_workbook(
             db_path,
             attempt_id,
             result.report.issues,
-            f"Quality gate có {len(result.report.errors)} error.",
+            f"Dữ liệu có {len(result.report.errors)} lỗi kiểm tra chất lượng.",
         )
         return ImportExecution(result=result, outcome=outcome)
     try:
@@ -513,7 +513,7 @@ def import_pipeline_result(
     allow_replay: bool = False,
 ) -> ImportOutcome:
     if mode not in {"full_snapshot", "incremental"}:
-        raise ValueError("mode phải là 'full_snapshot' hoặc 'incremental'.")
+        raise ValueError("Cách nhập phải là bản chụp đầy đủ hoặc dữ liệu bổ sung.")
     parser_config = config or ParserConfig()
     parser_config_hash = _config_hash(parser_config)
     effective_scopes = list(scopes) if scopes is not None else _auto_scopes(result, mode)
@@ -553,9 +553,9 @@ def import_pipeline_result(
             attempt_id,
             "failed",
             failure_code="SOURCE_HASH_MISMATCH",
-            failure_message="PipelineResult không thuộc source_payload đã cung cấp.",
+            failure_message="Kết quả kiểm tra không thuộc tệp nguồn đã cung cấp.",
         )
-        raise ValueError("PipelineResult source hash không khớp source_payload.")
+        raise ValueError("Mã nhận diện của kết quả kiểm tra không khớp tệp nguồn.")
     return _process_result(
         db_path,
         attempt_id,
@@ -597,7 +597,7 @@ def _process_result(
             attempt_id=attempt_id,
             status="duplicate",
             duplicate_of_run_id=duplicate_run_id,
-            message="Workbook/config/import contract đã được commit trước đó.",
+            message="Tệp, cấu hình đọc và quy tắc nhập này đã được lưu trước đó.",
         )
 
     if not allow_replay:
@@ -627,15 +627,15 @@ def _process_result(
             if newer_run_id is not None:
                 code = "STALE_ARTIFACT_REPLAY"
                 message = (
-                    f"Workbook này đã được áp dụng ở run #{previous_run_id}, nhưng đã có "
-                    f"run mới hơn #{newer_run_id} từ workbook khác. Chặn replay để tránh "
-                    "ghi đè current data bằng dữ liệu cũ."
+                    f"Tệp này đã được áp dụng ở lần nhập #{previous_run_id}, nhưng đã có "
+                    f"lần nhập mới hơn #{newer_run_id} từ tệp khác. Hệ thống chặn áp dụng lại "
+                    "để dữ liệu cũ không ghi đè dữ liệu hiện hành."
                 )
             else:
                 code = "ARTIFACT_ALREADY_APPLIED"
                 message = (
-                    f"Workbook này đã được áp dụng ở run #{previous_run_id} với import contract khác. "
-                    "Không tự áp dụng lại cùng nội dung; cần thao tác replay tường minh."
+                    f"Tệp này đã được áp dụng ở lần nhập #{previous_run_id} với quy tắc nhập khác. "
+                    "Hệ thống không tự áp dụng lại; cần chọn thao tác áp dụng lại một cách rõ ràng."
                 )
             replay_issue = ValidationIssue("error", code, message)
             return _reject_attempt(
@@ -650,7 +650,7 @@ def _process_result(
             db_path,
             attempt_id,
             result.report.issues,
-            f"Quality gate có {len(result.report.errors)} error.",
+            f"Dữ liệu có {len(result.report.errors)} lỗi kiểm tra chất lượng.",
         )
 
     data = result.data.copy()
@@ -663,7 +663,7 @@ def _process_result(
             issue = ValidationIssue(
                 "error",
                 "DUPLICATE_LOGICAL_KEY",
-                f"Có {int(duplicate_mask.sum())} record trùng entity/date/metric; import bị từ chối.",
+                f"Có {int(duplicate_mask.sum())} điểm dữ liệu trùng nội dung, ngày và chỉ số; lần nhập bị từ chối.",
             )
             return _reject_attempt(
                 db_path,
@@ -1127,13 +1127,13 @@ def _resolve_and_store_scopes(
                 ).fetchone()
                 project_id = int(row[0]) if row else None
             if project_id is None:
-                raise ValueError(f"Không resolve được project scope: {scope.project_key}")
+                raise ValueError(f"Không xác định được dự án trong phạm vi nhập: {scope.project_key}")
         root_entity_id = None
         if scope.root_external_entity_key is not None:
             root_entity_id = entity_map.get(scope.root_external_entity_key)
             if root_entity_id is None:
                 raise ValueError(
-                    f"Không resolve được entity scope: {scope.root_external_entity_key}"
+                    "Không xác định được nội dung gốc trong phạm vi nhập."
                 )
         metric_code = _metric_code(scope.metric_code) if scope.metric_code else None
         if metric_code is not None:
@@ -1141,9 +1141,9 @@ def _resolve_and_store_scopes(
                 "SELECT 1 FROM metrics WHERE metric_code = ?", (metric_code,)
             ).fetchone()
             if exists is None:
-                raise ValueError(f"Không resolve được metric scope: {scope.metric_code}")
+                raise ValueError(f"Không xác định được chỉ số trong phạm vi nhập: {scope.metric_code}")
         if mode == "incremental" and scope.missing_policy == "tombstone":
-            raise ValueError("Incremental scope không được tombstone.")
+            raise ValueError("Dữ liệu bổ sung không được đánh dấu xóa nội dung vắng mặt.")
         selector = asdict(scope)
         scope_hash = content_hash(selector)
         connection.execute(
@@ -1287,7 +1287,7 @@ def _commit_result(
                 attempt_id=attempt_id,
                 status="duplicate",
                 duplicate_of_run_id=duplicate_run_id,
-                message="Duplicate được phát hiện lại tại commit boundary.",
+                message="Dữ liệu trùng được phát hiện lại ở bước hoàn tất lần nhập.",
             )
 
         dates = pd.to_datetime(result.data["date"]) if not result.data.empty else pd.Series(dtype="datetime64[ns]")
@@ -1391,7 +1391,7 @@ def _commit_result(
             failure_code="COMMIT_FAILED",
             failure_message=str(exc),
         )
-        raise StorageImportError(f"Không thể commit import attempt {attempt_id}: {exc}") from exc
+        raise StorageImportError(f"Không thể hoàn tất lần nhập {attempt_id}: {exc}") from exc
     finally:
         connection.close()
 

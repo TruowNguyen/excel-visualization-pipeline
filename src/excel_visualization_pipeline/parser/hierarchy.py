@@ -99,7 +99,7 @@ class EntityTreeBuilder:
             return self.current_section or self.current_project
         if strategy == "previous_item_or_project":
             return self.previous_item or self.current_section or self.current_project
-        raise ValueError(f"Unknown parent strategy: {strategy}")
+        raise ValueError(f"Cách xác định nội dung cấp trên không được hỗ trợ: {strategy}")
 
     def _create_node(
         self,
@@ -119,7 +119,7 @@ class EntityTreeBuilder:
             project_label = label
         else:
             if self.current_project is None:
-                raise ValueError("Child entity cannot be created without a project")
+                raise ValueError("Không thể tạo nội dung khi chưa xác định dự án")
             project_id = self.current_project.project_id
             project_label = self.current_project.project_label
 

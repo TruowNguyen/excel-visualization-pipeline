@@ -1,11 +1,10 @@
 import type { Entity } from './types';
+import { getEntityDisplayName } from './terminology';
 
 /** Short label only in the card; full source label stays in the hierarchy context. */
 export function entityCardTitle(entity: Entity | undefined, fallback: string): string {
   if (!entity) return fallback;
-  return entity.entity_label
-    .replace(/^\d+(?:\.\d+)*\.\s*/, '')
-    .replace(/\s+-\s+ghi nhận trên hệ thống$/i, '');
+  return getEntityDisplayName(entity);
 }
 
 /** Walk parent IDs instead of assuming a fixed Project → Section → Item depth. */

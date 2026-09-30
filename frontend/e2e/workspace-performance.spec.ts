@@ -90,6 +90,33 @@ test('loading is separate from charts and changed data updates the existing Plot
   expect(viewportAfter).toEqual(viewportBefore);
 });
 
+test('Plotly basic preserves hover, legend and responsive resize without chart modebar', async ({ page }) => {
+  await installApiHarness(page);
+  await page.goto('/');
+  const plot = page.locator('[data-plot="overview-root"]');
+  await expect(plot).toHaveClass(/js-plotly-plot/);
+
+  const firstBar = plot.locator('.barlayer .trace').first().locator('.point path').first();
+  const barBox = await firstBar.boundingBox();
+  if (!barBox) throw new Error('Plotly bar has no browser bounding box');
+  await page.mouse.move(barBox.x + barBox.width / 2, barBox.y + barBox.height / 2);
+  await expect(plot.locator('.hoverlayer .hovertext').first()).toBeVisible();
+
+  const firstLegend = plot.locator('.legend .traces').first();
+  await firstLegend.click();
+  await expect.poll(() => plot.evaluate((element: HTMLElement & { data?: { visible?: unknown }[] }) => element.data?.[0]?.visible)).toBe('legendonly');
+  await firstLegend.click();
+  await expect.poll(() => plot.evaluate((element: HTMLElement & { data?: { visible?: unknown }[] }) => element.data?.[0]?.visible)).toBe(true);
+
+  await plot.hover();
+  await expect(plot.locator('.modebar')).toHaveCount(0);
+  await expect(plot.getByRole('button')).toHaveCount(0);
+
+  const widthBefore = await plot.evaluate((element: HTMLElement & { _fullLayout?: { width?: number } }) => element._fullLayout?.width || 0);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await expect.poll(() => plot.evaluate((element: HTMLElement & { _fullLayout?: { width?: number } }) => element._fullLayout?.width || 0)).not.toBe(widthBefore);
+});
+
 test('multi-child charts keep stable identity, unchanged siblings, and two-column order', async ({ page }) => {
   await installApiHarness(page);
   await page.goto('/');

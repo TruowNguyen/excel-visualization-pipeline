@@ -7,14 +7,26 @@ from excel_visualization_pipeline.visualization import (
     build_line_chart,
     build_metric_combo_chart,
     build_multi_entity_metric_chart,
+    build_multi_entity_statistics_chart,
     build_period_metric_combo_chart,
     build_period_statistics_chart,
     build_project_total_chart,
+    display_entity_label,
     prepare_project_totals,
     prepare_project_totals_range,
     prepare_period_statistics,
     prepare_period_metric_summary,
 )
+
+
+def test_display_entity_label_only_removes_structural_section_numbering():
+    assert display_entity_label("1.1. Chất lượng cảnh báo", "section") == "Chất lượng cảnh báo"
+    assert display_entity_label("2.3.4. Kiểm soát trạng thái", "section") == "Kiểm soát trạng thái"
+    assert display_entity_label("1.1.", "section") == "1.1."
+    assert display_entity_label("Camera 360 lỗi kết nối", "item") == "Camera 360 lỗi kết nối"
+    assert display_entity_label("5G mất kết nối", "item") == "5G mất kết nối"
+    assert display_entity_label("24/7 Monitoring", "item") == "24/7 Monitoring"
+    assert display_entity_label("Camera số 2", "item") == "Camera số 2"
 
 
 def test_combo_chart_overlays_counts_and_uses_secondary_axis(sample_workbook):
@@ -71,7 +83,7 @@ def test_combo_chart_rejects_multiple_entities(sample_workbook):
     mixed_entities = data[data["chart_value"].notna()].copy()
     mixed_entities.loc[mixed_entities.index[0], "entity_id"] = "synthetic-other"
 
-    with pytest.raises(ValueError, match="một entity"):
+    with pytest.raises(ValueError, match="một nội dung theo dõi"):
         build_metric_combo_chart(mixed_entities)
 
 
@@ -124,6 +136,191 @@ def test_period_combo_compares_calendar_weeks_instead_of_daily_points():
     assert figure.data[0].width == figure.data[1].width
     assert figure.layout.hovermode == "closest"
     assert all("Khoảng: %{customdata[4]}" in trace.hovertemplate for trace in figure.data)
+
+
+def test_grouped_error_rate_inherits_nearest_parent_total_without_filling_child_total():
+    dates = pd.to_datetime(["2026-09-07", "2026-09-08"])
+    rows = []
+    for observed, parent_total, error_a, error_b in zip(
+        dates, [100, 100], [10, None], [5, 5]
+    ):
+        rows.append({
+            "entity_id": "parent", "parent_entity_id": None,
+            "entity_label": "Nhóm", "entity_level": "section",
+            "effective_unit": "lượt", "metric_normalized": "Tổng số",
+            "date": observed, "chart_value": parent_total, "value_kind": "numeric",
+        })
+        for entity_id, label, error in [
+            ("child-a", "Camera A", error_a), ("child-b", "Camera B", error_b)
+        ]:
+            rows.extend([
+                {
+                    "entity_id": entity_id, "parent_entity_id": "parent",
+                    "entity_label": label, "entity_level": "item",
+                    "effective_unit": "lượt", "metric_normalized": "Tổng số",
+                    "date": observed, "chart_value": None,
+                    "value_kind": "not_recorded",
+                },
+                {
+                    "entity_id": entity_id, "parent_entity_id": "parent",
+                    "entity_label": label, "entity_level": "item",
+                    "effective_unit": "lượt", "metric_normalized": "Báo sai/Lỗi",
+                    "date": observed, "chart_value": error,
+                    "value_kind": "numeric" if error is not None else "not_recorded",
+                },
+            ])
+    coverage_data = pd.DataFrame(rows)
+    child_data = coverage_data[coverage_data["entity_id"].str.startswith("child-")]
+
+    summary = prepare_period_metric_summary(
+        child_data, "2026-09-07", "2026-09-13", "week",
+        coverage_data=coverage_data,
+    ).set_index("entity_id")
+    figure = build_multi_entity_metric_chart(
+        child_data, "% báo sai", group_by="week",
+        start_date="2026-09-07", end_date="2026-09-13",
+        coverage_data=coverage_data,
+    )
+
+    assert pd.isna(summary.loc["child-a", "total_sum"])
+    assert summary.loc["child-a", "rate_denominator_sum"] == 200
+    assert summary.loc["child-a", "rate_denominator_source_entity_id"] == "parent"
+    assert summary.loc["child-a", "inherits_rate_denominator"] == True
+    assert summary.loc["child-a", "error_rate"] == pytest.approx(5)
+    assert summary.loc["child-b", "error_rate"] == pytest.approx(5)
+    assert len(figure.data) == 2
+    assert all(list(trace.y) == pytest.approx([5]) for trace in figure.data)
+    assert all(trace.customdata[0][1] == "200" for trace in figure.data)
+
+
+def test_grouped_rate_does_not_infer_zero_when_positive_source_rate_has_no_error_count():
+    dates = pd.to_datetime(["2026-09-07", "2026-09-08"])
+    rows = []
+    for observed, total, source_rate in zip(dates, [100, 200], [10, 20]):
+        for metric, value, kind in [
+            ("Tổng số", total, "numeric"),
+            ("Báo sai/Lỗi", None, "not_recorded"),
+            ("% báo sai", source_rate, "numeric"),
+        ]:
+            rows.append({
+                "entity_id": "entity", "parent_entity_id": "parent",
+                "entity_label": "Nội dung", "entity_level": "item",
+                "effective_unit": "lượt", "metric_normalized": metric,
+                "date": observed, "chart_value": value, "value_kind": kind,
+            })
+    data = pd.DataFrame(rows)
+
+    summary = prepare_period_metric_summary(
+        data, "2026-09-07", "2026-09-13", "week"
+    ).iloc[0]
+    figure = build_multi_entity_metric_chart(
+        data, "% báo sai", group_by="week",
+        start_date="2026-09-07", end_date="2026-09-13",
+    )
+
+    assert pd.isna(summary["error_sum"])
+    assert pd.isna(summary["error_rate"])
+    assert summary["rate_unavailable_reason"] == "MISSING_ERROR_WITH_POSITIVE_SOURCE_RATE"
+    assert len(figure.data) == 0
+
+
+def test_grouped_rate_still_infers_zero_when_source_rate_is_explicit_zero():
+    data = _period_semantics_frame([100, 200], [None, None])
+    rate_rows = data[data["metric_normalized"].eq("Tổng số")].copy()
+    rate_rows["metric_normalized"] = "% báo sai"
+    rate_rows["chart_value"] = 0
+    rate_rows["value_kind"] = "numeric"
+    data = pd.concat([data, rate_rows], ignore_index=True)
+
+    summary = prepare_period_metric_summary(
+        data, "2026-09-07", "2026-09-13", "week"
+    ).iloc[0]
+
+    assert summary["error_sum"] == 0
+    assert summary["error_rate"] == 0
+    assert summary["rate_calculation_source"] == "inferred_zero"
+    assert summary["rate_unavailable_reason"] is None
+
+
+def test_period_statistics_rejects_inferred_zero_when_positive_source_rate_has_no_error_count():
+    data = _period_semantics_frame([100, 200], [None, None])
+    rate_rows = data[data["metric_normalized"].eq("Tổng số")].copy()
+    rate_rows["metric_normalized"] = "% báo sai"
+    rate_rows["chart_value"] = [0, 10]
+    rate_rows["value_kind"] = "numeric"
+    semantic_data = pd.concat([data, rate_rows], ignore_index=True)
+
+    summary = prepare_period_statistics(
+        data,
+        "2026-09-07",
+        "2026-09-13",
+        "week",
+        semantic_data=semantic_data,
+    ).set_index("metric_normalized")
+
+    assert pd.isna(summary.loc["Báo sai/Lỗi", "period_sum"])
+    assert pd.isna(summary.loc["Báo sai/Lỗi", "average_per_day"])
+    assert summary.loc["Báo sai/Lỗi", "inferred_zero"] == False
+    assert summary.loc["Báo sai/Lỗi", "semantic_unavailable_reason"] == (
+        "MISSING_ERROR_WITH_POSITIVE_SOURCE_RATE"
+    )
+
+    zero_rate_data = semantic_data.copy()
+    zero_rate_data.loc[
+        zero_rate_data["metric_normalized"].eq("% báo sai"), "chart_value"
+    ] = 0
+    zero_rate_summary = prepare_period_statistics(
+        data,
+        "2026-09-07",
+        "2026-09-13",
+        "week",
+        semantic_data=zero_rate_data,
+    ).set_index("metric_normalized")
+    assert zero_rate_summary.loc["Báo sai/Lỗi", "period_sum"] == 0
+    assert zero_rate_summary.loc["Báo sai/Lỗi", "average_per_day"] == 0
+    assert zero_rate_summary.loc["Báo sai/Lỗi", "inferred_zero"] == True
+
+
+def test_multi_entity_statistics_uses_calculation_as_the_only_selection_axis():
+    rows = []
+    for entity_id, entity_label, total, error in [
+        ("a", "Camera A", 100, 5), ("b", "Camera B", 80, 4),
+    ]:
+        for metric, value in [("Tổng số", total), ("Báo sai/Lỗi", error)]:
+            rows.append({
+                "entity_id": entity_id, "entity_label": entity_label,
+                "entity_level": "item", "effective_unit": "lượt",
+                "metric_normalized": metric,
+                "period_start": pd.Timestamp("2026-09-07"),
+                "period_end": pd.Timestamp("2026-09-13"),
+                "period_label": "Tuần 37/2026", "period_sum": float(value),
+                "average_per_day": float(value) / 2,
+                "display_sum": str(value), "display_average": str(value / 2),
+                "eligible_day_count": 2, "calendar_day_count": 7,
+            })
+    prepared = pd.DataFrame(rows)
+
+    total_figure = build_multi_entity_statistics_chart(prepared, "sum")
+    average_figure = build_multi_entity_statistics_chart(prepared, "average_per_day")
+
+    assert len(total_figure.data) == 4
+    assert {trace.meta["statisticsMetric"] for trace in total_figure.data} == {
+        "Tổng số", "Báo sai/Lỗi",
+    }
+    assert all(trace.type == "bar" for trace in total_figure.data)
+    assert len({trace.offsetgroup for trace in total_figure.data}) == 4
+    assert {
+        trace.meta["statisticsMetric"]: trace.opacity
+        for trace in total_figure.data[:2]
+    } == {"Tổng số": 0.82, "Báo sai/Lỗi": 0.58}
+    assert len(average_figure.data) == 4
+    assert all(trace.type == "scatter" for trace in average_figure.data)
+    assert all(trace.line.dash == "solid" for trace in average_figure.data)
+    assert all(trace.line.width == 3 for trace in average_figure.data)
+    assert all(trace.marker.size == 8 for trace in average_figure.data)
+    assert {trace.meta["statisticsMetric"] for trace in average_figure.data} == {
+        "Tổng số", "Báo sai/Lỗi",
+    }
 
 
 def test_combo_hover_labels_inconsistent_positive_rate(sample_workbook):
@@ -197,10 +394,10 @@ def test_period_statistics_calculates_sum_and_average_per_observed_day(sample_wo
     assert statistics.loc["Tổng số", "period_label"] == "Tuần 37/2026"
     assert [trace.type for trace in figure.data] == ["bar", "bar", "scatter", "scatter"]
     assert {trace.name for trace in figure.data} == {
-        "SUM · Tổng số",
-        "AVG/ngày · Tổng số",
-        "SUM · Báo sai/Lỗi",
-        "AVG/ngày · Báo sai/Lỗi",
+        "Tổng · Tổng số",
+        "Trung bình/ngày · Tổng số",
+        "Tổng · Báo sai/Lỗi",
+        "Trung bình/ngày · Báo sai/Lỗi",
     }
     assert figure.layout.barmode == "overlay"
     assert figure.data[0].width == figure.data[1].width
@@ -345,6 +542,119 @@ def test_period_statistics_inherits_parent_observation_days_for_error_only_child
     assert statistics.loc["Báo sai/Lỗi", "average_per_day"] == 1.5
     assert statistics.loc["Báo sai/Lỗi", "coverage_source_entity_id"] == "parent"
     assert pd.isna(statistics.loc["Tổng số", "average_per_day"])
+    assert statistics.loc["Tổng số", "period_sum"] is None or pd.isna(
+        statistics.loc["Tổng số", "period_sum"]
+    )
+
+
+def _period_semantics_frame(total_values, error_values, error_kinds=None):
+    dates = pd.date_range("2026-09-07", periods=len(total_values), freq="D")
+    error_kinds = error_kinds or [
+        "numeric" if value is not None else "not_recorded"
+        for value in error_values
+    ]
+    rows = []
+    for observed, total, error, error_kind in zip(
+        dates, total_values, error_values, error_kinds
+    ):
+        rows.extend([
+            {
+                "entity_id": "entity",
+                "parent_entity_id": "parent",
+                "entity_label": "Entity",
+                "entity_level": "item",
+                "effective_unit": "lượt",
+                "metric_normalized": "Tổng số",
+                "date": observed,
+                "chart_value": total,
+                "value_kind": "numeric" if total is not None else "not_recorded",
+            },
+            {
+                "entity_id": "entity",
+                "parent_entity_id": "parent",
+                "entity_label": "Entity",
+                "entity_level": "item",
+                "effective_unit": "lượt",
+                "metric_normalized": "Báo sai/Lỗi",
+                "date": observed,
+                "chart_value": error,
+                "value_kind": error_kind,
+            },
+        ])
+    return pd.DataFrame(rows)
+
+
+def test_period_statistics_keeps_all_missing_period_distinct_from_numeric_zero():
+    missing = prepare_period_statistics(
+        _period_semantics_frame([None, None], [None, None]),
+        "2026-09-07", "2026-09-08", "week",
+    ).set_index("metric_normalized")
+    zero = prepare_period_statistics(
+        _period_semantics_frame([0], [0]),
+        "2026-09-07", "2026-09-07", "day",
+    ).set_index("metric_normalized")
+
+    assert pd.isna(missing.loc["Tổng số", "period_sum"])
+    assert pd.isna(missing.loc["Báo sai/Lỗi", "period_sum"])
+    assert missing.loc["Tổng số", "display_sum"] == "—"
+    assert missing.loc["Báo sai/Lỗi", "inferred_zero"] == False
+    assert zero.loc["Tổng số", "period_sum"] == 0
+    assert zero.loc["Báo sai/Lỗi", "period_sum"] == 0
+    assert zero.loc["Tổng số", "numeric_value_count"] == 1
+    assert zero.loc["Báo sai/Lỗi", "inferred_zero"] == False
+
+
+def test_period_statistics_sums_numeric_values_without_turning_missing_into_values():
+    statistics = prepare_period_statistics(
+        _period_semantics_frame([10, None, 0], [2, None, 0]),
+        "2026-09-07", "2026-09-09", "week",
+    ).set_index("metric_normalized")
+
+    assert statistics.loc["Tổng số", "period_sum"] == 10
+    assert statistics.loc["Báo sai/Lỗi", "period_sum"] == 2
+    assert statistics.loc["Tổng số", "numeric_value_count"] == 2
+    assert statistics.loc["Tổng số", "eligible_day_count"] == 2
+    assert statistics.loc["Tổng số", "average_per_day"] == 5
+    assert statistics.loc["Tổng số", "calendar_day_count"] == 3
+
+
+def test_period_statistics_distinguishes_blank_error_inference_from_source_marker():
+    blank_error = prepare_period_statistics(
+        _period_semantics_frame([10, 20], [None, None]),
+        "2026-09-07", "2026-09-08", "week",
+    ).set_index("metric_normalized")
+    source_marker = prepare_period_statistics(
+        _period_semantics_frame(
+            [10, 20], [None, None], ["source_marker", "source_marker"]
+        ),
+        "2026-09-07", "2026-09-08", "week",
+    ).set_index("metric_normalized")
+
+    assert blank_error.loc["Báo sai/Lỗi", "period_sum"] == 0
+    assert blank_error.loc["Báo sai/Lỗi", "average_per_day"] == 0
+    assert blank_error.loc["Báo sai/Lỗi", "inferred_zero"] == True
+    assert blank_error.loc["Báo sai/Lỗi", "eligible_day_count"] == 2
+    assert pd.isna(source_marker.loc["Báo sai/Lỗi", "period_sum"])
+    assert pd.isna(source_marker.loc["Báo sai/Lỗi", "average_per_day"])
+    assert source_marker.loc["Báo sai/Lỗi", "eligible_day_count"] == 0
+
+    invalid_text = prepare_period_statistics(
+        _period_semantics_frame([10], [None], ["text"]),
+        "2026-09-07", "2026-09-07", "day",
+    ).set_index("metric_normalized")
+    assert pd.isna(invalid_text.loc["Báo sai/Lỗi", "period_sum"])
+    assert invalid_text.loc["Báo sai/Lỗi", "inferred_zero"] == False
+
+
+def test_period_statistics_clips_incomplete_period_to_selected_data_window():
+    statistics = prepare_period_statistics(
+        _period_semantics_frame([10, 20, 30], [1, 2, 3]),
+        "2026-09-07", "2026-09-09", "week",
+    ).set_index("metric_normalized")
+
+    assert statistics.loc["Tổng số", "period_start"] == pd.Timestamp("2026-09-07")
+    assert statistics.loc["Tổng số", "period_end"] == pd.Timestamp("2026-09-09")
+    assert statistics.loc["Tổng số", "calendar_day_count"] == 3
 
 
 def test_multi_entity_metric_chart_renders_three_bar_groups(sample_workbook):
@@ -378,8 +688,9 @@ def test_multi_entity_metric_chart_renders_three_bar_groups(sample_workbook):
         "Camera A", "100", "8", "8.00%",
     ]
     assert all(trace.type == "bar" for trace in figure.data)
+    assert all(trace.opacity == 0.82 for trace in figure.data)
     assert all("% báo sai" not in trace.name and "Tổng số" not in trace.name for trace in figure.data)
-    assert all(trace.name.startswith("[Item]") for trace in figure.data)
+    assert all(trace.name.startswith("[Vấn đề]") for trace in figure.data)
 
 
 def test_multi_entity_week_view_has_one_value_per_calendar_week(sample_workbook):
@@ -410,6 +721,27 @@ def test_multi_entity_week_view_has_one_value_per_calendar_week(sample_workbook)
     assert figure.layout.xaxis.title.text == "Tuần"
 
 
+def test_multi_entity_quarter_view_reuses_weighted_rate_semantics(sample_workbook):
+    data = run_pipeline(sample_workbook).data
+    item_data = data[data["entity_level"] == "item"].copy()
+    second_entity = item_data.copy()
+    second_entity["entity_id"] = "camera-b"
+    second_entity["entity_label"] = "Camera B"
+
+    figure = build_multi_entity_metric_chart(
+        pd.concat([item_data, second_entity], ignore_index=True),
+        "% báo sai",
+        group_by="quarter",
+        start_date="2026-07-01",
+        end_date="2026-09-30",
+    )
+
+    assert len(figure.data) == 2
+    assert all(list(trace.x) == ["Q3/2026"] for trace in figure.data)
+    assert all(list(trace.y) == pytest.approx([14 / 220 * 100]) for trace in figure.data)
+    assert figure.layout.xaxis.title.text == "Quý"
+
+
 def test_multi_entity_metric_chart_enforces_limit_unit_and_project(sample_workbook):
     data = run_pipeline(sample_workbook).data
     item_data = data[data["entity_level"] == "item"].copy()
@@ -425,12 +757,12 @@ def test_multi_entity_metric_chart_enforces_limit_unit_and_project(sample_workbo
 
     mixed_unit = pd.concat(frames[:2], ignore_index=True)
     mixed_unit.loc[mixed_unit["entity_id"] == "entity-1", "effective_unit"] = "Unit khác"
-    with pytest.raises(ValueError, match="cùng một effective unit"):
+    with pytest.raises(ValueError, match="cùng một đơn vị"):
         build_multi_entity_metric_chart(mixed_unit, "Tổng số")
 
     mixed_project = pd.concat(frames[:2], ignore_index=True)
     mixed_project.loc[mixed_project["entity_id"] == "entity-1", "project_id"] = "project-khac"
-    with pytest.raises(ValueError, match="cùng một Project"):
+    with pytest.raises(ValueError, match="cùng một dự án"):
         build_multi_entity_metric_chart(mixed_project, "Tổng số")
 
 
@@ -452,8 +784,8 @@ def test_multi_entity_metric_chart_allows_mixed_hierarchy_levels(sample_workbook
     )
 
     assert len(figure.data) == 2
-    assert any(trace.name.startswith("[Project] Alpha") for trace in figure.data)
-    assert any(trace.name.startswith("[Item] Camera") for trace in figure.data)
+    assert any(trace.name.startswith("[Dự án] Alpha") for trace in figure.data)
+    assert any(trace.name.startswith("[Vấn đề] Camera") for trace in figure.data)
 
 
 def test_multi_entity_percentage_metric_uses_lines(sample_workbook):
@@ -471,6 +803,10 @@ def test_multi_entity_percentage_metric_uses_lines(sample_workbook):
     assert len(figure.data) == 2
     assert all(trace.type == "scatter" for trace in figure.data)
     assert all("text" in trace.mode for trace in figure.data)
+    assert all(trace.line.dash == "solid" for trace in figure.data)
+    assert all(trace.line.width == 3 for trace in figure.data)
+    assert all(trace.marker.size == 8 for trace in figure.data)
+    assert all(trace.marker.symbol == "circle" for trace in figure.data)
     assert figure.layout.yaxis.ticksuffix == "%"
     assert figure.layout.xaxis.tickformat == "%d/%m"
 

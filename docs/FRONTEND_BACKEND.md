@@ -27,6 +27,8 @@ Không chạy parser khi người dùng đổi filter hoặc reload. `POST /api/
 
 ## API v1
 
+Contract normative đầy đủ nằm tại [`../specs/api/api-contract.md`](../specs/api/api-contract.md). API phục vụ một source do `EVP_SOURCE_KEY` cấu hình; multipart preview/commit không nhận `source_key`, declared scope hoặc `allow_replay`.
+
 | Endpoint | Vai trò |
 |---|---|
 | `GET /api/health` | Health check |
@@ -37,6 +39,12 @@ Không chạy parser khi người dùng đổi filter hoặc reload. `POST /api/
 | `GET /api/imports` | 100 import attempts gần nhất |
 | `POST /api/imports/preview` | Preview + quality gate workbook |
 | `POST /api/imports` | Xác nhận import với hash preview |
+| `GET /api/projects/{project}/observations/{observationRef}/provenance` | Exact lineage |
+| `GET /api/projects/{project}/observations/{observationRef}/revisions` | Revision history |
+| `GET /api/projects/{project}/audit/lookup` | Exact audit row |
+| `GET /api/projects/{project}/aggregates/{aggregateRef}/provenance` | Aggregate provenance |
+| `GET /api/projects/{project}/aggregates/{aggregateRef}/contributors` | Aggregate contributors |
+| `GET /api/projects/{project}/imports/{importRef}` | Committed import detail |
 
 `workspace` nhận `mode=recent|week|month|custom`, `count`, `start`, `end`, `entity`, `scope=node|children`, các tham số thống kê/so sánh và `audit_offset/audit_limit`. Trả JSON gồm `window`, biểu đồ Plotly, kỳ thống kê, ứng viên so sánh và trang audit. Frontend chỉ render, không tự tính nghiệp vụ SUM/AVG/tỷ lệ.
 

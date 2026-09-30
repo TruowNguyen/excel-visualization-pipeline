@@ -68,5 +68,5 @@ def test_aggregation_period_ranges_supports_quarters():
 
 
 def test_aggregation_period_ranges_rejects_unknown_group():
-    with pytest.raises(ValueError, match="Unsupported aggregation period"):
+    with pytest.raises(ValueError, match="Khoảng tổng hợp không được hỗ trợ"):
         aggregation_period_ranges([date(2026, 8, 1)], "year")

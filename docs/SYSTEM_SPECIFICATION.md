@@ -11,7 +11,7 @@
 | Giao diện | TypeScript/Vite + Plotly.js; Streamlit legacy |
 | Nguồn dữ liệu | Workbook `.xlsx` bán cấu trúc |
 
-Tài liệu này đặc tả pipeline và nghiệp vụ. Kiến trúc giao diện mới, API và cách chạy nằm tại [`FRONTEND_BACKEND.md`](FRONTEND_BACKEND.md). Khảo sát workbook mẫu ở [`excel_structure.md`](../excel_structure.md).
+Tài liệu này giải thích pipeline và nghiệp vụ. Contract chuẩn, trạng thái phạm vi và acceptance hiện hành nằm tại [`../specs/README.md`](../specs/README.md); khi có khác biệt, phải xử lý qua audit/decision thay vì mặc định lấy tài liệu này làm normative. Kiến trúc giao diện mới, API và cách chạy nằm tại [`FRONTEND_BACKEND.md`](FRONTEND_BACKEND.md). Khảo sát workbook mẫu ở [`excel_structure.md`](../excel_structure.md).
 
 ## 2. Mục tiêu và phạm vi
 
@@ -327,7 +327,7 @@ Khi persist, database resolve parser entity key sang stable internal `entity_id`
 source_id + entity_id + observed_date + metric_code
 ```
 
-Unit không nằm trong database key. Thay đổi unit tạo revision của observation hiện có. Parser key/path được quản lý qua `entity_aliases` để có thể nối identity khi rename/move được xác nhận thủ công.
+Unit không nằm trong database key. Thay đổi unit trên cùng entity tạo revision của observation hiện có. Importer hiện resolve exact active `external_entity_key`; key mới tạo entity và alias `initial`. Schema dự phòng reason rename/move/manual merge nhưng application chưa có workflow quản trị alias, nên continuity khi đổi path/key chưa được hỗ trợ chính thức (`SCP-203`).
 
 ### 5.2. Entity table
 
@@ -524,18 +524,19 @@ Parser vẫn hỗ trợ `Ghi chú`, nhưng metric này chỉ xuất hiện ở b
 
 ## 9. Kiểm thử
 
-Bộ test hiện có 45 test:
+Bộ test Python được collect tại lần xác minh 2026-09-25 gồm 50 test:
 
 | Nhóm | Số lượng |
 |---|---:|
-| Charts | 17 |
+| API | 2 |
+| Charts | 19 |
 | Date ranges | 7 |
 | Entity selection | 4 |
 | Parser | 4 |
 | Validation | 2 |
 | Hierarchy | 1 |
 | Real workbook smoke | 1 |
-| SQLite storage | 9 |
+| SQLite storage | 10 |
 
 Smoke test kiểm tra pipeline, quality gate và khả năng dựng line/bar/combo/statistics/comparison chart trên workbook thật. Storage smoke test kiểm tra end-to-end Excel → SQLite → current views → chart cùng integrity/foreign key.
 
@@ -590,7 +591,7 @@ python scripts\backup_database.py
 
 File chỉ chứa phần dữ liệu nối tiếp phải dùng `--mode incremental`. Giữ nguyên `--source-key` cho mọi file thuộc cùng nguồn logic.
 
-`--allow-replay` chỉ dùng để phục hồi có chủ đích sau khi backup; thao tác này có thể đưa current values về revision của artifact cũ.
+`--allow-replay` chỉ dùng để phục hồi có chủ đích sau khi backup. Đây là forward recovery: tạo attempt/contract/run mới và, khi business value khác, tạo revision mới mang state của artifact cũ; không trỏ current pointer về revision lịch sử cũ. Xem `IMP-017`–`IMP-022` trong [`../specs/core/import-process.md`](../specs/core/import-process.md).
 
 ### Chạy test
 

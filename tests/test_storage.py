@@ -10,6 +10,7 @@ from excel_visualization_pipeline.storage import (
     backup_database,
     import_workbook,
     initialize_database,
+    latest_committed_version,
     load_current_data,
     load_current_entities,
     load_import_history,
@@ -53,6 +54,11 @@ def test_commits_and_skips_duplicate_without_duplicating_data(storage_workspace,
     assert first.outcome.inserted_count == 6
     assert second.outcome.status == "duplicate"
     assert second.outcome.duplicate_of_run_id == first.outcome.run_id
+    version = latest_committed_version(database, "sample")
+    assert version is not None
+    assert version.run_id == first.outcome.run_id
+    assert version.import_ref.startswith("imp_")
+    assert version.committed_at
     assert len(load_current_data(database, "sample")) == 6
     assert len(load_current_entities(database, "sample")) == 3
     history = load_import_history(database, "sample")

@@ -88,7 +88,7 @@ def aggregation_period_ranges(values: Iterable[date], group_by: str) -> list[Dat
     if not dates:
         return []
     if group_by not in {"day", "week", "month", "quarter"}:
-        raise ValueError(f"Unsupported aggregation period: {group_by}")
+        raise ValueError(f"Khoảng tổng hợp không được hỗ trợ: {group_by}")
 
     grouped: dict[date, list[date]] = {}
     for value in dates:

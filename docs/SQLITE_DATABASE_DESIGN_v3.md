@@ -6,6 +6,7 @@
 - Phạm vi: persistence local bằng SQLite cho pipeline Excel hiện tại.
 - Thay thế về mặt thiết kế: `SQLITE_DATABASE_DESIGN_v2.md`.
 - Mục tiêu triển khai: giữ toàn bộ lịch sử giá trị, cập nhật workbook an toàn, audit được từng lần upload và phục vụ dashboard từ current state.
+- Vai trò hiện tại: tài liệu thiết kế nền. Contract database/replay đã kiểm chứng theo migrations `001`–`006` nằm tại [`../specs/core/database-design.md`](../specs/core/database-design.md) và [`../specs/core/import-process.md`](../specs/core/import-process.md).
 
 ### Các thay đổi chính so với v2
 
@@ -87,8 +88,10 @@ Quy tắc mặc định:
 - cùng artifact nhưng contract khác → rejected với `ARTIFACT_ALREADY_APPLIED`;
 - artifact từng commit nhưng sau đó đã có artifact khác mới hơn → rejected với `STALE_ARTIFACT_REPLAY`;
 - chỉ thao tác phục hồi/correction có xác nhận mới dùng `allow_replay`;
-- explicit replay tạo `import_contract_hash` mới chứa replay attempt ID để vẫn audit/idempotent ở cấp run;
+- explicit replay tạo `import_contract_hash` mới chứa replay attempt ID; replay được audit nhưng cố ý non-idempotent ở cấp run;
 - phải backup trước replay.
+
+Explicit replay là forward recovery, không phải rollback pointer. Nó tạo attempt và committed run mới rồi đi qua upsert bình thường. Business value khác current tạo revision `update`; observation deleted tạo `restore`; value không đổi giữ business revision nhưng vẫn tạo presence/lineage mới; logical key mới tạo `insert`. Revision lịch sử không bị xóa và revision cũ không được tái sử dụng làm current khi có business change. Thứ tự xử lý chuẩn xem `IMP-021`.
 
 Dashboard không tự import khi widget rerun. Chọn file chỉ parse/validate preview; database chỉ thay đổi sau khi người dùng bấm **Xác nhận import**.
 
@@ -223,9 +226,9 @@ Luồng resolve:
 1. Tìm alias hiện hành theo `source_id + external_entity_key`.
 2. Nếu có, dùng lại internal `entity_id`.
 3. Nếu không có, tạo entity mới và alias mới.
-4. Nếu người quản trị xác nhận rename/move là cùng một entity, thêm alias mới trỏ vào entity cũ và đóng alias cũ nếu cần.
+4. Schema cho phép một workflow tương lai thêm alias mới trỏ vào entity cũ và đóng alias cũ nếu cần; application hiện chưa triển khai workflow/API/CLI này.
 
-MVP không tự đoán rename/move. Nếu không có mapping thủ công, parser key mới tạo entity mới.
+MVP không tự đoán rename/move. Importer chỉ tự tạo alias reason `initial`; nếu parser key mới không có active alias đã tồn tại, nó tạo entity mới. Quy tắc và quyền quản trị alias là `SCP-203` Decision needed.
 
 ### 5.4. Metric
 
@@ -1109,9 +1112,9 @@ Missing policy           = ignore
 Auto tombstone           = off
 Raw artifact archive     = on
 Exact run presence audit = on
-Entity rename/move       = manual alias mapping
-Import entry point       = CLI trước, dashboard sau
-Aggregate persistence    = off
+Entity rename/move       = chưa có workflow quản trị alias
+Import entry point       = CLI và dashboard/FastAPI
+Aggregate persistence    = on cho chart lineage phase 2
 ```
 
 Chỉ bật auto tombstone khi mỗi workbook type đã có scope contract, fixture test và người phụ trách dữ liệu xác nhận file thực sự là snapshot đầy đủ của scope đó.

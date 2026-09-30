@@ -243,7 +243,7 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
         metric_row = header_row + 1
         groups = _date_groups(ws, header_row, config, source.workbook.epoch)
         if not groups:
-            issues.append(ValidationIssue("error", "DATE_GROUP_NOT_FOUND", "Không tìm thấy block Kết quả triển khai.", ws.title))
+            issues.append(ValidationIssue("error", "DATE_GROUP_NOT_FOUND", "Không tìm thấy vùng Kết quả triển khai.", ws.title))
             continue
 
         tree = EntityTreeBuilder(ws.title, config)
@@ -257,14 +257,14 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
             node = tree.add_row(row_idx, sequence, label, unit_value)
             if node is None:
                 issues.append(ValidationIssue(
-                    "error", "ENTITY_WITHOUT_PROJECT", f"Entity không xác định được Project: {label}",
+                    "error", "ENTITY_WITHOUT_PROJECT", f"Nội dung theo dõi chưa xác định được dự án: {label}",
                     ws.title, ws.cell(row_idx, project_col).coordinate,
                 ))
                 continue
             if node.parser_rule == "fallback_entity":
                 issues.append(ValidationIssue(
                     "warning", "FALLBACK_ENTITY_CLASSIFICATION",
-                    f"Entity được phân loại bằng fallback rule: {node.entity_label}",
+                    f"Nội dung theo dõi được phân loại bằng quy tắc dự phòng: {node.entity_label}",
                     ws.title, ws.cell(row_idx, project_col).coordinate,
                 ))
 
@@ -328,14 +328,14 @@ def parse_workbook(source: ExcelSource, config: ParserConfig | None = None) -> P
                         warned_unknown_units.add(node.entity_id)
                         issues.append(ValidationIssue(
                             "warning", "UNKNOWN_UNIT",
-                            f"Entity có metric dạng số nhưng chưa xác định được unit: {node.entity_path}",
+                            f"Nội dung có chỉ số dạng số nhưng chưa xác định được đơn vị đo: {node.entity_path}",
                             ws.title, cell.coordinate,
                         ))
                     if fields["validation_status"] == "warning":
                         issue_code = "SOURCE_MARKER" if fields["value_kind"] == "source_marker" else "NON_NUMERIC_METRIC"
                         issues.append(ValidationIssue(
                             "warning", issue_code,
-                            f"Metric '{metric_original}' chứa giá trị không dùng để vẽ: {fields['display_value']}",
+                            f"Chỉ số '{metric_original}' chứa giá trị không dùng để vẽ: {fields['display_value']}",
                             ws.title, cell.coordinate,
                         ))
 

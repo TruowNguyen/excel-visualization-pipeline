@@ -44,7 +44,7 @@ Phạm vi MVP đã xác nhận:
 - validation với error quality gate và warning có thể truy vết;
 - import idempotent theo artifact/config/contract, hỗ trợ `full_snapshot` và `incremental`;
 - lưu current state, append-only revision history, source artifact và import audit trong SQLite;
-- dashboard có Tổng quan, Thống kê, So sánh, Audit dữ liệu, Import Excel và Lịch sử import;
+- dashboard có các tab Tổng quan, Thống kê, Nhập Excel và Lịch sử nhập; so sánh được mở theo ngữ cảnh từ biểu đồ Thống kê, còn đối chiếu dữ liệu được mở từ Điều tra điểm;
 - export normalized CSV.
 
 Giới hạn hiện tại:
@@ -55,7 +55,7 @@ Giới hạn hiện tại:
 - parser cần thêm rule khi workbook xuất hiện layout hoặc hierarchy mới;
 - file upload phải được chọn lại sau khi reload do giới hạn bảo mật của trình duyệt.
 
-Định hướng mở rộng, không thuộc phạm vi MVP hiện tại: đồng bộ dữ liệu hằng ngày từ nguồn như OneDrive, tài khoản người dùng, phân quyền truy cập và kiến trúc production phù hợp cho nhiều người dùng.
+Định hướng mở rộng ngoài bản MVP đã bàn giao gồm tài khoản người dùng, phân quyền truy cập và kiến trúc production phù hợp cho nhiều người dùng. Scheduled daily import đã được chấp nhận về mặt sản phẩm nhưng chưa triển khai; nó không phải năng lực `As-built`. Trạng thái normative của scheduled import, AI summary, due-date và recurrence nằm tại [`specs/product/scope-and-status.md`](specs/product/scope-and-status.md).
 
 ## Brand Commitments
 
