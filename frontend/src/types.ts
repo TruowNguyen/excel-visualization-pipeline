@@ -31,13 +31,6 @@ export type ChartTrace = {
   [key: string]: unknown;
 };
 
-export type AccessibleChartPoint = {
-  key: string;
-  label: string;
-  selection: ChartPointSelection;
-  hasProvenance: boolean;
-};
-
 export type ChartPointSelection = {
   kind: 'exact-observation' | 'aggregate';
   aggregateRef: string | null;

@@ -1,6 +1,6 @@
 import type { ChartPointSelection, Figure } from './types';
 
-let plotlyModule: Promise<typeof import('plotly.js-dist-min')> | null = null;
+let plotlyModule: Promise<typeof import('plotly.js-basic-dist-min')> | null = null;
 const renderVersions = new WeakMap<HTMLElement, number>();
 const CHART_TEXT_COLOR = '#526176';
 
@@ -70,7 +70,7 @@ export function renderChart(
   height = 420,
   identity?: string,
 ): Promise<void> {
-  plotlyModule ??= import('plotly.js-dist-min');
+  plotlyModule ??= import('plotly.js-basic-dist-min');
   const version = (renderVersions.get(element) ?? 0) + 1;
   renderVersions.set(element, version);
   const styled = presentationFigure(figure, height, identity);
@@ -90,7 +90,7 @@ export function renderChart(
     if (!element.isConnected) return;
     element.dispatchEvent(new CustomEvent('cx:plotly-render-start', { bubbles: true }));
     return Plotly.react(element, styled.data, styled.layout, {
-      responsive: true, displaylogo: false, scrollZoom: false,
+      responsive: true, displayModeBar: false, displaylogo: false, scrollZoom: false,
     }).then(() => {
       if (!element.isConnected || renderVersions.get(element) !== version) return;
       element.dispatchEvent(new CustomEvent('cx:plotly-render-complete', { bubbles: true }));
@@ -127,7 +127,7 @@ export function purgeChart(element: HTMLElement): void {
 }
 
 export function selectChartPoint(element: HTMLElement, curveNumber: number, pointNumber: number): void {
-  plotlyModule ??= import('plotly.js-dist-min');
+  plotlyModule ??= import('plotly.js-basic-dist-min');
   void plotlyModule.then(({ default: Plotly }) => {
     if (!element.isConnected) return;
     return Plotly.restyle(element, { selectedpoints: [null] })
@@ -136,7 +136,7 @@ export function selectChartPoint(element: HTMLElement, curveNumber: number, poin
 }
 
 export function clearChartSelection(element: HTMLElement): void {
-  plotlyModule ??= import('plotly.js-dist-min');
+  plotlyModule ??= import('plotly.js-basic-dist-min');
   void plotlyModule.then(({ default: Plotly }) => {
     if (!element.isConnected) return;
     return Plotly.restyle(element, { selectedpoints: [null] });

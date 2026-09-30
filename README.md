@@ -23,7 +23,7 @@ Baseline workbook mẫu hiện tại:
 | Record có thể vẽ | 2.343 |
 | Quality-gate error | 0 |
 | Warning | 193 |
-| Automated test | 48 passed |
+| Automated test | 72 Python + 24 Playwright passed tại lần xác minh 2026-09-25 |
 
 ## Tính năng chính
 
@@ -33,6 +33,7 @@ Baseline workbook mẫu hiện tại:
 - Phân biệt số 0, ô trống/NBSP, source marker, text và phần trăm.
 - Validation có error quality gate và warning truy vết được.
 - Combo chart, thống kê SUM/AVG theo kỳ và so sánh nhiều entity.
+- AI Trend Summary theo ngày/tuần/tháng: hiển thị giá trị từng kỳ, mức tăng/giảm tuyệt đối và phần trăm so kỳ trước, pattern toàn chuỗi và bằng chứng truy vết; chỉ chạy khi người dùng yêu cầu và có facts-only fallback.
 - Chế độ xem `Theo tuần`/`Theo tháng` so sánh trực tiếp nhiều kỳ lịch trên trục X, thay vì chọn một kỳ rồi hiển thị 7 ngày/những ngày trong tháng. Count được cộng theo kỳ; tỷ lệ kỳ được tính từ tổng lỗi chia tổng cảnh báo.
 - Khi thống kê theo tuần, trục X dùng mã tuần ISO như `Tuần 37/2026`; khoảng ngày `07/09–13/09` được giữ trong hover.
 - Nếu node con không có `Tổng số` dạng số, AVG của `Báo sai/Lỗi` kế thừa số ngày quan sát từ ancestor gần nhất có `Tổng số`; AVG `Tổng số` của node con vẫn để trống để không biến dữ liệu thiếu thành `0`.
@@ -50,6 +51,21 @@ Baseline workbook mẫu hiện tại:
 
 ## Tài liệu
 
+- [Bộ đặc tả và tiêu chí nghiệm thu](specs/README.md)
+- [Phạm vi và trạng thái chức năng](specs/product/scope-and-status.md)
+- [Product Requirements Document (PRD)](specs/product/product-requirements.md)
+- [Use cases](specs/product/use-cases.md)
+- [Quy trình import](specs/core/import-process.md)
+- [Luồng dữ liệu](specs/core/data-flow.md)
+- [Data model](specs/core/data-model.md)
+- [Database design và ERD](specs/core/database-design.md)
+- [API contract](specs/api/api-contract.md)
+- [Dashboard behavior](specs/frontend/dashboard-behavior.md)
+- [AI/Data specification v2.2.0](specs/ai-data/README.md)
+- [Kế hoạch triển khai AI theo vertical slice](specs/ai-data/07-vertical-slice-implementation-plan.md)
+- [Acceptance criteria](specs/quality/acceptance-criteria.md)
+- [Requirement traceability matrix](specs/quality/traceability-matrix.md)
+- [Documentation drift report](specs/quality/documentation-drift-report.md)
 - [Đặc tả đầy đủ hệ thống](docs/SYSTEM_SPECIFICATION.md)
 - [Kiến trúc frontend/backend mới](docs/FRONTEND_BACKEND.md)
 - [Thiết kế SQLite v3 đã triển khai](docs/SQLITE_DATABASE_DESIGN_v3.md)
@@ -100,7 +116,18 @@ cd ..
 python -m uvicorn app.api:app --host 127.0.0.1 --port 8000
 ```
 
-Truy cập `http://127.0.0.1:8000`. UI mới gồm sidebar Project/thời gian/hierarchy và workspace Tổng quan, Thống kê, So sánh, Audit, Import, Lịch sử. Dữ liệu bộ lọc lưu trong `sessionStorage` của tab; không nằm trên URL.
+Truy cập `http://127.0.0.1:8000`. Giao diện chính gồm thanh bên dự án/thời gian/phân cấp và các tab Tổng quan, Thống kê, Nhập Excel, Lịch sử nhập. So sánh được mở từ biểu đồ node con trong Thống kê; đối chiếu dữ liệu được mở từ Điều tra điểm. Dữ liệu bộ lọc lưu trong `sessionStorage` của tab; không nằm trên URL.
+
+### Bật AI Insights Phase 1
+
+Sao chép `.env.example` thành `.env`; FastAPI tự nạp file này nhưng không ghi đè biến môi trường đã có. AI mặc định tắt. Để dùng deterministic Trend Summary mà chưa gửi dữ liệu ra ngoài:
+
+```dotenv
+EVP_AI_ENABLED=true
+EVP_AI_EXTERNAL_ALLOWED=false
+```
+
+Chỉ đặt `EVP_AI_EXTERNAL_ALLOWED=true` sau khi đã duyệt privacy/provider. Payload external chỉ gồm token giả danh, canonical metric, date window, deterministic fact, coverage và logical evidence ID; không gửi raw workbook, project/entity label hoặc core lineage ref. UI chỉ gọi AI khi người dùng bấm **Phân tích khoảng đang xem**, không tự gọi khi đổi filter. Runbook và bằng chứng nằm tại [Phase 1 AI runbook](specs/ai-data/08-phase-1-runbook-and-evidence.md).
 
 Mặc định API chỉ lắng nghe `127.0.0.1`. Chưa có authentication/authorization nên không đưa trực tiếp lên Internet. Trước khi triển khai nhiều người dùng cần thêm auth, phân quyền và đánh giá SQLite single-writer.
 
@@ -175,7 +202,7 @@ Tham số vận hành chính:
 
 Không đổi `source-key` giữa các workbook nối tiếp của cùng một nguồn. Tên file có thể thay đổi vì identity nguồn không dựa vào filename.
 
-`--allow-replay` có thể ghi đè current values bằng revision cũ, vì vậy chỉ dùng sau khi backup và xác nhận rõ workbook cần phục hồi.
+`--allow-replay` là forward recovery: tạo attempt, replay contract và committed run mới, sau đó có thể tạo revision mới mang giá trị của artifact cũ và đặt revision mới đó thành current. Nó không trỏ current pointer về revision lịch sử cũ. Vì mỗi replay có contract chứa attempt ID, replay cố ý non-idempotent ở cấp run; chỉ dùng sau khi backup và xác nhận rõ workbook cần phục hồi.
 
 ### Dữ liệu được tạo
 
@@ -282,7 +309,7 @@ excel_structure.md                       Khảo sát workbook mẫu
 - Không evaluate công thức Excel.
 - SQLite phù hợp local/single writer; chưa hỗ trợ nhiều importer writer đồng thời hoặc network share.
 - Auto-tombstone đang tắt trong dashboard/CLI mặc định; chỉ bật bằng declared scope đã được kiểm thử.
-- Entity rename/move chưa tự động merge; cần alias mapping thủ công để nối identity cũ.
+- Entity rename/move chưa tự động merge. Schema có alias table nhưng application chưa có workflow/API/CLI quản trị alias; key/path mới mặc định tạo identity mới.
 - Chưa có lịch import tự động; hiện kích hoạt từ dashboard hoặc CLI.
 - Chưa có authentication/authorization.
 - Chưa đóng gói Docker hoặc CI.

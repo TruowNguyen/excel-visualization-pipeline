@@ -15,19 +15,19 @@ def validate_dataset(
 ) -> ValidationReport:
     issues = list(parser_issues or [])
     if data.empty:
-        issues.append(ValidationIssue("error", "EMPTY_DATASET", "Không trích xuất được record nào."))
+        issues.append(ValidationIssue("error", "EMPTY_DATASET", "Không đọc được điểm dữ liệu nào từ tệp."))
         return ValidationReport(issues)
 
     missing_context = data[data["project"].isna() | data["date"].isna() | data["metric_normalized"].eq("")]
     for row in missing_context.itertuples():
         issues.append(ValidationIssue(
-            "error", "MISSING_CONTEXT", "Record thiếu Project, Date hoặc Metric.", row.sheet_name, row.cell_address
+            "error", "MISSING_CONTEXT", "Điểm dữ liệu thiếu dự án, ngày hoặc chỉ số.", row.sheet_name, row.cell_address
         ))
 
     duplicates = data[data.duplicated(LOGICAL_KEY, keep=False)]
     for row in duplicates.itertuples():
         issues.append(ValidationIssue(
-            "error", "DUPLICATE_LOGICAL_KEY", "Trùng khóa Project/Section/Item/Date/Metric.", row.sheet_name, row.cell_address
+            "error", "DUPLICATE_LOGICAL_KEY", "Trùng tổ hợp dự án, nội dung theo dõi, ngày và chỉ số.", row.sheet_name, row.cell_address
         ))
 
     if entities is not None and not entities.empty:
@@ -38,7 +38,7 @@ def validate_dataset(
         ]
         for row in invalid_parents.itertuples():
             issues.append(ValidationIssue(
-                "error", "MISSING_PARENT_ENTITY", "parent_entity_id không tồn tại trong entity tree.",
+                "error", "MISSING_PARENT_ENTITY", "Không tìm thấy nội dung cấp trên trong cấu trúc theo dõi.",
                 row.sheet_name,
             ))
 
@@ -50,7 +50,7 @@ def validate_dataset(
                 if current in visited:
                     node = entities[entities["entity_id"] == entity_id].iloc[0]
                     issues.append(ValidationIssue(
-                        "error", "HIERARCHY_CYCLE", "Phát hiện cycle trong entity tree.", node["sheet_name"]
+                        "error", "HIERARCHY_CYCLE", "Cấu trúc theo dõi có liên kết lặp vòng.", node["sheet_name"]
                     ))
                     break
                 visited.add(current)

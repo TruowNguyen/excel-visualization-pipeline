@@ -104,17 +104,23 @@ def attach_aggregate_lineage(
     start_date,
     end_date,
     comparison_metric: str | None = None,
+    comparison_calculation: str | None = None,
     coverage_data: pd.DataFrame | None = None,
     prepared_summary: pd.DataFrame | None = None,
 ) -> None:
     """Add immutable refs to aggregate traces, using the already-rendered y values."""
     if not figure.data or data.empty:
         return
+    if kind == "statistics" and data["entity_id"].nunique() != 1:
+        raise ValueError(
+            "Nguồn dữ liệu tổng hợp của thống kê hiện chỉ hỗ trợ đúng một nội dung theo dõi; "
+            "thống kê nhiều nội dung cần cơ chế ánh xạ riêng."
+        )
     summary = prepared_summary if prepared_summary is not None else (
         prepare_period_statistics(
             data, start_date, end_date, group_by, coverage_data=coverage_data
-        ) if kind == "statistics" else prepare_period_metric_summary(
-            data, start_date, end_date, group_by
+        ) if kind in {"statistics", "statistics_comparison"} else prepare_period_metric_summary(
+            data, start_date, end_date, group_by, coverage_data=coverage_data
         )
     )
     if summary.empty:
@@ -155,9 +161,22 @@ def attach_aggregate_lineage(
             if " · " not in name:
                 continue
             aggregation_name, metric = name.split(" · ", 1)
-            metric_column = "period_sum" if aggregation_name == "SUM" else "average_per_day"
-            display_column = "display_sum" if aggregation_name == "SUM" else "display_average"
+            is_sum = aggregation_name in {"SUM", "Tổng"}
+            metric_column = "period_sum" if is_sum else "average_per_day"
+            display_column = "display_sum" if is_sum else "display_average"
             entity_id = str(data["entity_id"].iloc[0])
+        elif kind == "statistics_comparison":
+            trace_meta = trace.meta if isinstance(trace.meta, dict) else {}
+            metric = str(trace_meta.get("statisticsMetric", ""))
+            if metric not in {"Tổng số", "Báo sai/Lỗi"}:
+                continue
+            entity_id = str(trace.legendgroup)
+            metric_column = (
+                "period_sum" if comparison_calculation == "sum" else "average_per_day"
+            )
+            display_column = (
+                "display_sum" if comparison_calculation == "sum" else "display_average"
+            )
         elif kind == "comparison":
             metric = str(comparison_metric)
             entity_id = str(trace.legendgroup)
@@ -173,7 +192,7 @@ def attach_aggregate_lineage(
         if entity_id not in entity_lookup.index:
             continue
         summary_rows = summary[summary["entity_id"] == entity_id]
-        if kind == "statistics":
+        if kind in {"statistics", "statistics_comparison"}:
             summary_rows = summary_rows[summary_rows["metric_normalized"] == metric]
         by_label = {str(row.period_label): row for row in summary_rows.itertuples(index=False)}
         per_trace[trace_index] = [None] * len(trace.x)
@@ -184,7 +203,7 @@ def attach_aggregate_lineage(
             start, end = _date(row.period_start), _date(row.period_end)
             members: list[dict[str, Any]] = []
             inferred_zero = False
-            if kind == "statistics":
+            if kind in {"statistics", "statistics_comparison"}:
                 value_rows = select_range(data, entity_id, start, end, metric)
                 value_members = _members(value_rows, "value")
                 if value_members is None:
@@ -192,11 +211,12 @@ def attach_aggregate_lineage(
                 members.extend(value_members)
                 rule_code = "period_sum" if metric_column == "period_sum" else "sum_divided_by_eligible_days"
                 explanation = "Cộng các giá trị số trong kỳ." if metric_column == "period_sum" else "Tổng giá trị chia cho số ngày có dữ liệu hợp lệ."
-                if metric_column == "average_per_day":
+                inferred_zero = bool(getattr(row, "inferred_zero", False))
+                if metric_column == "average_per_day" or inferred_zero:
                     coverage_source = coverage_data if coverage_data is not None else data
                     coverage_rows = select_range(coverage_source, str(row.coverage_source_entity_id), start, end, "Tổng số")
                     coverage_rows = coverage_rows[coverage_rows["chart_value"].notna()]
-                    coverage_note = "Ngày có dữ liệu từ entity cha." if str(row.coverage_source_entity_id) != entity_id else "Ngày có dữ liệu Tổng số."
+                    coverage_note = "Ngày có dữ liệu từ nội dung cấp trên." if str(row.coverage_source_entity_id) != entity_id else "Ngày có dữ liệu Tổng số."
                     coverage_members = _members(coverage_rows, "coverage", coverage_note)
                     if coverage_members is None:
                         continue
@@ -204,16 +224,25 @@ def attach_aggregate_lineage(
                     for member, coverage_row in zip(coverage_members, coverage_rows.itertuples(index=False)):
                         if pd.Timestamp(coverage_row.date).date() in marker_dates:
                             member["included"] = False
-                            member["note"] = "Ngày này có dấu nguồn ở metric đang xét nên bị loại khỏi mẫu số."
+                            member["note"] = "Ngày này có ký hiệu từ tệp Excel ở chỉ số đang xét nên bị loại khỏi mẫu số."
                     members.extend(coverage_members)
                 eligible_days = int(row.eligible_day_count)
                 calendar_days = int(row.calendar_day_count)
             else:
-                metric_roles = [(metric, "value")]
+                metric_roles = [(metric, "value", entity_id, data)]
                 if metric == "% báo sai":
-                    metric_roles = [("Báo sai/Lỗi", "numerator"), ("Tổng số", "denominator")]
-                for source_metric, role in metric_roles:
-                    source_rows = select_range(data, entity_id, start, end, source_metric)
+                    denominator_entity_id = str(
+                        getattr(row, "rate_denominator_source_entity_id", entity_id)
+                    )
+                    denominator_data = coverage_data if coverage_data is not None else data
+                    metric_roles = [
+                        ("Báo sai/Lỗi", "numerator", entity_id, data),
+                        ("Tổng số", "denominator", denominator_entity_id, denominator_data),
+                    ]
+                for source_metric, role, source_entity_id, source_data in metric_roles:
+                    source_rows = select_range(
+                        source_data, source_entity_id, start, end, source_metric
+                    )
                     source_members = _members(source_rows, role)
                     if source_members is None:
                         members = []
@@ -255,7 +284,12 @@ def attach_aggregate_lineage(
     for (trace_index, point_index), ref in zip(locations, refs):
         per_trace[trace_index][point_index] = ref
     for trace_index, refs_for_trace in per_trace.items():
+        existing_meta = (
+            dict(figure.data[trace_index].meta)
+            if isinstance(figure.data[trace_index].meta, dict) else {}
+        )
         figure.data[trace_index].meta = {
+            **existing_meta,
             "lineage": {
                 "contractVersion": 2,
                 "kind": "aggregate",

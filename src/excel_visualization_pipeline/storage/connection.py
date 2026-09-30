@@ -39,9 +39,9 @@ def backup_database(db_path: str | Path, backup_path: str | Path) -> Path:
     source_path = Path(db_path)
     target_path = Path(backup_path)
     if not source_path.is_file():
-        raise FileNotFoundError(f"Không tìm thấy SQLite database: {source_path}")
+        raise FileNotFoundError(f"Không tìm thấy cơ sở dữ liệu SQLite: {source_path}")
     if source_path.resolve() == target_path.resolve():
-        raise ValueError("Đường dẫn backup phải khác database nguồn.")
+        raise ValueError("Đường dẫn bản sao lưu phải khác cơ sở dữ liệu nguồn.")
     target_path.parent.mkdir(parents=True, exist_ok=True)
     with connect_database(source_path) as source:
         with closing(sqlite3.connect(target_path)) as target:
@@ -50,13 +50,13 @@ def backup_database(db_path: str | Path, backup_path: str | Path) -> Path:
         result = restored.execute("PRAGMA integrity_check").fetchone()[0]
     if result != "ok":
         target_path.unlink(missing_ok=True)
-        raise RuntimeError(f"Backup integrity check thất bại: {result}")
+        raise RuntimeError(f"Kiểm tra tính toàn vẹn của bản sao lưu thất bại: {result}")
     return target_path
 
 
 def verify_database(db_path: str | Path) -> dict[str, object]:
     if not Path(db_path).is_file():
-        raise FileNotFoundError(f"Không tìm thấy SQLite database: {db_path}")
+        raise FileNotFoundError(f"Không tìm thấy cơ sở dữ liệu SQLite: {db_path}")
     with connect_database(db_path) as connection:
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
         foreign_keys = [dict(row) for row in connection.execute("PRAGMA foreign_key_check")]

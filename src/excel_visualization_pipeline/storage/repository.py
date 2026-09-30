@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,15 @@ class LineageNotFoundError(LookupError):
 
 class LineageMismatchError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class CommittedDataVersion:
+    """Internal revision identity plus the opaque public import reference."""
+
+    run_id: int
+    import_ref: str
+    committed_at: str
 
 
 def _source_clause(source_key: str | None) -> tuple[str, list[Any]]:
@@ -180,7 +190,7 @@ def resolve_observation_lineage(
             (observation_ref,),
         ).fetchone()
         if observation is None:
-            raise LineageNotFoundError("Observation reference không tồn tại.")
+            raise LineageNotFoundError("Điểm dữ liệu được yêu cầu không tồn tại.")
 
         snapshot = connection.execute(
             """
@@ -190,9 +200,9 @@ def resolve_observation_lineage(
             (lineage_ref,),
         ).fetchone()
         if snapshot is None:
-            raise LineageNotFoundError("Lineage reference không tồn tại.")
+            raise LineageNotFoundError("Thông tin nguồn dữ liệu không tồn tại.")
         if int(snapshot["observation_id"]) != int(observation["observation_id"]):
-            raise LineageMismatchError("Observation và lineage reference không cùng dữ liệu.")
+            raise LineageMismatchError("Điểm dữ liệu và nguồn dữ liệu không khớp nhau.")
 
         row = connection.execute(
             """
@@ -268,7 +278,7 @@ def resolve_observation_lineage(
             (observation_ref, lineage_ref),
         ).fetchone()
         if row is None or row["project_label"] != project_label:
-            raise LineageNotFoundError("Lineage không thuộc project được yêu cầu.")
+            raise LineageNotFoundError("Nguồn dữ liệu không thuộc dự án được yêu cầu.")
 
         issues = [
             dict(issue)
@@ -439,7 +449,7 @@ def list_observation_revisions(
             (observation_ref, project_label, source_key, source_key),
         ).fetchone()
         if observation is None:
-            raise LineageNotFoundError("Observation không thuộc project được yêu cầu.")
+            raise LineageNotFoundError("Điểm dữ liệu không thuộc dự án được yêu cầu.")
         rows = connection.execute(
             """
             SELECT r.revision_id, rpr.revision_ref, r.change_type, r.recorded_at,
@@ -529,7 +539,7 @@ def resolve_import_run(
             (row["run_id"], project_label),
         ).fetchone()
         if project_member is None:
-            raise LineageNotFoundError("Lần nhập không thuộc project được yêu cầu.")
+            raise LineageNotFoundError("Lần nhập không thuộc dự án được yêu cầu.")
     return {
         "contractVersion": 2,
         "importRef": row["import_ref"],
@@ -550,18 +560,34 @@ def resolve_import_run(
     }
 
 
-def latest_committed_run_id(db_path: str | Path, source_key: str | None = None) -> int | None:
+def latest_committed_version(
+    db_path: str | Path,
+    source_key: str | None = None,
+) -> CommittedDataVersion | None:
     initialize_database(db_path)
     query = """
-        SELECT MAX(r.run_id)
+        SELECT r.run_id, refs.import_ref, r.committed_at
         FROM import_runs r
         JOIN data_sources ds ON ds.source_id = r.source_id
+        JOIN import_run_public_refs refs ON refs.run_id = r.run_id
         WHERE r.status = 'committed'
     """
     parameters: list[Any] = []
     if source_key is not None:
         query += " AND ds.source_key = ?"
         parameters.append(source_key)
+    query += " ORDER BY r.run_id DESC LIMIT 1"
     with connect_database(db_path) as connection:
-        value = connection.execute(query, parameters).fetchone()[0]
-    return int(value) if value is not None else None
+        row = connection.execute(query, parameters).fetchone()
+    if row is None:
+        return None
+    return CommittedDataVersion(
+        run_id=int(row["run_id"]),
+        import_ref=str(row["import_ref"]),
+        committed_at=str(row["committed_at"]),
+    )
+
+
+def latest_committed_run_id(db_path: str | Path, source_key: str | None = None) -> int | None:
+    version = latest_committed_version(db_path, source_key)
+    return version.run_id if version is not None else None

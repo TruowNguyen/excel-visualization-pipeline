@@ -30,13 +30,40 @@ from excel_visualization_pipeline.visualization import (  # noqa: E402
     build_multi_entity_metric_chart,
     build_period_metric_combo_chart,
     build_period_statistics_chart,
+    display_entity_label,
 )
 
 
 def hierarchy_label(row: pd.Series) -> str:
     indent = "　" * int(row["entity_depth"])
-    unit = f" · {row['effective_unit']}" if pd.notna(row["effective_unit"]) else " · chưa có unit"
-    return f"{indent}{row['entity_label']}{unit}"
+    unit = f" · {row['effective_unit']}" if pd.notna(row["effective_unit"]) else " · chưa xác định đơn vị đo"
+    return f"{indent}{display_entity_label(row['entity_label'], row['entity_level'])}{unit}"
+
+
+def current_scope_label(level: str) -> str:
+    return {
+        "project": "Toàn dự án",
+        "section": "Nhóm vấn đề đang chọn",
+        "item": "Vấn đề đang xem",
+        "subitem": "Tình trạng đang xem",
+    }.get(level, "Nội dung đang chọn")
+
+
+def children_scope_label(level: str) -> str:
+    return {
+        "project": "Các nhóm vấn đề trong dự án",
+        "section": "Các vấn đề trong nhóm",
+        "item": "Các tình trạng của vấn đề",
+    }.get(level, "Nội dung trực tiếp bên dưới")
+
+
+def display_entity_path(raw_path: str, entity_frame: pd.DataFrame) -> str:
+    labels = {
+        str(row.entity_label): display_entity_label(row.entity_label, row.entity_level)
+        for row in entity_frame.itertuples()
+    }
+    parts = [part.strip() for part in str(raw_path).replace(" > ", " / ").split(" / ")]
+    return " / ".join(labels.get(part, part) for part in parts if part)
 
 
 def option_index(options, requested, default: int = 0) -> int:
@@ -135,7 +162,7 @@ def create_browser_state_component():
 browser_state_component = create_browser_state_component()
 
 
-@st.cache_data(show_spinner="Đang đọc và kiểm tra workbook...")
+@st.cache_data(show_spinner="Đang đọc và kiểm tra tệp Excel...")
 def cached_preview(
     payload: bytes,
     source_name: str,
@@ -149,7 +176,7 @@ def cached_preview(
     return run_pipeline(source, config_path)
 
 
-st.set_page_config(page_title="Excel Quality Dashboard", layout="wide")
+st.set_page_config(page_title="Bảng điều khiển chất lượng Excel", layout="wide")
 st.markdown(
     """
     <style>
@@ -195,7 +222,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.title("Excel Visualization Pipeline")
+st.title("Bảng điều khiển dữ liệu CX")
 
 if st.query_params.to_dict():
     st.query_params.clear()
@@ -219,23 +246,23 @@ source_key = "cx_report_master"
 config_file = PROJECT_ROOT / "config" / "parser.yaml"
 initialize_database(database_file)
 
-st.sidebar.subheader("Import dữ liệu")
+st.sidebar.subheader("Nhập dữ liệu")
 import_mode_label = st.sidebar.selectbox(
     "Chế độ cập nhật dữ liệu",
-    ["Toàn bộ snapshot", "Chỉ dữ liệu bổ sung"],
+    ["Bản chụp đầy đủ", "Chỉ dữ liệu bổ sung"],
     help=(
-        "Toàn bộ snapshot dùng khi workbook đại diện đầy đủ cho phạm vi trong file. "
-        "Chỉ dữ liệu bổ sung dùng khi file chỉ chứa ngày/record mới; record vắng mặt sẽ không bị xóa."
+        "Bản chụp đầy đủ dùng khi tệp Excel đại diện đầy đủ cho phạm vi trong tệp. "
+        "Chỉ dữ liệu bổ sung dùng khi tệp chỉ chứa ngày hoặc điểm dữ liệu mới; điểm dữ liệu vắng mặt sẽ không bị xóa."
     ),
 )
-import_mode = "full_snapshot" if import_mode_label == "Toàn bộ snapshot" else "incremental"
-uploaded = st.sidebar.file_uploader("Chọn file Excel", type=["xlsx"])
+import_mode = "full_snapshot" if import_mode_label == "Bản chụp đầy đủ" else "incremental"
+uploaded = st.sidebar.file_uploader("Chọn tệp Excel", type=["xlsx"])
 preview_result = None
 source_payload = None
 source_name = None
 
 if uploaded is None:
-    st.sidebar.caption("Chưa chọn file · dashboard chỉ đọc dữ liệu hiện có từ SQLite.")
+    st.sidebar.caption("Chưa chọn tệp · bảng điều khiển đang dùng dữ liệu đã lưu.")
 else:
     source_payload = uploaded.getvalue()
     source_name = uploaded.name
@@ -247,15 +274,15 @@ else:
     )
     preview_manifest = preview_result.manifest
     st.sidebar.caption(
-        f"Preview: {preview_manifest['record_count']:,} record · "
+        f"Bản xem trước: {preview_manifest['record_count']:,} điểm dữ liệu · "
         f"{preview_manifest['date_count']} ngày · "
         f"{len(preview_result.report.errors)} lỗi · "
         f"{len(preview_result.report.warnings)} cảnh báo"
     )
     if preview_result.report.errors:
-        st.sidebar.error("Quality gate chưa đạt; không thể import file này.")
+        st.sidebar.error("Dữ liệu chưa đạt yêu cầu chất lượng; không thể nhập tệp này.")
     confirm_import = st.sidebar.button(
-        "Xác nhận import",
+        "Xác nhận nhập",
         type="primary",
         disabled=bool(preview_result.report.errors),
         use_container_width=True,
@@ -286,27 +313,30 @@ else:
     if feedback.get("source_hash") == preview_manifest["source_hash"]:
         if feedback.get("status") == "committed":
             st.sidebar.success(
-                f"Đã lưu run #{feedback['run_id']}: +{feedback['inserted_count']}, "
-                f"sửa {feedback['updated_count']}, giữ nguyên {feedback['unchanged_count']}."
+                f"Đã lưu lần nhập #{feedback['run_id']}: thêm {feedback['inserted_count']}, "
+                f"cập nhật {feedback['updated_count']}, giữ nguyên {feedback['unchanged_count']}."
             )
         elif feedback.get("status") == "duplicate":
             st.sidebar.info(
-                f"File đã được lưu ở run #{feedback['duplicate_of_run_id']}; không tạo dữ liệu trùng."
+                f"Tệp đã được lưu ở lần nhập #{feedback['duplicate_of_run_id']}; không tạo dữ liệu trùng."
             )
         elif feedback.get("status") == "rejected":
-            st.sidebar.error(feedback.get("message") or "Import bị từ chối; SQLite không thay đổi.")
+            st.sidebar.error(feedback.get("message") or "Lần nhập bị từ chối; dữ liệu hiện hành không thay đổi.")
 
 data = load_current_data(database_file, source_key)
 entities = load_current_entities(database_file, source_key)
 if data.empty or entities.empty:
     if preview_result is not None and preview_result.report.errors:
-        st.error(f"Quality gate thất bại: {len(preview_result.report.errors)} lỗi.")
+        st.error(f"Dữ liệu không đạt yêu cầu chất lượng: {len(preview_result.report.errors)} lỗi.")
         st.dataframe(
-            pd.DataFrame(issue.as_dict() for issue in preview_result.report.issues),
+            pd.DataFrame(
+                {"Mức độ": {"error": "Lỗi", "warning": "Cảnh báo"}.get(issue.severity, issue.severity), "Nội dung cần kiểm tra": issue.message}
+                for issue in preview_result.report.issues
+            ),
             width="stretch",
         )
     else:
-        st.info("SQLite chưa có dữ liệu. Hãy chọn workbook, kiểm tra preview và bấm Xác nhận import.")
+        st.info("Kho dữ liệu chưa có nội dung. Hãy chọn tệp Excel, kiểm tra bản xem trước và bấm Xác nhận nhập.")
     st.stop()
 
 saved_state = st.session_state.get("_restored_filters", {})
@@ -322,7 +352,7 @@ if apply_restored_state:
         requested_project if requested_project in projects else projects[0]
     )
 selected_project = st.sidebar.selectbox(
-    "Project",
+    "Dự án",
     projects,
     key="project_filter",
     **widget_default(
@@ -335,15 +365,15 @@ project_data = data[data["project_label"] == selected_project].copy()
 
 project_units = project_entities["unit_normalized"].dropna().nunique()
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Project", selected_project)
-c2.metric("Entity nodes", len(project_entities))
-c3.metric("Units", project_units)
-c4.metric("Records", len(project_data))
+c1.metric("Dự án", selected_project)
+c2.metric("Nội dung theo dõi", len(project_entities), help="Gồm nhóm vấn đề, vấn đề và tình trạng")
+c3.metric("Đơn vị đo", project_units, help="Số loại đơn vị đo trong dự án")
+c4.metric("Điểm dữ liệu", len(project_data))
 
 chartable_project_data = project_data[project_data["chart_value"].notna()].copy()
 available_dates = sorted(pd.to_datetime(chartable_project_data["date"]).dt.date.unique())
 if not available_dates:
-    st.warning("Project không có dữ liệu dạng số để hiển thị.")
+    st.warning("Dự án không có dữ liệu dạng số để hiển thị.")
     st.stop()
 
 st.sidebar.subheader("Khoảng thời gian")
@@ -455,11 +485,11 @@ if start_date > end_date:
     st.error("Từ ngày phải nhỏ hơn hoặc bằng Đến ngày.")
     st.stop()
 
-st.subheader(f"Dashboard — {selected_project}")
+st.subheader(f"Bảng điều khiển — {selected_project}")
 st.caption(
-    "Dashboard mở trực tiếp entity cấp cao nhất trong cây. Có thể chuyển sang node khác hoặc xem các node con trực tiếp."
+    "Bảng điều khiển mở nội dung cấp cao nhất có dữ liệu. Có thể chuyển nội dung hoặc xem phần trực tiếp bên dưới."
 )
-st.subheader("Overview")
+st.subheader("Tổng quan")
 entity_lookup = project_entities.set_index("entity_id")
 entity_ids = list(project_entities["entity_id"])
 combo_metrics = ["Tổng số", "Báo sai/Lỗi", "% báo sai"]
@@ -476,7 +506,7 @@ if apply_restored_state:
         requested_entity if requested_entity in entity_ids else initial_entity_id
     )
 selected_entity_id = st.selectbox(
-    "**Hierarchy Navigator**",
+    "**Nội dung theo dõi**",
     entity_ids,
     format_func=lambda entity_id: hierarchy_label(entity_lookup.loc[entity_id]),
     key="entity_navigator",
@@ -492,16 +522,19 @@ selected_entity_id = st.selectbox(
 )
 
 child_ids = list(project_entities.loc[project_entities["parent_entity_id"] == selected_entity_id, "entity_id"])
-scope_options = ["Node đã chọn"]
+selected_level = str(entity_lookup.loc[selected_entity_id, "entity_level"])
+current_scope_option = current_scope_label(selected_level)
+children_scope_option = children_scope_label(selected_level)
+scope_options = [current_scope_option]
 if child_ids:
-    scope_options.append("Các node con trực tiếp")
+    scope_options.append(children_scope_option)
 if apply_restored_state:
     requested_scope = saved_state.get("scope")
     st.session_state["entity_scope"] = (
         requested_scope if requested_scope in scope_options else scope_options[0]
     )
 selected_scope = st.radio(
-    "**Phạm vi**",
+    "**Mức hiển thị**",
     scope_options,
     horizontal=True,
     key="entity_scope",
@@ -509,7 +542,7 @@ selected_scope = st.radio(
         "index", option_index(scope_options, saved_state.get("scope")), apply_restored_state
     ),
 )
-scope_ids = child_ids if selected_scope == "Các node con trực tiếp" else [selected_entity_id]
+scope_ids = child_ids if selected_scope == children_scope_option else [selected_entity_id]
 detail_data = data[data["entity_id"].isin(scope_ids)].copy()
 
 metric_data = detail_data[detail_data["metric_normalized"].isin(combo_metrics)].copy()
@@ -517,7 +550,7 @@ metric_dates = pd.to_datetime(metric_data["date"]).dt.date
 range_data = metric_data[(metric_dates >= start_date) & (metric_dates <= end_date)]
 
 if range_data.empty:
-    st.info("Không có dữ liệu cho ba metric trong khoảng ngày đã chọn.")
+    st.info("Không có dữ liệu cho ba chỉ số trong khoảng ngày đã chọn.")
 else:
     chart_entity_ids = [
         entity_id
@@ -525,7 +558,7 @@ else:
         if not range_data[range_data["entity_id"] == entity_id].empty
     ]
     if len(chart_entity_ids) > 1:
-        st.caption("Các biểu đồ entity được xếp theo lưới, tối đa 2 biểu đồ trên mỗi hàng.")
+        st.caption("Các biểu đồ được xếp theo lưới, tối đa 2 biểu đồ trên mỗi hàng.")
     for row_start in range(0, len(chart_entity_ids), 2):
         row_entity_ids = chart_entity_ids[row_start : row_start + 2]
         chart_columns = st.columns(len(row_entity_ids), gap="medium")
@@ -537,7 +570,7 @@ else:
                 entity_unit = str(entity_units[0]) if entity_units else "Chưa xác định từ Excel"
                 st.markdown(
                     '<div style="font-size:14px;font-weight:600;margin-bottom:0.5rem">'
-                    f"Effective Unit: {escape(entity_unit)}"
+                    f"Đơn vị đo: {escape(entity_unit)}"
                     "</div>",
                     unsafe_allow_html=True,
                 )
@@ -548,12 +581,12 @@ else:
                             start_date,
                             end_date,
                             overview_group_by,
-                            f"{entity['entity_label']} — {entity_unit}",
+                            f"{display_entity_label(entity['entity_label'], entity['entity_level'])} — {entity_unit}",
                         )
                         if overview_group_by
                         else build_metric_combo_chart(
                             entity_data,
-                            f"{entity['entity_label']} — {entity_unit}",
+                            f"{display_entity_label(entity['entity_label'], entity['entity_level'])} — {entity_unit}",
                         )
                     ),
                     width="stretch",
@@ -564,12 +597,12 @@ else:
                     if metric not in set(entity_data["metric_normalized"])
                 ]
                 if missing_metrics:
-                    st.caption(f"Thiếu metric: {', '.join(missing_metrics)}")
+                    st.caption(f"Thiếu chỉ số: {', '.join(missing_metrics)}")
 
-st.subheader("Thống kê SUM / AVG theo kỳ")
+st.subheader("Thống kê tổng và trung bình/ngày theo kỳ")
 st.caption(
-    "Khu vực này dùng toàn bộ lịch sử của entity, độc lập với khoảng ngày của biểu đồ chi tiết ở sidebar. "
-    "SUM của Tổng số/Cảnh báo và Báo sai/Lỗi được vẽ bằng cột; AVG/ngày = SUM / số ngày hợp lệ "
+    "Khu vực này dùng toàn bộ lịch sử của nội dung đang xem, độc lập với khoảng ngày của biểu đồ chi tiết ở thanh bên. "
+    "Tổng của Tổng số/Cảnh báo và Báo sai/Lỗi được vẽ bằng cột; trung bình/ngày = tổng / số ngày hợp lệ "
     "và được vẽ bằng đường. % báo sai không tham gia."
 )
 period_labels = {
@@ -617,7 +650,7 @@ with range_control:
             else statistics_range_options[0]
         )
     selected_statistics_range = st.selectbox(
-        "Phạm vi thống kê",
+        "Khoảng thống kê",
         statistics_range_options,
         key="statistics_range",
         **widget_default(
@@ -645,6 +678,7 @@ with mode_control:
     selected_stat_modes = st.multiselect(
         "Chỉ số hiển thị",
         stat_mode_options,
+        format_func=lambda mode: "Tổng" if mode == "SUM" else "Trung bình/ngày",
         key="statistics_modes",
         **widget_default("default", default_stat_modes, apply_restored_state),
     )
@@ -759,7 +793,7 @@ else:
     ]
 
 if not selected_stat_modes:
-    st.info("Chọn ít nhất một chế độ SUM hoặc AVG/ngày để hiển thị thống kê.")
+    st.info("Chọn ít nhất một chế độ tổng hoặc trung bình/ngày để hiển thị thống kê.")
 elif selected_statistics_periods:
     data_window_start = statistics_dates[0]
     data_window_end = statistics_dates[-1]
@@ -795,7 +829,7 @@ elif selected_statistics_periods:
                         statistics_end_date,
                         statistics_group,
                         selected_stat_modes,
-                        f"{entity['entity_label']} — {selected_period_label}",
+                        f"{display_entity_label(entity['entity_label'], entity['entity_level'])} — {selected_period_label}",
                         coverage_data=project_data,
                     ),
                     width="stretch",
@@ -818,35 +852,76 @@ audit_columns = [
     "sheet_name",
     "cell_address",
     "number_format",
-    "parser_rule",
     "parser_confidence",
     "validation_status",
 ]
-with st.expander("Audit Table — dữ liệu nguồn"):
+with st.expander("Bảng đối chiếu dữ liệu nguồn"):
     st.caption(
-        "Tooltip phục vụ đọc nhanh; bảng này giữ thông tin đầy đủ để truy vết về workbook và ô nguồn. "
-        "not_recorded là ô trống/không ghi nhận trong ngày; source_marker là ký hiệu '-' hoặc N/A "
-        "được giữ nguyên để đánh dấu dữ liệu khác bản chất; default_zero_rate là % báo sai được "
-        "mặc định 0% khi không ghi nhận Báo sai/Lỗi hoặc số lỗi bằng 0."
+        "Chú thích nhanh hỗ trợ đọc biểu đồ; bảng này giữ thông tin đầy đủ để truy vết về tệp Excel và ô nguồn. "
+        "Ô trống là dữ liệu không được ghi nhận trong ngày; dấu '-' hoặc N/A "
+        "được giữ nguyên để phân biệt với số 0; % báo sai mặc định bằng 0% khi không ghi nhận Báo sai/Lỗi hoặc số lỗi bằng 0."
     )
     audit_data = range_data.loc[:, audit_columns].sort_values(
         ["entity_path", "date", "metric_normalized"]
     )
+    audit_data["entity_path"] = audit_data["entity_path"].map(
+        lambda value: display_entity_path(value, project_entities)
+    )
+    audit_data["entity_level"] = audit_data["entity_level"].map({
+        "project": "Dự án",
+        "section": "Nhóm vấn đề",
+        "item": "Vấn đề",
+        "subitem": "Tình trạng",
+    }).fillna("Nội dung theo dõi")
+    audit_data["value_kind"] = audit_data["value_kind"].map({
+        "numeric": "Số",
+        "number": "Số",
+        "source_marker": "Ký hiệu từ tệp Excel",
+        "not_recorded": "Chưa ghi nhận",
+        "default_zero_rate": "Tỷ lệ 0% mặc định",
+        "blank": "Ô trống",
+        "text": "Văn bản",
+    }).fillna("Chưa xác định")
+    audit_data["parser_confidence"] = audit_data["parser_confidence"].map({
+        "high": "Cao", "medium": "Trung bình", "low": "Thấp"
+    }).fillna("Chưa xác định")
+    audit_data["validation_status"] = audit_data["validation_status"].map({
+        "valid": "Hợp lệ", "warning": "Có cảnh báo", "error": "Không hợp lệ"
+    }).fillna("Chưa xác định")
     # raw_value intentionally preserves mixed Excel types in the pipeline. Cast only the
     # displayed slice so PyArrow receives one stable type without duplicating the full dataset.
     audit_data["raw_value"] = audit_data["raw_value"].astype("string")
+    audit_display = audit_data.rename(columns={
+        "date": "Ngày",
+        "project_label": "Dự án",
+        "entity_path": "Dự án / Nhóm vấn đề / Vấn đề",
+        "entity_level": "Cấp nội dung",
+        "effective_unit": "Đơn vị đo",
+        "metric_original": "Chỉ số trong tệp",
+        "metric_normalized": "Chỉ số",
+        "raw_value": "Giá trị gốc",
+        "display_value": "Giá trị hiển thị",
+        "chart_value": "Giá trị trên biểu đồ",
+        "value_kind": "Tình trạng dữ liệu",
+        "data_note": "Ghi chú dữ liệu",
+        "sheet_name": "Trang tính nguồn",
+        "cell_address": "Ô nguồn",
+        "number_format": "Định dạng Excel",
+        "parser_confidence": "Độ tin cậy",
+        "validation_status": "Kết quả kiểm tra",
+    })
     st.dataframe(
-        audit_data,
+        audit_display,
         width="stretch",
         hide_index=True,
     )
 
 
 st.divider()
-st.subheader("So sánh nhiều entity")
+st.subheader("So sánh nhiều nội dung theo dõi")
 st.caption(
-    "Chọn từ 2 đến 3 entity cùng Effective Unit. Có thể so sánh các cấp hierarchy khác nhau; "
-    "chọn một metric cần xem và mỗi entity sẽ có một màu riêng."
+    "Chọn từ 2 đến 3 nội dung có cùng đơn vị đo. Tab này vẫn hỗ trợ nhiều cấp nội dung; "
+    "mỗi nội dung được hiển thị bằng một màu riêng."
 )
 if apply_restored_state:
     requested_comparison_metric = saved_state.get("comparison_metric")
@@ -856,7 +931,7 @@ if apply_restored_state:
         else "Báo sai/Lỗi"
     )
 comparison_metric = st.selectbox(
-    "Metric so sánh",
+    "Chỉ số so sánh",
     combo_metrics,
     key="comparison_metric",
     **widget_default(
@@ -892,7 +967,7 @@ comparison_entities_key = f"comparison_entities::{selected_project}::{comparison
 if apply_restored_state:
     st.session_state[comparison_entities_key] = requested_comparison_ids
 selected_comparison_ids = st.multiselect(
-    "Entities so sánh",
+    "Nội dung cần so sánh",
     comparison_ids,
     max_selections=3,
     format_func=lambda entity_id: hierarchy_label(comparison_lookup.loc[entity_id]),
@@ -901,12 +976,12 @@ selected_comparison_ids = st.multiselect(
 )
 
 if len(selected_comparison_ids) < 2:
-    st.info("Chọn ít nhất 2 và tối đa 3 entity để tạo biểu đồ so sánh.")
+    st.info("Chọn ít nhất 2 và tối đa 3 nội dung để tạo biểu đồ so sánh.")
 else:
     selected_entities = comparison_lookup.loc[selected_comparison_ids]
     selected_units = selected_entities["effective_unit"].dropna().unique()
     if len(selected_units) != 1:
-        st.error("Các entity được chọn phải có cùng Effective Unit.")
+        st.error("Các nội dung được chọn phải có cùng đơn vị đo.")
     else:
         comparison_data = project_data[
             project_data["entity_id"].isin(selected_comparison_ids)
@@ -918,7 +993,7 @@ else:
             build_multi_entity_metric_chart(
                 comparison_data,
                 comparison_metric,
-                f"So sánh {comparison_metric} của {len(selected_comparison_ids)} entity — {selected_units[0]}",
+                f"So sánh {comparison_metric} của {len(selected_comparison_ids)} nội dung — {selected_units[0]}",
                 group_by=overview_group_by,
                 start_date=start_date,
                 end_date=end_date,
@@ -964,13 +1039,19 @@ if st.session_state.get("_browser_state_loaded", False):
     )
 
 preview_warnings = preview_result.report.warnings if preview_result is not None else []
-with st.expander(f"Cảnh báo chất lượng của file preview ({len(preview_warnings)})"):
+with st.expander(f"Cảnh báo chất lượng của tệp xem trước ({len(preview_warnings)})"):
     if preview_warnings:
-        st.dataframe(pd.DataFrame(issue.as_dict() for issue in preview_warnings), width="stretch")
+        st.dataframe(
+            pd.DataFrame(
+                {"Mức độ": {"error": "Lỗi", "warning": "Cảnh báo"}.get(issue.severity, issue.severity), "Nội dung cần kiểm tra": issue.message}
+                for issue in preview_warnings
+            ),
+            width="stretch",
+        )
     else:
-        st.caption("Chưa chọn file preview hoặc file không có warning.")
+        st.caption("Chưa chọn tệp để xem trước hoặc tệp không có cảnh báo.")
 
-with st.expander("Lịch sử import SQLite"):
+with st.expander("Lịch sử nhập dữ liệu"):
     import_history = load_import_history(database_file, source_key)
     history_columns = [
         "attempt_id",
@@ -989,10 +1070,39 @@ with st.expander("Lịch sử import SQLite"):
         "error_count",
         "warning_count",
     ]
-    st.dataframe(import_history.loc[:, history_columns], width="stretch", hide_index=True)
+    history_display = import_history.loc[:, history_columns].copy()
+    history_display["requested_mode"] = history_display["requested_mode"].map({
+        "full_snapshot": "Bản chụp đầy đủ",
+        "incremental": "Dữ liệu bổ sung",
+    }).fillna(history_display["requested_mode"])
+    history_display["attempt_status"] = history_display["attempt_status"].map({
+        "committed": "Đã lưu",
+        "duplicate": "Dữ liệu trùng",
+        "rejected": "Bị từ chối",
+        "failed": "Thất bại",
+        "pending": "Đang xử lý",
+    }).fillna(history_display["attempt_status"])
+    history_display = history_display.rename(columns={
+        "attempt_id": "Lần thử",
+        "run_id": "Lần nhập",
+        "submitted_file_name": "Tệp Excel",
+        "requested_mode": "Cách nhập",
+        "attempt_status": "Trạng thái",
+        "started_at": "Bắt đầu lúc",
+        "committed_at": "Lưu lúc",
+        "inserted_count": "Thêm mới",
+        "updated_count": "Cập nhật",
+        "unchanged_count": "Giữ nguyên",
+        "restored_count": "Khôi phục",
+        "deleted_count": "Đã xóa",
+        "lineage_changed_count": "Thay đổi nguồn",
+        "error_count": "Lỗi",
+        "warning_count": "Cảnh báo",
+    })
+    st.dataframe(history_display, width="stretch", hide_index=True)
 
 st.download_button(
-    "Tải toàn bộ normalized CSV",
+    "Tải toàn bộ dữ liệu chuẩn hóa (.csv)",
     data.to_csv(index=False).encode("utf-8-sig"),
     file_name="normalized_data.csv",
     mime="text/csv",

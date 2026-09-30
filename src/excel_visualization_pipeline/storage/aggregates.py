@@ -86,7 +86,7 @@ def register_aggregate_snapshots(
                 ).fetchall()
                 valid_refs.update(str(row["lineage_ref"]) for row in rows)
             if len(valid_refs) != len(lineage_refs):
-                raise LineageNotFoundError("Aggregate chứa lineage không hợp lệ.")
+                raise LineageNotFoundError("Điểm tổng hợp chứa nguồn tham chiếu không hợp lệ.")
 
             for spec, fingerprint in zip(specifications, fingerprints):
                 existing_ref = existing_by_fingerprint.get(fingerprint)
@@ -146,7 +146,7 @@ def _aggregate_row(connection, project_label: str, aggregate_ref: str, source_ke
         (aggregate_ref, project_label, source_key),
     ).fetchone()
     if row is None:
-        raise LineageNotFoundError("Aggregate reference không tồn tại trong project.")
+        raise LineageNotFoundError("Nguồn dữ liệu tổng hợp không tồn tại trong dự án.")
     return row
 
 
@@ -195,13 +195,13 @@ def _decode_cursor(secret: bytes, aggregate_ref: str, cursor: str) -> int:
         raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
         payload, signature = raw[:-32], raw[-32:]
         if not hmac.compare_digest(hmac.new(secret, payload, sha256).digest(), signature):
-            raise ValueError("Invalid cursor signature")
+            raise ValueError("Thông tin trang dữ liệu không hợp lệ")
         cursor_ref, ordinal = json.loads(payload)
         if cursor_ref != aggregate_ref or not isinstance(ordinal, int) or ordinal < 0:
-            raise ValueError("Cursor belongs to another aggregate")
+            raise ValueError("Thông tin trang không thuộc điểm tổng hợp đang xem")
         return ordinal
     except (ValueError, UnicodeError, TypeError, json.JSONDecodeError) as exc:
-        raise ValueError("Contributor cursor không hợp lệ.") from exc
+        raise ValueError("Thông tin trang dữ liệu dùng để tính không hợp lệ.") from exc
 
 
 def list_aggregate_contributors(
@@ -214,7 +214,7 @@ def list_aggregate_contributors(
     cursor: str | None = None,
 ) -> dict[str, Any]:
     if not 1 <= limit <= 100:
-        raise ValueError("Giới hạn contributor phải từ 1 đến 100.")
+        raise ValueError("Số điểm dữ liệu trên mỗi trang phải từ 1 đến 100.")
     initialize_database(db_path)
     with connect_database(db_path) as connection:
         aggregate = _aggregate_row(connection, project_label, aggregate_ref, source_key)

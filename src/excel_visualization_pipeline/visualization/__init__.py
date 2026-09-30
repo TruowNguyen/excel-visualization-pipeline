@@ -4,12 +4,14 @@ from .charts import (
     build_metric_combo_chart,
     build_period_metric_combo_chart,
     build_multi_entity_metric_chart,
+    build_multi_entity_statistics_chart,
     build_period_statistics_chart,
     build_project_total_chart,
     prepare_project_totals,
     prepare_project_totals_range,
     prepare_period_statistics,
     prepare_period_metric_summary,
+    display_entity_label,
 )
 
 __all__ = [
@@ -17,6 +19,7 @@ __all__ = [
     "build_metric_combo_chart",
     "build_period_metric_combo_chart",
     "build_multi_entity_metric_chart",
+    "build_multi_entity_statistics_chart",
     "build_period_statistics_chart",
     "build_bar_chart",
     "build_project_total_chart",
@@ -24,4 +27,5 @@ __all__ = [
     "prepare_project_totals_range",
     "prepare_period_statistics",
     "prepare_period_metric_summary",
+    "display_entity_label",
 ]

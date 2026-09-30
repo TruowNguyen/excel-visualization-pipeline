@@ -58,7 +58,25 @@ async function openWorkspace(page: Page, width: number, height: number) {
   await expect(page.locator('[data-plot="overview-root"].js-plotly-plot')).toBeVisible();
 }
 
-for (const viewport of [{ width: 1366, height: 768 }, { width: 1440, height: 900 }]) {
+async function clickRealBar(page: Page, plotKey: string, trace = 0, point = 0) {
+  const bar = page.locator(`[data-plot="${plotKey}"] .barlayer .trace`).nth(trace).locator('.point path').nth(point);
+  await expect(bar).toBeVisible();
+  await bar.scrollIntoViewIfNeeded();
+  const box = await bar.boundingBox();
+  if (!box) throw new Error(`Plotly bar ${plotKey}/${trace}/${point} has no browser bounding box`);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForTimeout(120);
+    if (await page.locator('#investigation-drawer').getAttribute('aria-hidden') === 'false') return;
+  }
+  await expect(page.locator('#investigation-drawer')).toHaveAttribute('aria-hidden', 'false');
+}
+
+for (const viewport of [
+  { width: 1366, height: 768 },
+  { width: 1440, height: 900 },
+  { width: 1920, height: 1080 },
+]) {
   test(`critical desktop text meets AA at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await openWorkspace(page, viewport.width, viewport.height);
     await expectAa(page.locator('.breadcrumb'), 'top breadcrumb');
@@ -68,17 +86,14 @@ for (const viewport of [{ width: 1366, height: 768 }, { width: 1440, height: 900
     await expectAa(page.locator('[data-plot="overview-root"] .legendtext').first(), 'chart legend');
     await expectAa(page.locator('.tab.active'), 'selected tab');
 
-    await page.locator('[data-plot="overview-root"] + .chart-keyboard summary').click();
-    await page.locator('[data-chart-point]').first().click();
-    await expect(page.getByRole('heading', { name: /Tổng số 10/ })).toBeVisible();
+    await clickRealBar(page, 'overview-root');
+    await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
     await expectAa(page.locator('.validation-line > span').last(), 'validation secondary text');
     await expectAa(page.locator('.entity-path'), 'entity path');
     await expectAa(page.locator('.entity-path span').first(), 'entity path separator');
     await expectAa(page.locator('.provenance-grid dt').first(), 'drawer metadata label');
-    await expectAa(page.locator('.chart-point-option.selected'), 'selected chart point');
-    await page.getByRole('button', { name: 'Đóng' }).click();
-
-    await page.getByRole('button', { name: /Audit dữ liệu/ }).click();
+    await page.getByRole('button', { name: 'Mở đúng dòng đối chiếu' }).click();
+    await expect(page.getByText('Dòng đối chiếu của điểm đã chọn')).toBeVisible();
     await expectAa(page.locator('th').first(), 'Audit table header');
     await expectAa(page.locator('td').first(), 'Audit table cell');
     await expectAa(page.locator('.pager span'), 'Audit pager');
@@ -93,7 +108,7 @@ for (const viewport of [{ width: 1366, height: 768 }, { width: 1440, height: 900
       await page.locator('#import-mode').selectOption('full_snapshot');
       await page.locator('#file-input').setInputFiles({ name: 'snapshot.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('fixture') });
       await page.locator('#preview-action').click();
-      await expectAa(page.getByRole('button', { name: 'Xác nhận nhập snapshot' }), 'disabled destructive action');
+      await expectAa(page.getByRole('button', { name: 'Xác nhận nhập bản chụp' }), 'disabled destructive action');
     }
   });
 }

@@ -17,31 +17,23 @@ async function clickRealBar(page: Page, plotKey: string, trace = 0, point = 0) {
 test('Overview uses the real Plotly point, ignores the transparent helper trace, and resolves exact refs', async ({ page }) => {
   const harness = await installApiHarness(page, { provenanceDelayMs: 150 });
   await openApp(page);
-  await page.locator('[data-plot="overview-root"] + .chart-keyboard summary').click();
-  await expect(page.locator('[data-plot-key="overview-root"][data-chart-point]')).toHaveCount(2);
   await clickRealBar(page, 'overview-root');
   await expect(page.getByText('Đang xác minh nguồn dữ liệu…')).toBeVisible();
   await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
   expect(harness.calls.some(call => call.pathname.includes('/observations/obs_overview_2/provenance') && call.search.includes('lineageRef=lin_overview_2'))).toBeTruthy();
 });
 
-test('keyboard point opens the same drawer and close restores point focus and selection feedback', async ({ page }) => {
+test('keyboard investigation surface is removed while direct chart investigation remains available', async ({ page }) => {
   await installApiHarness(page);
   await openApp(page);
-  await page.locator('[data-plot="overview-root"] + .chart-keyboard summary').click();
-  const point = page.locator('[data-plot-key="overview-root"][data-chart-point]').first();
-  await point.focus();
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: /Tổng số 10/ })).toBeVisible();
-  await expect(point).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Đóng' }).click();
-  await expect(point).toBeFocused();
-  await expect(point).toHaveAttribute('aria-pressed', 'false');
-  await page.keyboard.press('Space');
-  await expect(page.getByRole('heading', { name: /Tổng số 10/ })).toBeVisible();
+  await expect(page.locator('.chart-keyboard, .chart-keyboard-empty, [data-chart-point]')).toHaveCount(0);
+  await clickRealBar(page, 'overview-root');
+  await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Đóng', exact: true }).click();
+  await expect(page.locator('#investigation-drawer')).not.toHaveClass(/open/);
 });
 
-test('Statistics, Comparison, and child-node surfaces dispatch real Plotly point identities', async ({ page }) => {
+test('Statistics, contextual comparison, and child-node surfaces dispatch real Plotly point identities', async ({ page }) => {
   const harness = await installApiHarness(page);
   await openApp(page);
 
@@ -49,18 +41,19 @@ test('Statistics, Comparison, and child-node surfaces dispatch real Plotly point
   await expect(page.locator('[data-plot="statistics-root"].js-plotly-plot')).toBeVisible();
   await clickRealBar(page, 'statistics-root');
   await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Đóng' }).click();
+  await page.getByRole('button', { name: 'Đóng', exact: true }).click();
 
-  await page.getByRole('button', { name: /So sánh/ }).click();
-  await page.locator('[data-compare="child-a"]').check();
-  await page.locator('[data-compare="child-b"]').check();
-  await expect(page.locator('[data-plot="comparison"].js-plotly-plot')).toBeVisible();
-  await clickRealBar(page, 'comparison');
+  await page.locator('[data-field="scope"]').selectOption('children');
+  await expect(page.locator('[data-plot="statistics-child-a"].js-plotly-plot')).toBeVisible();
+  await page.locator('#compare-action-child-a').click();
+  await page.locator('[data-context-compare="child-b"]').check();
+  await expect(page.locator('[data-plot="contextual-comparison"].js-plotly-plot')).toBeVisible();
+  await clickRealBar(page, 'contextual-comparison');
   await expect(page.getByRole('heading', { name: /Tổng số 10/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Đóng' }).click();
+  await page.getByRole('button', { name: 'Đóng', exact: true }).click();
+  await page.getByRole('button', { name: 'Xong' }).click();
 
   await page.getByRole('button', { name: /Tổng quan/ }).click();
-  await page.locator('[data-field="scope"]').selectOption('children');
   await expect(page.locator('[data-plot="overview-child-b"].js-plotly-plot')).toBeVisible();
   await clickRealBar(page, 'overview-child-b');
   await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
@@ -74,50 +67,42 @@ test('Statistics, Comparison, and child-node surfaces dispatch real Plotly point
 test('drawer error can retry and keeps the exact observation and lineage references', async ({ page }) => {
   const harness = await installApiHarness(page, { provenanceFailures: 1 });
   await openApp(page);
-  await page.locator('[data-plot="overview-root"] + .chart-keyboard summary').click();
-  await page.locator('[data-plot-key="overview-root"][data-chart-point]').first().click();
+  await clickRealBar(page, 'overview-root');
   await expect(page.locator('.lineage-state strong').getByText('Không tải được nguồn dữ liệu', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Thử tải lại nguồn' }).click();
-  await expect(page.getByRole('heading', { name: /Tổng số 10/ })).toBeVisible();
-  const calls = harness.calls.filter(call => call.pathname.endsWith('/obs_overview_1/provenance'));
+  await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
+  const calls = harness.calls.filter(call => call.pathname.endsWith('/obs_overview_2/provenance'));
   expect(calls).toHaveLength(2);
-  expect(calls.every(call => call.search.includes('lineageRef=lin_overview_1'))).toBeTruthy();
+  expect(calls.every(call => call.search.includes('lineageRef=lin_overview_2'))).toBeTruthy();
 });
 
-test('keyboard legacy point opens the safe unavailable state without guessing provenance', async ({ page }) => {
+test('legacy point click opens the safe unavailable state without guessing provenance', async ({ page }) => {
   const harness = await installApiHarness(page, { legacyUnavailable: true });
   await openApp(page);
-  await page.locator('[data-plot="overview-root"] + .chart-keyboard summary').click();
-  const legacy = page.locator('[data-lineage-unavailable="true"]');
-  await expect(legacy).toContainText('chưa có nguồn truy vết');
-  await legacy.focus();
-  await page.keyboard.press('Enter');
+  await clickRealBar(page, 'overview-root');
   await expect(page.getByText('Chưa truy vết được điểm này')).toBeVisible();
   expect(harness.calls.some(call => call.pathname.includes('/provenance'))).toBeFalsy();
 });
 
-test('exact Audit navigation and return preserve viewport, selected point, and keyboard focus', async ({ page }) => {
+test('exact Audit navigation and return preserve the chart viewport', async ({ page }) => {
   const harness = await installApiHarness(page);
   await openApp(page);
-  await page.locator('[data-plot="overview-root"] + .chart-keyboard summary').click();
-  const point = page.locator('[data-plot-key="overview-root"][data-chart-point]').nth(1);
   await page.locator('[data-plot="overview-root"]').evaluate((plot: HTMLElement & { layout?: { xaxis?: { range?: string[] } } }) => {
     if (plot.layout?.xaxis) plot.layout.xaxis.range = ['2026-09-16T06:00:00', '2026-09-17T00:00:00'];
   });
-  await point.click();
+  await clickRealBar(page, 'overview-root');
   await expect(page.getByText(/phiên bản tại thời điểm chọn/)).toBeVisible();
   await page.getByRole('button', { name: 'Xem các phiên bản của giá trị này' }).click();
   await expect(page.locator('.revision-item strong')).toContainText('Đã được thay thế');
-  await page.getByRole('button', { name: 'Mở đúng dòng Audit' }).click();
+  await page.getByRole('button', { name: 'Mở đúng dòng đối chiếu' }).click();
   await expect(page.locator('#focused-audit-row')).toBeFocused();
   await expect(page.locator('#focused-audit-row')).toContainText('D7');
   const auditCall = harness.calls.find(call => call.pathname.endsWith('/audit/lookup'));
   expect(auditCall?.search).toContain('observationRef=obs_overview_2');
   expect(auditCall?.search).toContain('lineageRef=lin_overview_2');
   await page.getByRole('button', { name: 'Quay lại biểu đồ' }).click();
-  const restoredPoint = page.locator('[data-plot-key="overview-root"][data-point-key="0:1"]');
-  await expect(restoredPoint).toHaveAttribute('aria-pressed', 'true');
-  await expect(restoredPoint).toBeFocused();
+  await expect(page.locator('[data-plot="overview-root"].js-plotly-plot')).toBeVisible();
+  await expect(page.locator('[data-chart-point]')).toHaveCount(0);
   const range = await page.locator('[data-plot="overview-root"]').evaluate((plot: HTMLElement & { layout?: { xaxis?: { range?: unknown[] } } }) => plot.layout?.xaxis?.range);
   expect(range).toEqual(['2026-09-16T06:00:00', '2026-09-17T00:00:00']);
 });
@@ -130,8 +115,8 @@ test('full snapshot remains blocked until explicit confirmation', async ({ page 
   await page.locator('#file-input').setInputFiles({ name: 'snapshot.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('fixture') });
   await page.locator('#preview-action').click();
   await expect(page.getByText('Đạt kiểm tra · có thể xác nhận nhập')).toBeVisible();
-  const commit = page.getByRole('button', { name: 'Xác nhận nhập snapshot' });
+  const commit = page.getByRole('button', { name: 'Xác nhận nhập bản chụp' });
   await expect(commit).toBeDisabled();
-  await page.getByLabel(/Tôi xác nhận nhập snapshot đầy đủ/).check();
+  await page.getByLabel(/Tôi xác nhận nhập bản chụp đầy đủ/).check();
   await expect(commit).toBeEnabled();
 });

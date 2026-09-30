@@ -9,8 +9,10 @@ from .importer import (
 )
 from .migrations import initialize_database
 from .repository import (
+    CommittedDataVersion,
     LineageMismatchError,
     LineageNotFoundError,
+    latest_committed_version,
     latest_committed_run_id,
     lookup_audit_lineage,
     load_current_data,
@@ -26,6 +28,7 @@ __all__ = [
     "ImportExecution",
     "ImportOutcome",
     "ImportScope",
+    "CommittedDataVersion",
     "LineageMismatchError",
     "LineageNotFoundError",
     "StorageImportError",
@@ -34,6 +37,7 @@ __all__ = [
     "import_workbook",
     "initialize_database",
     "latest_committed_run_id",
+    "latest_committed_version",
     "lookup_audit_lineage",
     "load_current_data",
     "load_current_entities",
