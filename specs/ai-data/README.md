@@ -1,5 +1,9 @@
 # Đặc tả AI/Data — Báo cáo CX tự động
 
+## Freeze và kế hoạch mở rộng — 04/10/2026
+
+Baseline hiện tại đã đóng băng tại commit `daa3974`, tag `freeze-2026-10-04-ai-insights-v15`, đã push lên origin/dev. [Biên bản freeze](evidence/2026-10-04-freeze.md) ghi kiểm thử và giới hạn. [Kế hoạch mở rộng AI Insight](09-insight-expansion-plan.md) đề xuất từng vấn đề, Thống kê và phân tích các vấn đề đã chọn/tất cả trong nhóm. Đây là kế hoạch chờ duyệt triển khai, không phải capability đã có; giữ nguyên baseline và desktop-first.
+
 ## Kiểm tra mọi bộ lọc và dữ liệu committed — 02/10/2026
 
 Runtime mới nhất dùng provider/narrative v5, `semantic-grounding-v6`, registry `trend-summary-v15` / `metric-overview-v11`, resource `grounded-insight-v5.md`. Ngày/tuần/tháng và KPI đơn/tổng hợp dùng đúng phạm vi, nhãn kỳ và facts của request; không gán giá trị tuần/tháng cho một ngày. Report giữ mọi giai đoạn, kể cả điểm rời do thiếu dữ liệu; chỉ giới hạn tối đa tám giai đoạn gửi LLM, phần còn lại dùng Engine. Đỉnh/đáy tiếp tục nằm trong diễn giải giai đoạn, không có heading riêng. Kiểm tra 2.040 tổ hợp trên 34 entity có dữ liệu thuộc sáu dự án; đánh giá API thật và những hạn chế còn lại được ghi tại [báo cáo kiểm thử toàn dữ liệu](evidence/2026-10-02-all-data-filter-evaluation.md). Các mục phiên bản bên dưới là lịch sử triển khai.
