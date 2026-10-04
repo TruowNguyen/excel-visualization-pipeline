@@ -1,0 +1,407 @@
+{
+  "date": "2026-10-02",
+  "method": "FastAPI TestClient on current committed SQLite read model; external 9Router calls are real",
+  "scope": {
+    "project": "VSO",
+    "entityRef": "1-1-chat-luong-canh-bao-ghi-nhan-tren-he-thong-ba6898fb1d78",
+    "entityLabel": "1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống",
+    "mode": "node",
+    "metricCode": "all",
+    "metricDisplayName": "Tất cả chỉ số"
+  },
+  "window": {
+    "start": "2026-09-07",
+    "end": "2026-09-16",
+    "groupBy": "day",
+    "comparisonBasis": "per_metric_period_over_period_and_first_last",
+    "previousDate": "2026-09-07",
+    "currentDate": "2026-09-16"
+  },
+  "privacy": "normalized_facts_only; no raw Excel, credential or lineage targets recorded",
+  "sourceVersion": "imp_ff77f449b7b1f986e6109b3fb07b714e",
+  "normalizedSeries": [
+    {
+      "metric": "total",
+      "points": [
+        {
+          "period": "2026-09-07",
+          "value": 71
+        },
+        {
+          "period": "2026-09-08",
+          "value": 454
+        },
+        {
+          "period": "2026-09-09",
+          "value": 342
+        },
+        {
+          "period": "2026-09-10",
+          "value": 251
+        },
+        {
+          "period": "2026-09-12",
+          "value": 515
+        },
+        {
+          "period": "2026-09-13",
+          "value": 214
+        },
+        {
+          "period": "2026-09-14",
+          "value": 209
+        },
+        {
+          "period": "2026-09-15",
+          "value": 657
+        },
+        {
+          "period": "2026-09-16",
+          "value": 420
+        }
+      ]
+    },
+    {
+      "metric": "error",
+      "points": [
+        {
+          "period": "2026-09-07",
+          "value": 16
+        },
+        {
+          "period": "2026-09-08",
+          "value": 8
+        },
+        {
+          "period": "2026-09-09",
+          "value": 10
+        },
+        {
+          "period": "2026-09-10",
+          "value": 8
+        },
+        {
+          "period": "2026-09-12",
+          "value": 19
+        },
+        {
+          "period": "2026-09-13",
+          "value": 43
+        },
+        {
+          "period": "2026-09-14",
+          "value": 32
+        },
+        {
+          "period": "2026-09-15",
+          "value": 22
+        },
+        {
+          "period": "2026-09-16",
+          "value": 22
+        }
+      ]
+    },
+    {
+      "metric": "error_rate",
+      "points": [
+        {
+          "period": "2026-09-07",
+          "value": 22.53521127
+        },
+        {
+          "period": "2026-09-08",
+          "value": 1.76211454
+        },
+        {
+          "period": "2026-09-09",
+          "value": 2.92397661
+        },
+        {
+          "period": "2026-09-10",
+          "value": 3.187251
+        },
+        {
+          "period": "2026-09-12",
+          "value": 3.68932039
+        },
+        {
+          "period": "2026-09-13",
+          "value": 20.09345794
+        },
+        {
+          "period": "2026-09-14",
+          "value": 15.31100478
+        },
+        {
+          "period": "2026-09-15",
+          "value": 3.34855403
+        },
+        {
+          "period": "2026-09-16",
+          "value": 5.23809524
+        }
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "run": 1,
+      "provider": {
+        "name": "9router",
+        "model": "ag/gemini-3.7-flash-low",
+        "promptVersion": "metric-overview-v8",
+        "latencyMs": 6352,
+        "attemptCount": 1
+      },
+      "status": "rejected_output",
+      "requestLatencyMs": 7820,
+      "validation": {
+        "status": "rejected",
+        "errors": [
+          "unsupported_numeric_mention",
+          "relation_not_expressed",
+          "direction_conflict",
+          "period_scope_mismatch",
+          "semantic_unverified"
+        ],
+        "categories": [
+          "numerical_temporal",
+          "semantic"
+        ],
+        "claimResults": [
+          {
+            "index": 0,
+            "candidateId": "insight-01-peak_retreat",
+            "status": "rejected",
+            "errors": [
+              "unsupported_numeric_mention",
+              "relation_not_expressed",
+              "direction_conflict"
+            ],
+            "categories": [
+              "numerical_temporal",
+              "semantic"
+            ]
+          },
+          {
+            "index": 1,
+            "candidateId": "insight-06-peak_offset",
+            "status": "rejected",
+            "errors": [
+              "period_scope_mismatch",
+              "direction_conflict",
+              "semantic_unverified"
+            ],
+            "categories": [
+              "semantic"
+            ]
+          }
+        ]
+      },
+      "rawNarrative": {
+        "schemaVersion": "ai-narrative-v4",
+        "analysisId": "ana_82be51e20c3a4440a6368af7a55cf792",
+        "status": "ready",
+        "claims": [
+          {
+            "candidateId": "insight-01-peak_retreat",
+            "claimType": "peak_retreat",
+            "text": "Trong đoạn có dữ liệu liền nhau, Báo sai/Lỗi đạt mức cao nhất 43 vào ngày 13/09/2026 sau khi tăng từ 19 ngày 12/09/2026, rồi đảo chiều giảm về 22 vào ngày 16/09/2026.",
+            "factIds": [
+              "relation:insight-01-peak_retreat"
+            ]
+          },
+          {
+            "candidateId": "insight-06-peak_offset",
+            "claimType": "peak_offset",
+            "text": "Thời điểm đạt mức cao nhất của hai chỉ số không trùng nhau: Báo sai/Lỗi đạt mức cao nhất 43 vào ngày 13/09/2026, trong khi Tổng số đạt mức cao nhất 657 vào ngày 15/09/2026.",
+            "factIds": [
+              "relation:insight-06-peak_offset"
+            ]
+          }
+        ]
+      },
+      "note": "Two factually grounded claims rejected by initial bounded parser; same raw response accepted by corrected validator offline."
+    },
+    {
+      "run": 2,
+      "provider": {
+        "name": "9router",
+        "model": "ag/gemini-3.7-flash-low",
+        "promptVersion": "metric-overview-v8",
+        "latencyMs": 3995,
+        "attemptCount": 1
+      },
+      "status": "rejected_output",
+      "requestLatencyMs": 5820,
+      "validation": {
+        "status": "rejected",
+        "errors": [
+          "relation_not_expressed",
+          "direction_conflict",
+          "semantic_unverified"
+        ],
+        "categories": [
+          "semantic"
+        ],
+        "claimResults": [
+          {
+            "index": 0,
+            "candidateId": "insight-01-peak_retreat",
+            "status": "rejected",
+            "errors": [
+              "relation_not_expressed",
+              "direction_conflict",
+              "semantic_unverified"
+            ],
+            "categories": [
+              "semantic"
+            ]
+          },
+          {
+            "index": 1,
+            "candidateId": "insight-06-peak_offset",
+            "status": "rejected",
+            "errors": [
+              "direction_conflict"
+            ],
+            "categories": [
+              "semantic"
+            ]
+          }
+        ]
+      },
+      "rawNarrative": {
+        "schemaVersion": "ai-narrative-v4",
+        "analysisId": "ana_db2458c14cf74833a9d8a9cf6ea0033d",
+        "status": "ready",
+        "claims": [
+          {
+            "candidateId": "insight-01-peak_retreat",
+            "claimType": "peak_retreat",
+            "text": "Trong đoạn có dữ liệu liền nhau, Báo sai/Lỗi tăng từ 19 ngày 12/09/2026 lên mức cao nhất 43 vào 13/09/2026, sau đó giảm về 22 ngày 16/09/2026.",
+            "factIds": [
+              "relation:insight-01-peak_retreat"
+            ]
+          },
+          {
+            "candidateId": "insight-06-peak_offset",
+            "claimType": "peak_offset",
+            "text": "Trong đoạn có dữ liệu liền nhau, Báo sai/Lỗi đạt mức cao nhất 43 vào 13/09/2026, trong khi Tổng số đạt mức cao nhất 657 vào 15/09/2026.",
+            "factIds": [
+              "relation:insight-06-peak_offset"
+            ]
+          }
+        ]
+      },
+      "note": "Additional valid paraphrases rejected; chronology and date parser extended with regressions, without editing provider prose."
+    },
+    {
+      "run": 3,
+      "provider": {
+        "name": "9router",
+        "model": "gemini-3.7-flash-tiered",
+        "promptVersion": "metric-overview-v8",
+        "latencyMs": 6732,
+        "attemptCount": 1
+      },
+      "status": "ready",
+      "requestLatencyMs": 8505,
+      "validation": {
+        "status": "partial",
+        "errors": [
+          "semantic_unverified"
+        ],
+        "categories": [
+          "semantic"
+        ],
+        "claimResults": [
+          {
+            "index": 0,
+            "candidateId": "insight-01-peak_retreat",
+            "status": "accepted",
+            "errors": [],
+            "categories": []
+          },
+          {
+            "index": 1,
+            "candidateId": "insight-06-peak_offset",
+            "status": "rejected",
+            "errors": [
+              "semantic_unverified"
+            ],
+            "categories": [
+              "semantic"
+            ]
+          }
+        ]
+      },
+      "rawNarrative": {
+        "schemaVersion": "ai-narrative-v4",
+        "analysisId": "ana_6ebc18aa131a429ba839d85f5c10d660",
+        "status": "ready",
+        "claims": [
+          {
+            "candidateId": "insight-01-peak_retreat",
+            "claimType": "peak_retreat",
+            "text": "Trong đoạn có dữ liệu liền nhau từ 12/09/2026 đến 16/09/2026, Báo sai/Lỗi đạt mức cao nhất 43 vào 13/09/2026, sau đó giảm dần và giữ ở mức 22 vào 16/09/2026.",
+            "factIds": [
+              "relation:insight-01-peak_retreat"
+            ]
+          },
+          {
+            "candidateId": "insight-06-peak_offset",
+            "claimType": "peak_offset",
+            "text": "Thời điểm đạt mức cao nhất giữa các chỉ số có sự lệch nhau. Báo sai/Lỗi đạt đỉnh 43 vào 13/09/2026, trong khi Tổng số đạt đỉnh 657 vào 15/09/2026.",
+            "factIds": [
+              "relation:insight-06-peak_offset"
+            ]
+          }
+        ]
+      },
+      "acceptedNarrative": {
+        "mode": "ai",
+        "schemaVersion": "ai-narrative-v4",
+        "analysisId": "ana_6ebc18aa131a429ba839d85f5c10d660",
+        "status": "ready",
+        "validationPolicy": "semantic-grounding-v2",
+        "claims": [
+          {
+            "candidateId": "insight-01-peak_retreat",
+            "claimType": "peak_retreat",
+            "text": "Trong đoạn có dữ liệu liền nhau từ 12/09/2026 đến 16/09/2026, Báo sai/Lỗi đạt mức cao nhất 43 vào 13/09/2026, sau đó giảm dần và giữ ở mức 22 vào 16/09/2026.",
+            "factIds": [
+              "relation:insight-01-peak_retreat"
+            ]
+          }
+        ],
+        "summary": {
+          "text": "Trong đoạn có dữ liệu liền nhau từ 12/09/2026 đến 16/09/2026, Báo sai/Lỗi đạt mức cao nhất 43 vào 13/09/2026, sau đó giảm dần và giữ ở mức 22 vào 16/09/2026.",
+          "candidateIds": [
+            "insight-01-peak_retreat"
+          ],
+          "factIds": [
+            "relation:insight-01-peak_retreat"
+          ],
+          "claimType": "descriptive"
+        },
+        "insights": [],
+        "limitations": [
+          "Có 1/10 kỳ thiếu dữ liệu hợp lệ. Không nối xu hướng qua khoảng trống và không coi kỳ thiếu là 0."
+        ],
+        "suggestedChecks": []
+      },
+      "note": "Live ready/partial: one accepted claim preserved, other rejected as semantic_unverified. Not claimed as fully accepted."
+    }
+  ],
+  "assessment": {
+    "groundedFacts": "All three captured provider responses use correct count values and dates.",
+    "analyticalDepth": "Insufficient: no rate explanation, peak dates dominate, early observed phase omitted.",
+    "missingUsefulInsights": [
+      "12–13/09: errors rise while total falls; both absolute error count and its share rise.",
+      "15–16/09: error count stays at 22; total falls from 657 to 420, so the rate rises without additional errors."
+    ],
+    "limitation": "Three calls on one scope do not establish general accuracy, acceptance rate or production latency."
+  }
+}

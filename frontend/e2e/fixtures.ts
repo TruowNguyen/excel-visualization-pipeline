@@ -1,4 +1,7 @@
 import type { Page, Route } from '@playwright/test';
+import wholeSeriesFixture from './whole-series.json' with { type: 'json' };
+import currentInsightFixture from './current-insight.json' with { type: 'json' };
+import twoPointInsightFixture from './two-point-insight.json' with { type: 'json' };
 
 type HarnessOptions = {
   provenanceFailures?: number;
@@ -14,6 +17,10 @@ type HarnessOptions = {
   aiDelayMs?: number;
   aiFailureRequests?: number[];
   aiResponseStatus?: 'ready' | 'provider_unavailable' | 'rejected_output' | 'insufficient_data';
+  aiLimitedComparison?: boolean;
+  aiWholeSeries?: boolean;
+  aiCurrentDataset?: boolean;
+  aiFixture?: unknown;
 };
 export type ApiCall = { pathname: string; search: string; method: string; body?: unknown };
 
@@ -196,9 +203,83 @@ function aggregateProvenance(aggregateRef: string) {
   };
 }
 
-function aiAnalysis(requestBody: Record<string, string>, status: HarnessOptions['aiResponseStatus'] = 'ready') {
+function prefixFixtureIds(value: unknown, prefix: string, key = ''): any {
+  if (Array.isArray(value)) return value.map(item => prefixFixtureIds(item, prefix, key));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, child]) => (
+      [childKey, prefixFixtureIds(child, prefix, childKey)]
+    )));
+  }
+  if (typeof value === 'string' && ['factId', 'factIds', 'evidenceId', 'evidenceIds'].includes(key)) {
+    return `${prefix}:${value}`;
+  }
+  return value;
+}
+
+export function aiAnalysis(requestBody: Record<string, string>, status: HarnessOptions['aiResponseStatus'] = 'ready', limitedComparison = false, wholeSeries = false, currentDataset = false): any {
+  if (currentDataset) return currentInsightFixture;
   const metric = requestBody.metricCode || 'error';
   const groupBy = requestBody.groupBy || 'day';
+  if (metric === 'all') {
+    let metrics = (['total', 'error', 'error_rate'] as const).map(metricCode => {
+      const trend = aiAnalysis({ ...requestBody, metricCode }, status);
+      const values = metricCode === 'total' ? [100, 200] : metricCode === 'error' ? [10, 15] : [10, 7.5];
+      const display = (value: number) => `${value}${metricCode === 'error_rate' ? '%' : ''}`;
+      trend.series.forEach((point: any, index: number) => {
+        point.value = values[index]; point.displayValue = display(values[index]);
+        if (point.change) point.change = { ...point.change, absolute: values[1] - values[0], absoluteDisplay: `${values[1] - values[0]}${metricCode === 'error_rate' ? ' pp' : ''}`, relativePercent: (values[1] / values[0] - 1) * 100, relativeDisplay: `${(values[1] / values[0] - 1) * 100}%`, direction: metricCode === 'error_rate' ? 'decreasing' : 'increasing' };
+      });
+      trend.periodAnalytics = { policyVersion: 'period-level-v1', tieBreak: 'latest_period', peak: null, lowest: null, largestIncrease: null, largestDecrease: null, consecutiveIncrease: null, consecutiveDecrease: null, endingPlateau: null, latestChange: null };
+      const direction = metricCode === 'error_rate' ? 'decreasing' : 'increasing';
+      const overviewText = direction === 'increasing' ? 'Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.' : 'Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng.';
+      const stageText = `16/09/2026–17/09/2026: ${direction === 'increasing' ? 'tăng' : 'giảm'} từ ${display(values[0])} ${direction === 'increasing' ? 'lên' : 'xuống'} ${display(values[1])}.`;
+      trend.periodAnalytics.temporalStructure = { policyVersion: 'chronological-stages-v1', overviewText, summaryText: `${overviewText} ${stageText}`, stages: [{ startIndex: 0, endIndex: 1, direction, text: stageText, startPeriodLabel: '16/09/2026', endPeriodLabel: '17/09/2026', factIds: ['fact-period-000', 'fact-period-001'], evidenceIds: ['ev-period-000', 'ev-period-001'] }], turningPoints: [], gaps: [] };
+      trend.facts = trend.facts.filter((fact: any) => ['period_value', 'previous', 'current'].includes(fact.kind)).map((fact: any) => {
+        const index = fact.kind === 'current' || fact.factId === 'fact-period-001' ? 1 : 0;
+        return { ...fact, value: values[index], displayValue: display(values[index]) };
+      });
+      return prefixFixtureIds({
+        metricCode, metricDisplayName: trend.scope.metricDisplayName,
+        status: trend.status === 'insufficient_data' ? 'insufficient_data' : 'ready',
+        unit: trend.metric.unit, aggregationRule: trend.metric.aggregationRule,
+        facts: trend.facts, series: trend.series,
+        periodAnalytics: trend.periodAnalytics,
+        historicalContext: trend.historicalContext,
+        quality: trend.quality, evidence: trend.evidence,
+      }, metricCode);
+    });
+    if (wholeSeries) metrics = wholeSeriesFixture.metrics.map((metric: any) => ({
+      ...metrics.find(item => item.metricCode === metric.metricCode), ...metric,
+      evidence: metric.series.map((point: any, index: number) => ({ evidenceId: point.evidenceId, period: 'series', periodIndex: index, periodStart: point.periodStart, periodEnd: point.periodEnd, periodLabel: point.periodLabel, observedDate: point.periodStart, target: { kind: 'exact', observationRef: `obs_ai_${index + 1}`, lineageRef: `lin_ai_${index + 1}` } })),
+    }));
+    const limited = limitedComparison || status === 'insufficient_data';
+    const text = limited ? 'Tổng số có dữ liệu nhưng chưa đủ cơ sở liên kết tăng trưởng giữa ba chỉ số.' : 'Từ 16/09/2026 đến 17/09/2026, Tổng số tăng nhanh hơn Báo sai/Lỗi; tỷ trọng Báo sai/Lỗi trên Tổng số giảm trong phép tính tỷ lệ (10% → 7.5%).';
+    const candidate = { candidateId: limited ? 'description' : 'relationship', layer: limited ? 'descriptive' : 'relational', text, factIds: metrics.flatMap(item => item.facts.map((fact: any) => fact.factId)), evidenceIds: metrics[0].evidence.map((item: any) => item.evidenceId) };
+    const whole = wholeSeries ? wholeSeriesFixture.insightCandidates[0] : { ...candidate, candidateId: 'whole-window', layer: 'whole_series', text: metrics.map(item => `${item.metricDisplayName}: ${item.periodAnalytics.temporalStructure.overviewText}`).join(' ') };
+    const plan = wholeSeries ? wholeSeriesFixture.synthesis : twoPointInsightFixture.synthesis;
+    const selected = limited ? plan.candidates.filter(c => c.metricCodes.length === 1).slice(0, 1) : plan.selectedCandidateIds.map(id => plan.candidates.find(c => c.candidateId === id)!);
+    const endpoint = (index: number) => ({ periodLabel: index ? '17/09/2026' : '16/09/2026', numeratorDisplay: index ? '15' : '10', denominatorDisplay: index ? '200' : '100', rateDisplay: index ? '7.5%' : '10%', eligibleDayCount: 1, expectedDayCount: 1 });
+    return {
+      schemaVersion: 'ai-overview-v2', analysisId: 'ana_e2e_overview', kind: 'metric_overview', status,
+      scope: { project: 'VSO', entityRef: requestBody.entityRef || 'root', entityLabel: '1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống', mode: 'node', metricCode: 'all', metricDisplayName: 'Tất cả chỉ số' },
+      window: { start: wholeSeries ? '2026-09-01' : requestBody.start || '2026-09-16', end: wholeSeries ? '2026-09-09' : requestBody.end || '2026-09-17', groupBy, comparisonBasis: 'per_metric_period_over_period_and_first_last', previousDate: '2026-09-16', currentDate: '2026-09-17' },
+      dataAsOf: { committedImportRef: 'imp_1', snapshotId: 'as_e2e_overview', generatedAt: '2026-09-17T09:00:00Z', stale: false, checksum: 'b'.repeat(64) },
+      metrics, facts: wholeSeries ? [...metrics.flatMap(item => item.facts), ...plan.facts] : twoPointInsightFixture.facts,
+      synthesis: limited ? undefined : plan,
+      comparisonBasis: wholeSeries ? wholeSeriesFixture.comparisonBasis : { status: limited ? 'limited' : 'comparable', reason: limited ? 'Kỳ so sánh có ngày thiếu; chưa kết luận quan hệ tăng trưởng.' : 'So sánh kỳ đầu–cuối, dùng cùng cặp tử số/mẫu số của tỷ lệ.', baseline: endpoint(0), current: endpoint(1) },
+      insightCandidates: wholeSeries ? wholeSeriesFixture.insightCandidates : [whole, candidate],
+      inspectionChecks: plan.inspectionChecks.filter(check => selected.some(c => c.candidateId === check.candidateId)),
+      quality: { status: limited ? 'partial' : 'valid', availableMetricCount: 3, expectedMetricCount: 3, validPeriodCount: wholeSeries ? 9 : 2, expectedPeriodCount: wholeSeries ? 9 : 2, limitations: limited ? ['Kỳ so sánh có ngày thiếu; chưa kết luận quan hệ tăng trưởng.'] : [] },
+      evidence: metrics.flatMap(item => item.evidence),
+      provider: { name: '9router', model: 'fake-gemini' },
+      validation: { status: status === 'ready' ? 'accepted' : 'not_run', errors: status === 'provider_unavailable' ? ['timeout'] : [] },
+      narrative: {
+        mode: status === 'ready' ? 'ai' : 'deterministic',
+        summary: { text: selected.map(c => c.fallbackText).join(' '), candidateIds: selected.map(c => c.candidateId), factIds: selected.flatMap(c => c.factIds), claimType: 'descriptive' },
+        insights: [], limitations: [], suggestedChecks: [],
+      },
+    };
+  }
   const metricLabel = metric === 'total' ? 'Tổng số' : metric === 'error_rate' ? '% báo sai' : 'Báo sai/Lỗi';
   const facts = status === 'insufficient_data' ? [] : [
     { factId: 'fact-period-000', kind: 'period_value', value: 8, unit: metric === 'error_rate' ? 'percent' : 'ticket', displayValue: metric === 'error_rate' ? '8%' : '8', evidenceIds: ['ev-period-000'] },
@@ -221,18 +302,33 @@ function aiAnalysis(requestBody: Record<string, string>, status: HarnessOptions[
     { periodIndex: 0, periodStart: '2026-09-16', periodEnd: '2026-09-16', periodLabel: '16/09/2026', value: 8, displayValue: metric === 'error_rate' ? '8%' : '8', rowCount: 1, observedDayCount: 1, expectedDayCount: 1, coverageRatio: 1, evidenceId: 'ev-period-000', factId: 'fact-period-000', inferredZero: false, change: null },
     { periodIndex: 1, periodStart: '2026-09-17', periodEnd: '2026-09-17', periodLabel: '17/09/2026', value: 6, displayValue: metric === 'error_rate' ? '6%' : '6', rowCount: 1, observedDayCount: 1, expectedDayCount: 1, coverageRatio: 1, evidenceId: 'ev-period-001', factId: 'fact-period-001', inferredZero: false, change: { fromPeriodStart: '2026-09-16', absolute: -2, absoluteDisplay: metric === 'error_rate' ? '-2 pp' : '-2', relativePercent: -25, relativeDisplay: '-25%', direction: 'decreasing', factIds: ['fact-change-001', 'fact-relative-change-001', 'fact-direction-001'] } },
   ];
+  const periodAnalytics = status === 'insufficient_data' ? {
+    policyVersion: 'period-level-v1', tieBreak: 'latest_period',
+    peak: null, lowest: null, largestIncrease: null, largestDecrease: null,
+    consecutiveIncrease: null, consecutiveDecrease: null, endingPlateau: null, latestChange: null,
+  } : {
+    policyVersion: 'period-level-v1', tieBreak: 'latest_period',
+    peak: { periodStart: '2026-09-16', periodEnd: '2026-09-16', periodLabel: '16/09/2026', value: 8, displayValue: metric === 'error_rate' ? '8%' : '8', coverageRatio: 1, factIds: ['fact-period-highest', 'fact-period-000'] },
+    lowest: { periodStart: '2026-09-17', periodEnd: '2026-09-17', periodLabel: '17/09/2026', value: 6, displayValue: metric === 'error_rate' ? '6%' : '6', coverageRatio: 1, factIds: ['fact-period-lowest', 'fact-period-001'] },
+    largestIncrease: null,
+    largestDecrease: { fromPeriodStart: '2026-09-16', fromPeriodLabel: '16/09/2026', fromValue: 8, fromDisplayValue: metric === 'error_rate' ? '8%' : '8', toPeriodStart: '2026-09-17', toPeriodLabel: '17/09/2026', toValue: 6, toDisplayValue: metric === 'error_rate' ? '6%' : '6', absolute: -2, absoluteDisplay: metric === 'error_rate' ? '-2 pp' : '-2', relativePercent: -25, relativeDisplay: '-25%', direction: 'decreasing', factIds: ['fact-period-largest-decrease', 'fact-change-001'] },
+    consecutiveIncrease: null, consecutiveDecrease: null, endingPlateau: null,
+    latestChange: { fromPeriodStart: '2026-09-16', fromPeriodLabel: '16/09/2026', fromValue: 8, fromDisplayValue: metric === 'error_rate' ? '8%' : '8', toPeriodStart: '2026-09-17', toPeriodLabel: '17/09/2026', toValue: 6, toDisplayValue: metric === 'error_rate' ? '6%' : '6', absolute: -2, absoluteDisplay: metric === 'error_rate' ? '-2 pp' : '-2', relativePercent: -25, relativeDisplay: '-25%', direction: 'decreasing', factIds: ['fact-period-latest-change', 'fact-change-001'] },
+  };
   return {
-    schemaVersion: 'ai-trend-v2', analysisId: 'ana_e2e', kind: 'trend', status,
+    schemaVersion: 'ai-trend-v3', analysisId: 'ana_e2e', kind: 'trend', status,
     scope: { project: 'VSO', entityRef: requestBody.entityRef || 'root', entityLabel: '1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống', mode: 'node', metricCode: metric, metricDisplayName: metricLabel },
     window: { start: requestBody.start || '2026-09-16', end: requestBody.end || '2026-09-17', groupBy, comparisonBasis: 'period_over_period_and_first_last', previousDate: '2026-09-16', currentDate: '2026-09-17' },
     dataAsOf: { committedImportRef: 'imp_1', snapshotId: 'as_e2e', generatedAt: '2026-09-17T09:00:00Z', stale: false, checksum: 'a'.repeat(64) },
     metric: { unit: metric === 'error_rate' ? 'percent' : 'ticket', aggregationRule: metric === 'error_rate' ? 'weighted_error_rate' : `period_${groupBy}_sum` },
     facts,
     series: status === 'insufficient_data' ? series.slice(0, 1) : series,
-    quality: { status: status === 'insufficient_data' ? 'insufficient_data' : 'valid', validPointCount: status === 'insufficient_data' ? 1 : 2, validPeriodCount: status === 'insufficient_data' ? 1 : 2, expectedPeriodCount: 2, observedInputDayCount: status === 'insufficient_data' ? 1 : 2, expectedCalendarDayCount: 2, coverageRatio: status === 'insufficient_data' ? 0.5 : 1, periodCoverageRatio: status === 'insufficient_data' ? 0.5 : 1, comparisonBasis: 'period_over_period_and_first_last', policyVersion: 'period-series-v2', limitations: status === 'insufficient_data' ? ['Cần ít nhất hai kỳ hợp lệ để phân tích xu hướng.'] : [] },
+    periodAnalytics,
+    historicalContext: { status: 'unavailable', policyVersion: 'trailing-12-periods-v1', lookbackPeriodLimit: 12, observedPeriodCount: 0, currentPosition: null },
+    quality: { status: status === 'insufficient_data' ? 'insufficient_data' : 'valid', validPointCount: status === 'insufficient_data' ? 1 : 2, validPeriodCount: status === 'insufficient_data' ? 1 : 2, expectedPeriodCount: 2, observedInputDayCount: status === 'insufficient_data' ? 1 : 2, expectedCalendarDayCount: 2, coverageRatio: status === 'insufficient_data' ? 0.5 : 1, periodCoverageRatio: status === 'insufficient_data' ? 0.5 : 1, comparisonBasis: 'period_over_period_and_first_last', policyVersion: 'period-series-v3', limitations: status === 'insufficient_data' ? ['Cần ít nhất hai kỳ hợp lệ để phân tích xu hướng.'] : [] },
     evidence: status === 'insufficient_data' ? evidence.slice(0, 1) : evidence,
     provider: { name: '9router', model: 'fake-gemini' },
-    validation: { status: status === 'ready' ? 'accepted' : 'not_run', errors: [] },
+    validation: { status: status === 'ready' ? 'accepted' : 'not_run', errors: status === 'provider_unavailable' ? ['timeout'] : [] },
     narrative: {
       mode: status === 'ready' ? 'ai' : 'deterministic',
       summary: { text: status === 'insufficient_data' ? 'Chưa có đủ hai điểm dữ liệu hợp lệ để so sánh.' : 'Điểm cuối thấp hơn điểm đầu trong khoảng đã chọn.', factIds: status === 'insufficient_data' ? [] : ['fact-previous', 'fact-current', 'fact-direction'], claimType: 'descriptive' },
@@ -261,7 +357,7 @@ export async function installApiHarness(page: Page, options: HarnessOptions = {}
       aiRequestCount += 1;
       if (options.aiDelayMs) await new Promise(resolve => setTimeout(resolve, options.aiDelayMs));
       if (options.aiFailureRequests?.includes(aiRequestCount)) return fulfillJson(route, { detail: { code: 'AI_PROVIDER_TEST_FAILURE', message: 'Provider thử nghiệm không phản hồi.' } }, 503);
-      return fulfillJson(route, aiAnalysis(request.postDataJSON() as Record<string, string>, options.aiResponseStatus));
+      return fulfillJson(route, options.aiFixture || aiAnalysis(request.postDataJSON() as Record<string, string>, options.aiResponseStatus, options.aiLimitedComparison, options.aiWholeSeries, options.aiCurrentDataset));
     }
     if (url.pathname === '/api/ai/analyses/ana_e2e') return fulfillJson(route, aiAnalysis({ entityRef: 'root', metricCode: 'error', start: '2026-09-16', end: '2026-09-17' }, options.aiResponseStatus));
     if (url.pathname === '/api/projects/VSO/entities') return fulfillJson(route, { entities });

@@ -194,7 +194,7 @@ Không được xem là hoàn thành chỉ vì CLI import đã tồn tại. Acce
 |---|---|
 | Trạng thái | Accepted, not built |
 | Actor chính | CX Analyst, AI Provider |
-| Development provider đã chọn | 9Router, model mặc định `ag/gemini-3.7-flash-high` |
+| Development provider đã chọn | 9Router, model mặc định `ag/gemini-3.7-flash-low` cho luồng narrative độ trễ thấp |
 | Chưa chốt | Production privacy/region/retention approval, cost budget, persistence, endpoint/UI và ngưỡng evaluation |
 
 Luồng dự kiến:

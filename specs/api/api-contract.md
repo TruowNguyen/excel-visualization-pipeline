@@ -1,5 +1,9 @@
 # API contract v1
 
+Current validator policy is `semantic-grounding-v4` (prompt registry trend-summary-v13 / metric-overview-v9). Numeric validation accepts only engine-authored value/displayValue representations with existing KPI/unit/date/source binding. Sentence-local subjects and range-versus-point dates replace cross-sentence nearest-token guesses. Warnings remain additive and non-blocking. [Current implementation and live evaluation](../ai-data/evidence/2026-10-02-validator-v4-and-prompt-evaluation.md); the v3 note below is historical.
+
+AI generation v4 update: public ai-trend-v3/ai-overview-v2 envelopes unchanged. Narrative v4 adds verified claims and validationPolicy; validation may be `partial` with additive categories/claimResults. Partial narratives remain status=ready and contain only surviving claims. Structural/provider/no-survivor failures retain existing fallback statuses. Current `semantic-grounding-v3` adds `validation.warnings` and `claimResults[].warnings` (arrays of diagnostic codes). Warnings alone do not reject a claim or change accepted to partial. See [current data-first validation policy](../ai-data/evidence/2026-10-02-data-first-validator.md) and [previous v2 evidence](../ai-data/evidence/2026-10-02-semantic-validator-and-live-evaluation.md).
+
 - Trạng thái: **As-built**
 - Base path: `/api`
 - Implementation: `app/api.py`
@@ -170,7 +174,7 @@ AI endpoint chỉ hoạt động khi `EVP_AI_ENABLED=true`. Việc gọi externa
 ```json
 {
   "entityRef": "opaque-core-entity-id",
-  "metricCode": "error",
+  "metricCode": "all",
   "start": "2026-09-01",
   "end": "2026-09-14",
   "groupBy": "week",
@@ -178,7 +182,13 @@ AI endpoint chỉ hoạt động khi `EVP_AI_ENABLED=true`. Việc gọi externa
 }
 ```
 
-`metricCode` chỉ nhận `total`, `error`, `error_rate`; `groupBy` nhận `day`, `week`, `month` và mặc định `day`; Phase 1 chỉ nhận `scope=node`. Start/end inclusive và phải tạo được context từ committed current view của project. Response `ai-trend-v2` gồm `analysisId`, `status`, `scope`, `window`, `dataAsOf`, `metric`, `series`, `facts`, `quality`, `evidence`, `narrative`, `provider`, `validation`.
+`metricCode` nhận `all`, `total`, `error`, `error_rate`; `groupBy` nhận `day`, `week`, `month` và mặc định `day`; Phase 1 chỉ nhận `scope=node`. `all` là mặc định trên UI và tạo một provider call cho bản tổng quan ba metric. Response dùng `ai-overview-v2`, có `metrics` chứa ba kết quả trend đã namespace fact/evidence; từng metric riêng vẫn dùng `ai-trend-v3`. `periodAnalytics` dùng policy `period-level-v1`; `historicalContext` dùng tối đa 12 kỳ hợp lệ hoàn tất ngay trước window theo policy `trailing-12-periods-v1`.
+
+Overview v2 thêm `comparisonBasis`, `insightCandidates`, `inspectionChecks`; root không có `series`. `comparisonBasis` policy `aligned-overview-v1` chứa các kỳ/tử số/mẫu số/ngày đủ điều kiện từ chính phép tính rate, baseline/current và status `comparable|limited|unavailable` với lý do. Relational candidate chỉ được tạo khi cả ba metric có cùng endpoint boundaries, đủ ngày/cả kỳ lịch, count khớp operands và denominator dương. Numerator bằng zero không tạo relative-growth fact; `0/0` không tạo relational claim. Comparison endpoint không đồng nghĩa tổng toàn window. Cross-metric facts có `operandFactIds`, policy version và evidence IDs của các operands.
+
+`insightCandidates[]` gồm `candidateId`, `layer` (`whole_series|relational|descriptive|temporal`), `text`, `factIds`, `evidenceIds`. `whole-window` đứng đầu và là summary duy nhất khi có. Các metric thêm `periodAnalytics.temporalStructure` (`chronological-stages-v1`): giai đoạn tăng/giảm/giữ nguyên theo thứ tự, đảo chiều quan sát được giữa hai đoạn kề nhau, gaps và canonical summary/fact IDs. Kỳ thiếu ngắt liên tục; không gọi anomaly/significance. Temporal candidate cũ vẫn cung cấp một biến động lớn với evidence; UI chronology hiển thị cả largestIncrease/largestDecrease đã có. `inspectionChecks[]` là backend-owned text/fact IDs/logical evidence IDs; UI map tới captured exact/aggregate target. Không đổi schema API: trường mới tương thích bổ sung vào `ai-trend-v3`/`ai-overview-v2`.
+
+Runtime mới giữ API `ai-trend-v3` / `ai-overview-v2`, thêm `synthesis` policy `grounded-synthesis-v1` (candidates/selectedCandidateIds/anchors). Checksum bao gồm synthesis và inspectionChecks. Provider input `ai-insight-provider-input-v3` chỉ gửi selected candidates, typed facts, anchors và limitations, không full series, canonical paragraph, validation grammar hoặc raw core provenance. Model output `ai-narrative-v3` có `{schemaVersion,analysisId,status,claims}`; claim có `{candidateId,text,factIds}`. Validator chấp nhận diễn đạt tương đương có giới hạn, khóa meaning/scope/direction/citations và bác số/ngày mới, nguyên nhân, chất lượng, anomaly, forecast. Backend normalize thành API narrative summary/insights/limitations/suggestedChecks; numerical/date anchors và checks thuộc backend. V1/v2 exact-copy chỉ phục vụ snapshot legacy không có synthesis. Không phải unrestricted generative analysis.
 
 `series` chứa tối đa 60 kỳ theo thứ tự thời gian; request tạo nhiều hơn 60 kỳ trả `422 AI_REQUEST_INVALID` để người dùng chọn grain lớn hơn hoặc thu hẹp khoảng, không âm thầm cắt dữ liệu. Mỗi kỳ có boundary/label, value, số ngày quan sát/kỳ vọng, `evidenceId` và `change` so với kỳ hợp lệ ngay trước đó. `change` gồm absolute delta, relative percent hoặc `null` khi baseline bằng zero, direction và fact ID. Count được cộng theo kỳ; `error_rate` là ratio of sums trên các cặp tử số/mẫu số hợp lệ theo từng ngày, không lấy trung bình daily percentage và không ghép tử số của ngày thiếu mẫu số với ngày khác. Kỳ không có dữ liệu không được tự điền zero và phải xuất hiện trong limitation/coverage. `facts` vẫn giữ fact đầu–cuối để tương thích trình bày tổng quan, đồng thời thêm fact từng kỳ và `trend_pattern` của toàn chuỗi.
 
@@ -190,4 +200,8 @@ Error bổ sung: `409 AI_FEATURE_DISABLED`, `422 AI_REQUEST_INVALID`, `404 AI_AN
 
 ## Thay đổi contract
 
+Synthesis policy v3 giữ `minimumTrendPeriods=4`, không đổi response/narrative v3. Không phát sinh `minimumCorrelationPeriods`, `correlations[]`, `correlationNote` hay `pearson_change_correlation` facts. Các candidate liên hệ dùng `relationshipDescription` và `insight_relation` với period operands của ba KPI cùng đoạn đủ điều kiện; giải thích số lượng/mẫu số/tỷ trọng, không thống kê correlation. Short-window candidates không được claim trend/extrema. Feature/privacy/committed-only/freshness giữ nguyên.
+
 Thêm field tương thích ngược được phép trong v1. Xóa/đổi nghĩa field, đổi status code hoặc đổi quy tắc filter MUST cập nhật spec, frontend, test API và tăng contract version khi client cũ không còn an toàn.
+
+AI synthesis policy v4 adds `reading` with version `analytical-reading-v1`, nullable overview, shared phases and distinct takeaways. Every item retains its period/relation fact IDs; phase/takeaway source IDs use existing captured evidence. The additive field is pinned within synthesis checksum. Existing response/narrative schemas, one-call provider budget, KPI rules and safety gates remain unchanged. Clients without reading support may continue rendering the validated narrative; new clients use its deterministic reading structure and identify that copy as “Tổng hợp từ số liệu”.

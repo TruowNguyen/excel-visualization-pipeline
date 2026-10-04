@@ -1,5 +1,17 @@
 # 05 — Đặc tả đánh giá và nghiệm thu AI
 
+## Semantic validation v4 và prompt v13/v9
+
+Regression bổ sung cho Engine displayValue, sai unit/ngày dù số hợp lệ, range header, date qua ranh giới câu, chủ ngữ tỷ lệ rút gọn và chủ ngữ ghép. Selection guidance ưu tiên linked KPI relation; peak_offset vẫn là candidate hợp lệ, không bị ép loại chỉ vì không được chọn mặc định. Lần kiểm thử cuối phải gọi provider thật trên dữ liệu committed sau các kiểm thử offline. [Bằng chứng và giới hạn](evidence/2026-10-02-validator-v4-and-prompt-evaluation.md).
+
+## Semantic validation v3 — ưu tiên dữ liệu
+
+Kiểm tra từ vựng không còn là tiêu chí loại claim. Kiểm tra độ đầy đủ của diễn giải được ghi thành warnings; số/ngày/đơn vị/KPI/phạm vi và mâu thuẫn đã nhận diện vẫn là lỗi chặn. Regression phân biệt đúng số nhưng sai ngày/chiều, giải thích mẫu số đã có fact và nguyên nhân nghiệp vụ chưa có căn cứ. Replay offline ba response provider đã lưu đều accepted, đủ hai claim; đây không phải lần gọi live mới hoặc nghiệm thu độ đúng ngữ nghĩa tổng quát. [Chi tiết v3](evidence/2026-10-02-data-first-validator.md).
+
+## Semantic validation v2 — 02/10/2026
+
+Regression suite bao gồm paraphrase không canonical, số/ngày đúng và sai cặp, metric/unit sai, phủ định/limitation, đảo chiều, sparse scopes, duplicate JSON fields, citation dependency closure và claim-level salvage. Ba real-provider calls trên VSO 07–16/09 ghi nhận false rejection và thiếu diễn giải tỷ lệ; lần cuối ready/partial. Chưa nghiệm thu chất lượng grounded analyst tổng quát hoặc production pass rate. [Kết quả live nguyên văn](evidence/2026-10-02-live-semantic-evaluation.json).
+
 **Phiên bản đặc tả:** 2.2.0. **Trạng thái:** Phase 1 có automated evidence và real-provider smoke cho môi trường hiện tại; rollout rộng vẫn cần accuracy/cost threshold. **IDs:** `AI-ACC-*`.
 
 ## 1. Nguyên tắc nghiệm thu
@@ -49,6 +61,22 @@ Các fixture class tối thiểu:
 
 ## 4. Nghiệm thu tất định — so sánh
 
+### Analytical overview MVP (không phải entity comparative analysis)
+
+| ID | Điều kiện nghiệm thu |
+|---|---|
+| AI-ACC-TR-011 | Complete aligned endpoints tạo đúng rate relationship khi error tăng/rate giảm, error giảm/rate tăng, growth bằng nhau hoặc direction khác nhau. |
+| AI-ACC-TR-012 | Zero denominator, partial natural period và endpoint mismatch không tạo relational candidate; description/limitations vẫn dùng được. |
+| AI-ACC-TR-013 | Temporal candidate có ngày, unit và bằng chứng đúng, chọn largest absolute movement giữa increase/decrease; không gọi anomaly. |
+| AI-ACC-TR-014 | Chuỗi 16→8→10→8→19→43→32→22→22 có sáu đoạn theo đúng thứ tự, bốn đảo chiều trực tiếp, đỉnh 43, giảm liên tiếp sau đỉnh và plateau cuối; không tóm tắt thành tăng 16→22. |
+| AI-ACC-TR-015 | Missing nội bộ hoặc biên không được mô tả như toàn khoảng đầy đủ; gaps ngắt consecutive/plateau run. Chuỗi 60 kỳ vẫn giữ đầy đủ mọi đoạn, summary bounded. |
+| AI-ACC-TR-016 | Validator từ chối endpoint-only summary cho single metric và từ chối nối endpoint candidate vào overview summary. Desktop hiển thị cả tăng/giảm lớn nhất có ngày, endpoint disclosure đóng mặc định và source checks đúng captured evidence. |
+| AI-ACC-CON-008 | Narrative v2 chỉ chọn/nối exact candidate text và đầy đủ dependencies; sai metric/date/cause/check hoặc citations bị reject. |
+| AI-ACC-CON-009 | Provider v2 một call, không full series/entity label/core refs; deterministic fallback giữ cùng analytical candidates/checks. |
+| AI-ACC-CON-010 | Desktop hiển thị relationship basis, giới hạn trước kết luận, kiểm tra mở đúng evidence; stale receipt giữ entity của snapshot. Không thêm mobile optimization acceptance. |
+
+Evidence automated: `tests/test_ai_overview.py`, overview service integration trong `tests/test_ai.py`, desktop flows trong `frontend/e2e/ai-insights.spec.ts`. Đây không phải human clarity benchmark hoặc production accuracy/SLA.
+
 | ID | Điều kiện nghiệm thu |
 |---|---|
 | AI-ACC-CMP-001 | Reject comparison khác project, unit không tương thích hoặc entity count không hợp lệ. |
@@ -91,6 +119,17 @@ Status theo criterion: `Not implemented`, `Gap`, `Partial`, `Covered`, `Blocked 
 Trước khi bật AI cho người dùng: owner phải duyệt KPI/coverage rule, privacy/provider, evaluation set và release threshold phù hợp phạm vi; deterministic/critical grounding gate phải pass; fallback hoạt động; known limitation được hiển thị. Privacy/provider đã được owner xác nhận cho môi trường hiện tại ngày 2026-09-25; điều này không tự động phê duyệt rollout cho môi trường khác hoặc các feature report/comparison.
 
 ## 8. Trạng thái bằng chứng Phase 1
+
+### Grounded synthesis — 02/10/2026
+
+- `AI-ACC-TR-021`: 2 kỳ tăng/giảm/giữ nguyên và 3 kỳ đảo chiều không được nhận sustained/extrema narrative; latest block ngắn không được nâng thành trend nhờ count toàn cửa sổ.
+- `AI-ACC-TR-022`: Kiểm chứng liên hệ số lỗi/Tổng số/tỷ trọng với các hướng cùng hoặc khác chiều và số lỗi giữ nguyên. Facts/anchors đủ cả ba metric, căn chỉnh kỳ và không nối missing. Hai kỳ không bị gọi là xu hướng. Không phát sinh Pearson facts/coefficient hoặc ngưỡng sáu kỳ. Validator từ chối kết luận chất lượng và nhân quả.
+- `AI-ACC-TR-023`: E2E giữ source actions, chỉ một bảng cho short windows, không extrema/chronology, nhãn `Kỳ 1 (07–13/09) → Kỳ 2 (14–16/09)`, đủ ba cặp hệ số và undefined không zero. Evidence mới: 157 Python / 15 AI E2E / build pass; không live provider.
+
+- `AI-ACC-TR-017`: Golden cases trong `tests/test_ai_synthesis.py`: peak-retreat-plateau; trough-recovery; equal endpoints conceal reversal; monotonic tăng/giảm; oscillation abstention; missing giữa chuỗi; count tăng/rate giảm; peak lệch kỳ; insufficient.
+- `AI-ACC-TR-018`: Validator chấp nhận wording khác canonical nhưng bác sai metric, direction, scope, date/number, cause, forecast, quality, citations, schema hoặc relation operands. Partial-window prefix bắt buộc. Không assertion exact paragraph cho synthesis.
+- `AI-ACC-TR-019`: Cross-metric kiểm tra temporal alignment, contributor operands, natural-period completeness, unique peaks và missing blocks. Constant series không được tạo peak-offset giả.
+- `AI-ACC-TR-020`: E2E kiểm tra summary không dump facts, anchors tối thiểu, limitation sau summary, contextual source checks, disclosure đóng mặc định và retained full chronology. 149 Python tests / 13 AI E2E / frontend build pass. Đây là local/fake-provider evidence, không phải đánh giá production LLM. Xem [evidence](evidence/2026-10-02-grounded-analytical-insights.md).
 
 | Nhóm | Trạng thái | Bằng chứng |
 |---|---|---|

@@ -7,6 +7,8 @@ from typing import Any
 
 import pandas as pd
 
+from .temporal import temporal_structure
+
 
 METRICS = {
     "total": {"label": "Tổng số", "kind": "count"},
@@ -90,14 +92,20 @@ class TrendComputation:
     current: TrendPoint | None
     facts: tuple[dict[str, Any], ...]
     series: tuple[dict[str, Any], ...]
+    historical_points: tuple[TrendPoint, ...]
+    period_analytics: dict[str, Any]
+    historical_context: dict[str, Any]
     quality: dict[str, Any]
 
 
 class TrendStrategy:
     """Versioned deterministic period-over-period trend calculation."""
 
-    policy_version = "period-series-v2"
+    policy_version = "period-series-v3"
+    period_analytics_policy = "period-level-v1"
+    historical_context_policy = "trailing-12-periods-v1"
     max_periods = 60
+    history_period_limit = 12
 
     def compute(
         self,
@@ -122,44 +130,29 @@ class TrendStrategy:
                 f"Khoảng đã chọn tạo {expected_periods} kỳ; tối đa {self.max_periods}. Hãy chọn mức thời gian lớn hơn hoặc thu hẹp khoảng."
             )
 
-        scoped = data[data["entity_id"].eq(entity_ref)].copy()
-        if scoped.empty:
+        entity_data = data[data["entity_id"].eq(entity_ref)].copy()
+        if entity_data.empty:
             raise ValueError("Nội dung theo dõi không có dữ liệu đã ghi nhận trong dự án.")
-        scoped["date"] = pd.to_datetime(scoped["date"]).dt.normalize()
-        scoped = scoped[
-            scoped["date"].ge(pd.Timestamp(start)) & scoped["date"].le(pd.Timestamp(end))
+        entity_data["date"] = pd.to_datetime(entity_data["date"]).dt.normalize()
+        scoped = entity_data[
+            entity_data["date"].ge(pd.Timestamp(start)) & entity_data["date"].le(pd.Timestamp(end))
         ]
         unit_values = scoped.get("effective_unit", pd.Series(dtype=object)).dropna().unique()
         count_unit = str(unit_values[0]) if len(unit_values) else "giá trị"
         metric = METRICS[metric_code]
         unit = "percent" if metric_code == "error_rate" else count_unit
-        scoped["period_start"] = scoped["date"].map(lambda value: _period_start(value, group_by))
-        points: list[TrendPoint] = []
-        for index, (natural_start, rows) in enumerate(scoped.groupby("period_start", sort=True)):
-            calculated = self._point(rows, metric_code)
-            if calculated is None:
-                continue
-            value, evidence_rows, inferred_zero = calculated
-            period_start = max(natural_start.date(), start)
-            period_end = min(_natural_period_end(natural_start, group_by).date(), end)
-            eligible = evidence_rows["chart_value"].notna()
-            if "ai_included" in evidence_rows:
-                eligible &= evidence_rows["ai_included"].fillna(False).astype(bool)
-            observed_days = int(pd.to_datetime(
-                evidence_rows.loc[eligible, "date"]
-            ).dt.date.nunique())
-            expected_days = (period_end - period_start).days + 1
-            points.append(TrendPoint(
-                period_start=period_start,
-                period_end=period_end,
-                period_label=_period_label(period_start, period_end, group_by),
-                value=value,
-                rows=evidence_rows.drop(columns=["period_start"], errors="ignore"),
-                observed_day_count=observed_days,
-                expected_day_count=expected_days,
-                evidence_id=f"ev-period-{index:03d}",
-                inferred_zero=inferred_zero,
-            ))
+        points = self._build_points(
+            scoped, metric_code=metric_code, group_by=group_by,
+            boundary_start=start, boundary_end=end, evidence_prefix="ev-period",
+        )
+        historical_candidates = self._build_points(
+            entity_data[entity_data["date"].lt(pd.Timestamp(start))],
+            metric_code=metric_code, group_by=group_by,
+            evidence_prefix="ev-history",
+        )
+        historical_points = [
+            point for point in historical_candidates if point.period_end < start
+        ][-self.history_period_limit:]
 
         total_days = (end - start).days + 1
         observed_days = len({
@@ -199,11 +192,16 @@ class TrendStrategy:
             quality["limitations"].append(
                 "Cần ít nhất hai kỳ hợp lệ để tính thay đổi và xu hướng."
             )
+            period_analytics = self._period_analytics(points, series, facts, metric_code, unit, incomplete=len(points) < expected_periods)
+            historical_context = self._historical_context(
+                historical_points, points, facts, metric_code, unit,
+            )
             return TrendComputation(
                 "insufficient_data", metric_code, metric["label"], metric["kind"], unit,
                 self._aggregation_rule(metric_code, group_by), group_by, start, end,
                 tuple(points), None, points[0] if points else None,
-                tuple(facts), tuple(series), quality,
+                tuple(facts), tuple(series), tuple(historical_points),
+                period_analytics, historical_context, quality,
             )
 
         previous, current = points[0], points[-1]
@@ -233,11 +231,59 @@ class TrendStrategy:
             "fact-trend-pattern", "trend_pattern", pattern,
             [point.evidence_id for point in points],
         ))
+        period_analytics = self._period_analytics(points, series, facts, metric_code, unit, incomplete=len(points) < expected_periods)
+        historical_context = self._historical_context(
+            historical_points, points, facts, metric_code, unit,
+        )
         return TrendComputation(
             "ready", metric_code, metric["label"], metric["kind"], unit,
             self._aggregation_rule(metric_code, group_by), group_by, start, end,
-            tuple(points), previous, current, tuple(facts), tuple(series), quality,
+            tuple(points), previous, current, tuple(facts), tuple(series),
+            tuple(historical_points), period_analytics, historical_context, quality,
         )
+
+    def _build_points(
+        self,
+        scoped: pd.DataFrame,
+        *,
+        metric_code: str,
+        group_by: str,
+        evidence_prefix: str,
+        boundary_start: date | None = None,
+        boundary_end: date | None = None,
+    ) -> list[TrendPoint]:
+        if scoped.empty:
+            return []
+        grouped = scoped.copy()
+        grouped["period_start"] = grouped["date"].map(lambda value: _period_start(value, group_by))
+        points: list[TrendPoint] = []
+        for index, (natural_start, rows) in enumerate(grouped.groupby("period_start", sort=True)):
+            calculated = self._point(rows, metric_code)
+            if calculated is None:
+                continue
+            value, evidence_rows, inferred_zero = calculated
+            natural_start_date = natural_start.date()
+            natural_end_date = _natural_period_end(natural_start, group_by).date()
+            period_start = max(natural_start_date, boundary_start) if boundary_start else natural_start_date
+            period_end = min(natural_end_date, boundary_end) if boundary_end else natural_end_date
+            eligible = evidence_rows["chart_value"].notna()
+            if "ai_included" in evidence_rows:
+                eligible &= evidence_rows["ai_included"].fillna(False).astype(bool)
+            observed_days = int(pd.to_datetime(
+                evidence_rows.loc[eligible, "date"]
+            ).dt.date.nunique())
+            points.append(TrendPoint(
+                period_start=period_start,
+                period_end=period_end,
+                period_label=_period_label(period_start, period_end, group_by),
+                value=value,
+                rows=evidence_rows.drop(columns=["period_start"], errors="ignore"),
+                observed_day_count=observed_days,
+                expected_day_count=(period_end - period_start).days + 1,
+                evidence_id=f"{evidence_prefix}-{index:03d}",
+                inferred_zero=inferred_zero,
+            ))
+        return points
 
     def _series(
         self,
@@ -306,6 +352,377 @@ class TrendStrategy:
                 "change": change,
             })
         return facts, series
+
+    def _period_analytics(
+        self,
+        points: list[TrendPoint],
+        series: list[dict[str, Any]],
+        facts: list[dict[str, Any]],
+        metric_code: str,
+        unit: str,
+        *, incomplete: bool = False,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "temporalStructure": temporal_structure(series, facts, incomplete=incomplete),
+            "policyVersion": self.period_analytics_policy,
+            "tieBreak": "latest_period",
+            "peak": None,
+            "lowest": None,
+            "largestIncrease": None,
+            "largestDecrease": None,
+            "consecutiveIncrease": None,
+            "consecutiveDecrease": None,
+            "endingPlateau": None,
+            "latestChange": None,
+        }
+        if not points:
+            return result
+
+        highest_index = max(range(len(points)), key=lambda index: (points[index].value, index))
+        lowest_index = min(range(len(points)), key=lambda index: (points[index].value, -index))
+        result["peak"] = self._ranked_period(
+            "fact-period-highest", "period_highest_value", highest_index,
+            points, facts, unit,
+        )
+        result["lowest"] = self._ranked_period(
+            "fact-period-lowest", "period_lowest_value", lowest_index,
+            points, facts, unit,
+        )
+
+        changes = [
+            (index, item["change"])
+            for index, item in enumerate(series)
+            if item.get("change") is not None
+        ]
+        increases = [item for item in changes if item[1]["absolute"] > 0]
+        decreases = [item for item in changes if item[1]["absolute"] < 0]
+        if increases:
+            selected = max(increases, key=lambda item: (item[1]["absolute"], item[0]))
+            result["largestIncrease"] = self._ranked_change(
+                "fact-period-largest-increase", "largest_period_increase",
+                selected[0], selected[1], points, facts, metric_code, unit,
+            )
+        if decreases:
+            selected = min(decreases, key=lambda item: (item[1]["absolute"], -item[0]))
+            result["largestDecrease"] = self._ranked_change(
+                "fact-period-largest-decrease", "largest_period_decrease",
+                selected[0], selected[1], points, facts, metric_code, unit,
+            )
+        if changes:
+            index, change = changes[-1]
+            result["latestChange"] = self._ranked_change(
+                "fact-period-latest-change", "latest_period_change",
+                index, change, points, facts, metric_code, unit,
+            )
+        adjacent_changes = [item for item in changes if (
+            points[item[0]].period_start - points[item[0] - 1].period_end
+        ).days == 1]
+        increase_run = self._longest_run(adjacent_changes, "increasing")
+        decrease_run = self._longest_run(adjacent_changes, "decreasing")
+        if len(increase_run) >= 2:
+            result["consecutiveIncrease"] = self._sequence_analysis(
+                "fact-consecutive-increase", "consecutive_increase_run",
+                increase_run, points, series, facts, unit,
+            )
+        if len(decrease_run) >= 2:
+            result["consecutiveDecrease"] = self._sequence_analysis(
+                "fact-consecutive-decrease", "consecutive_decrease_run",
+                decrease_run, points, series, facts, unit,
+            )
+        ending_plateau = self._ending_run(adjacent_changes, "unchanged") if adjacent_changes and adjacent_changes[-1][0] == len(points) - 1 else []
+        if ending_plateau:
+            result["endingPlateau"] = self._sequence_analysis(
+                "fact-ending-plateau", "ending_plateau",
+                ending_plateau, points, series, facts, unit,
+            )
+        return result
+
+    @staticmethod
+    def _longest_run(
+        changes: list[tuple[int, dict[str, Any]]], direction: str,
+    ) -> list[int]:
+        best: list[int] = []
+        current: list[int] = []
+        for index, change in changes:
+            if change["direction"] == direction:
+                current = [*current, index] if current and index == current[-1] + 1 else [index]
+                if len(current) >= len(best):
+                    best = current.copy()
+            else:
+                current = []
+        return best
+
+    @staticmethod
+    def _ending_run(
+        changes: list[tuple[int, dict[str, Any]]], direction: str,
+    ) -> list[int]:
+        result: list[int] = []
+        for index, change in reversed(changes):
+            if change["direction"] != direction or (result and index != result[-1] - 1):
+                break
+            result.append(index)
+        return list(reversed(result))
+
+    def _sequence_analysis(
+        self,
+        fact_id: str,
+        kind: str,
+        change_indices: list[int],
+        points: list[TrendPoint],
+        series: list[dict[str, Any]],
+        facts: list[dict[str, Any]],
+        unit: str,
+    ) -> dict[str, Any]:
+        point_indices = [change_indices[0] - 1, *change_indices]
+        selected_points = [points[index] for index in point_indices]
+        evidence_ids = [point.evidence_id for point in selected_points]
+        sequence_fact = self._fact(
+            fact_id, kind, float(len(change_indices)), "transition", evidence_ids,
+        )
+        sequence_fact["supportingValues"] = [round(point.value, 8) for point in selected_points]
+        facts.append(sequence_fact)
+        supporting_fact_ids: list[str] = [fact_id]
+        for index in point_indices:
+            supporting_fact_ids.append(f"fact-period-{index:03d}")
+        for index in change_indices:
+            supporting_fact_ids.extend(series[index]["change"]["factIds"])
+        return {
+            "transitionCount": len(change_indices),
+            "startPeriodLabel": selected_points[0].period_label,
+            "endPeriodLabel": selected_points[-1].period_label,
+            "values": [round(point.value, 8) for point in selected_points],
+            "displayValues": [_display(point.value, unit) for point in selected_points],
+            "periodLabels": [point.period_label for point in selected_points],
+            "factIds": list(dict.fromkeys(supporting_fact_ids)),
+        }
+
+    def _ranked_period(
+        self,
+        fact_id: str,
+        kind: str,
+        index: int,
+        points: list[TrendPoint],
+        facts: list[dict[str, Any]],
+        unit: str,
+    ) -> dict[str, Any]:
+        point = points[index]
+        facts.append(self._fact(fact_id, kind, point.value, unit, [point.evidence_id]))
+        return {
+            "periodStart": point.period_start.isoformat(),
+            "periodEnd": point.period_end.isoformat(),
+            "periodLabel": point.period_label,
+            "value": round(point.value, 8),
+            "displayValue": _display(point.value, unit),
+            "coverageRatio": round(point.observed_day_count / point.expected_day_count, 4),
+            "factIds": [fact_id, f"fact-period-{index:03d}"],
+        }
+
+    def _ranked_change(
+        self,
+        fact_id: str,
+        kind: str,
+        index: int,
+        change: dict[str, Any],
+        points: list[TrendPoint],
+        facts: list[dict[str, Any]],
+        metric_code: str,
+        unit: str,
+    ) -> dict[str, Any]:
+        prior, current = points[index - 1], points[index]
+        delta_unit = "percentage_point" if metric_code == "error_rate" else unit
+        facts.append(self._fact(
+            fact_id, kind, change["absolute"], delta_unit,
+            [prior.evidence_id, current.evidence_id],
+        ))
+        return {
+            "fromPeriodStart": prior.period_start.isoformat(),
+            "fromPeriodLabel": prior.period_label,
+            "fromValue": round(prior.value, 8),
+            "fromDisplayValue": _display(prior.value, unit),
+            "toPeriodStart": current.period_start.isoformat(),
+            "toPeriodLabel": current.period_label,
+            "toValue": round(current.value, 8),
+            "toDisplayValue": _display(current.value, unit),
+            "absolute": change["absolute"],
+            "absoluteDisplay": change["absoluteDisplay"],
+            "relativePercent": change["relativePercent"],
+            "relativeDisplay": change["relativeDisplay"],
+            "direction": change["direction"],
+            "factIds": [
+                fact_id,
+                f"fact-period-{index - 1:03d}",
+                f"fact-period-{index:03d}",
+                *change["factIds"],
+            ],
+        }
+
+    def _historical_context(
+        self,
+        historical_points: list[TrendPoint],
+        selected_points: list[TrendPoint],
+        facts: list[dict[str, Any]],
+        metric_code: str,
+        unit: str,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "status": "available" if historical_points else "unavailable",
+            "policyVersion": self.historical_context_policy,
+            "lookbackPeriodLimit": self.history_period_limit,
+            "observedPeriodCount": len(historical_points),
+            "periods": [],
+            "previousPeriod": None,
+            "historicalRange": None,
+            "boundaryComparison": None,
+            "currentPosition": None,
+            "limitations": [],
+        }
+        if not historical_points:
+            result["limitations"].append(
+                "Không có kỳ hợp lệ trước khoảng đang xem để tạo bối cảnh lịch sử."
+            )
+            return result
+
+        history_fact_ids: list[str] = []
+        for index, point in enumerate(historical_points):
+            fact_id = f"fact-history-period-{index:03d}"
+            history_fact_ids.append(fact_id)
+            facts.append(self._fact(
+                fact_id, "historical_period_value", point.value, unit, [point.evidence_id]
+            ))
+            result["periods"].append({
+                "periodStart": point.period_start.isoformat(),
+                "periodEnd": point.period_end.isoformat(),
+                "periodLabel": point.period_label,
+                "value": round(point.value, 8),
+                "displayValue": _display(point.value, unit),
+                "coverageRatio": round(point.observed_day_count / point.expected_day_count, 4),
+                "factId": fact_id,
+            })
+        facts.append(self._fact(
+            "fact-history-period-count", "historical_period_count",
+            float(len(historical_points)), "period",
+            [point.evidence_id for point in historical_points],
+        ))
+
+        previous_index = len(historical_points) - 1
+        previous = historical_points[previous_index]
+        previous_fact_id = history_fact_ids[previous_index]
+        result["previousPeriod"] = {
+            **result["periods"][previous_index],
+            "factIds": [previous_fact_id],
+        }
+
+        highest_index = max(
+            range(len(historical_points)),
+            key=lambda index: (historical_points[index].value, index),
+        )
+        lowest_index = min(
+            range(len(historical_points)),
+            key=lambda index: (historical_points[index].value, -index),
+        )
+        highest, lowest = historical_points[highest_index], historical_points[lowest_index]
+        facts.extend([
+            self._fact(
+                "fact-history-highest", "historical_highest_value", highest.value, unit,
+                [highest.evidence_id],
+            ),
+            self._fact(
+                "fact-history-lowest", "historical_lowest_value", lowest.value, unit,
+                [lowest.evidence_id],
+            ),
+        ])
+        result["historicalRange"] = {
+            "start": historical_points[0].period_start.isoformat(),
+            "end": historical_points[-1].period_end.isoformat(),
+            "lowest": {
+                "periodLabel": lowest.period_label,
+                "value": round(lowest.value, 8),
+                "displayValue": _display(lowest.value, unit),
+                "factIds": ["fact-history-lowest", history_fact_ids[lowest_index]],
+            },
+            "highest": {
+                "periodLabel": highest.period_label,
+                "value": round(highest.value, 8),
+                "displayValue": _display(highest.value, unit),
+                "factIds": ["fact-history-highest", history_fact_ids[highest_index]],
+            },
+        }
+
+        if not selected_points:
+            return result
+
+        first = selected_points[0]
+        boundary_delta = first.value - previous.value
+        boundary_relative = None if math.isclose(previous.value, 0.0, abs_tol=1e-12) else (
+            boundary_delta / abs(previous.value) * 100
+        )
+        delta_unit = "percentage_point" if metric_code == "error_rate" else unit
+        boundary_evidence = [previous.evidence_id, first.evidence_id]
+        facts.extend([
+            self._fact(
+                "fact-history-boundary-change", "historical_boundary_change",
+                boundary_delta, delta_unit, boundary_evidence,
+            ),
+            self._enum_fact(
+                "fact-history-boundary-direction", "period_direction",
+                _direction(boundary_delta), boundary_evidence,
+            ),
+        ])
+        boundary_fact_ids = [
+            previous_fact_id, "fact-period-000", "fact-history-boundary-change",
+            "fact-history-boundary-direction",
+        ]
+        if boundary_relative is not None:
+            facts.append(self._fact(
+                "fact-history-boundary-relative", "historical_boundary_relative_change",
+                boundary_relative, "percent", boundary_evidence,
+            ))
+            boundary_fact_ids.append("fact-history-boundary-relative")
+        else:
+            result["limitations"].append(
+                "Kỳ lịch sử liền trước bằng 0 nên không tính phần trăm thay đổi tới kỳ đầu của khoảng đang xem."
+            )
+        result["boundaryComparison"] = {
+            "fromPeriodLabel": previous.period_label,
+            "toPeriodLabel": first.period_label,
+            "absolute": round(boundary_delta, 8),
+            "absoluteDisplay": _display(boundary_delta, delta_unit),
+            "relativePercent": round(boundary_relative, 8) if boundary_relative is not None else None,
+            "relativeDisplay": _display(boundary_relative, "percent"),
+            "direction": _direction(boundary_delta),
+            "factIds": boundary_fact_ids,
+        }
+
+        current = selected_points[-1]
+        if current.value > highest.value:
+            position = "above_historical_range"
+        elif current.value < lowest.value:
+            position = "below_historical_range"
+        elif math.isclose(highest.value, lowest.value, abs_tol=1e-12) and math.isclose(
+            current.value, highest.value, abs_tol=1e-12
+        ):
+            position = "matches_historical_range"
+        else:
+            position = "within_historical_range"
+        position_evidence = [current.evidence_id, lowest.evidence_id, highest.evidence_id]
+        facts.append(self._enum_fact(
+            "fact-current-history-position", "historical_range_position",
+            position, position_evidence,
+        ))
+        result["currentPosition"] = {
+            "value": position,
+            "currentPeriodLabel": current.period_label,
+            "factIds": [
+                f"fact-period-{len(selected_points) - 1:03d}",
+                "fact-history-lowest", "fact-history-highest",
+                "fact-current-history-position",
+            ],
+        }
+        if any(point.observed_day_count < point.expected_day_count for point in historical_points):
+            result["limitations"].append(
+                "Một hoặc nhiều kỳ trong bối cảnh lịch sử chỉ có dữ liệu cho một phần số ngày."
+            )
+        return result
 
     @staticmethod
     def _pattern(directions: list[str]) -> str:

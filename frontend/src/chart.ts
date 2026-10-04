@@ -1,13 +1,20 @@
 import type { ChartPointSelection, Figure } from './types';
+import { formatMetricText, getMetricDisplayLabel } from './terminology';
 
 let plotlyModule: Promise<typeof import('plotly.js-basic-dist-min')> | null = null;
 const renderVersions = new WeakMap<HTMLElement, number>();
 const CHART_TEXT_COLOR = '#526176';
 
-/** Presentation-only overrides. Values, customdata, hover templates and trace order stay intact. */
+/** Presentation-only overrides; numerical data, lineage metadata and trace order stay intact. */
 export function presentationFigure(figure: Figure, height = 420, identity?: string): Figure {
   const data = figure.data.map(trace => {
     const styled = { ...trace };
+    if (typeof styled.name === 'string') styled.name = formatMetricText(styled.name);
+    if (typeof styled.hovertemplate === 'string') styled.hovertemplate = formatMetricText(styled.hovertemplate);
+    // Map only exact metric keys: dates, values and other source text remain untouched.
+    if (Array.isArray(styled.customdata)) styled.customdata = styled.customdata.map(row =>
+      Array.isArray(row) ? row.map(cell => typeof cell === 'string' ? getMetricDisplayLabel(cell) : cell) : row,
+    );
     if (styled.type === 'bar') {
       styled.textposition = 'none';
       styled.opacity = Math.min(Number(styled.opacity ?? 1), 0.82);
@@ -27,6 +34,13 @@ export function presentationFigure(figure: Figure, height = 420, identity?: stri
     xaxis.ticktext = weeks.map(label => `T${Number(label.match(/^Tuần\s+(\d+)/i)?.[1])}`);
     xaxis.tickangle = 0;
   }
+  const displayAxis = (axis: unknown): Record<string, unknown> => {
+    const source = axis && typeof axis === 'object' ? axis as Record<string, unknown> : {};
+    const title = source.title;
+    return { ...source, ...(typeof title === 'string' ? { title: formatMetricText(title) }
+      : title && typeof title === 'object' && 'text' in title && typeof title.text === 'string'
+        ? { title: { ...title, text: formatMetricText(title.text) } } : {}) };
+  };
   return {
     data,
     layout: {
@@ -47,6 +61,8 @@ export function presentationFigure(figure: Figure, height = 420, identity?: stri
         bgcolor: 'rgba(0,0,0,0)', borderwidth: 0,
       },
       xaxis,
+      yaxis: displayAxis(figure.layout.yaxis),
+      ...(figure.layout.yaxis2 ? { yaxis2: displayAxis(figure.layout.yaxis2) } : {}),
       uirevision: figure.layout.uirevision ?? identity,
       margin: { l: 58, r: 42, t: 88, b: 64 },
     },

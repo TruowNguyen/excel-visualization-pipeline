@@ -104,7 +104,7 @@ test('phase 2 shows only the chart and renders daily averages as solid lines', a
   await expect(page.locator('[data-context-compare="child-b"]')).toBeChecked();
   await expect(page.locator('#contextual-metric')).toHaveCount(0);
   await expect(page.locator('#contextual-calculation')).toHaveValue('sum');
-  await expect(page.getByText('Áp dụng cho cả Tổng số và Báo sai/Lỗi; không cần chọn lại chỉ số.')).toBeVisible();
+  await expect(page.getByText('Áp dụng cho cả Tổng số ghi nhận và Tổng báo sai (lỗi); không cần chọn lại chỉ số.')).toBeVisible();
   await expect(page.locator('.contextual-table')).toHaveCount(0);
   await expect(page.getByText('Bảng số liệu', { exact: true })).toHaveCount(0);
   await expect(page.locator('[data-plot="contextual-comparison"]')).toHaveClass(/js-plotly-plot/);
@@ -194,7 +194,7 @@ test('grouped percentage explains when the source rate has no exact numerator', 
 
   await expect(page.locator('[data-context-compare="child-b"]')).toBeDisabled();
   await expect(page.getByText(
-    'Có tỷ lệ nguồn nhưng thiếu số Báo sai/Lỗi, nên chưa thể tổng hợp tỷ lệ theo kỳ một cách chính xác.',
+    'Có tỷ lệ nguồn nhưng thiếu Tổng báo sai (lỗi), nên chưa thể tổng hợp tỷ lệ theo kỳ một cách chính xác.',
   )).toBeVisible();
 });
 

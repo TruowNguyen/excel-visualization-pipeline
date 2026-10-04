@@ -1,6 +1,6 @@
 # 01 — Đặc tả phân tích xu hướng bằng AI
 
-**Phiên bản đặc tả:** 2.3.0. **Trạng thái:** Phase 1 as-built cho scope `node`, chuỗi kỳ `day|week|month` và comparison basis `period_over_period_and_first_last`; stable/anomaly/report vẫn chưa triển khai. **Contract IDs:** `AI-TR-*`.
+**Phiên bản đặc tả:** 2.4.0. **Trạng thái:** Phase 1 as-built cho scope `node`, chuỗi kỳ `day|week|month`, period-level analytics và bối cảnh tối đa 12 kỳ liền trước; stable/anomaly/report vẫn chưa triển khai. **Contract IDs:** `AI-TR-*`.
 
 ## 1. Mục tiêu
 
@@ -47,18 +47,29 @@ Với mỗi cặp kỳ hợp lệ liên tiếp có value `a`, `b`, và với c�
 
 - `AI-TR-020`: Numerical fact MUST được tính trước khi gọi LLM. LLM không được thay đổi hoặc tính lại.
 - `AI-TR-021`: Mỗi kỳ sau kỳ đầu MUST có `period_change`, `period_relative_change` khi baseline khác zero và `period_direction`; `insufficient_data` biểu thị chuỗi có ít hơn hai kỳ hợp lệ.
-- `AI-TR-022`: Policy `period-series-v2` phân loại toàn chuỗi theo dấu của mọi delta liên tiếp: chỉ tăng/không đổi là `consistently_increasing`, chỉ giảm/không đổi là `consistently_decreasing`, toàn bộ bằng zero là `unchanged`, có cả tăng và giảm là `fluctuating`. So sánh đầu–cuối vẫn được giữ như fact tổng quan nhưng không thay cho bằng chứng toàn chuỗi.
+- `AI-TR-022`: Policy `period-series-v3` phân loại toàn chuỗi theo dấu của mọi delta liên tiếp: chỉ tăng/không đổi là `consistently_increasing`, chỉ giảm/không đổi là `consistently_decreasing`, toàn bộ bằng zero là `unchanged`, có cả tăng và giảm là `fluctuating`. So sánh đầu–cuối vẫn được giữ như fact tổng quan nhưng không thay cho bằng chứng toàn chuỗi.
 - `AI-TR-023`: Previous-period comparison MUST nêu exact date boundary và comparability/coverage; kỳ không bằng nhau, partial hoặc missing-heavy MUST được cảnh báo. Cùng elapsed time chưa đủ nếu valid-day coverage khác đáng kể.
 - `AI-TR-024`: Khoảng không có kỳ hợp lệ MUST được ghi trong limitation; hệ thống không chèn kỳ thiếu dưới dạng zero. Request tạo quá 60 kỳ MUST bị từ chối và yêu cầu chọn grain lớn hơn hoặc thu hẹp khoảng; không âm thầm cắt chuỗi.
 
 ### 3.3. Thay đổi đáng chú ý
 
-- `AI-TR-030`: Candidate change detection MUST dùng deterministic versioned policy, ví dụ largest valid day-over-day delta, approved absolute/relative threshold hoặc baseline deviation. Policy/threshold vẫn **TBD**, LLM không được tự đoán.
+- `AI-TR-030`: Policy `period-level-v1` MUST xác định deterministic peak/lowest, lần tăng/giảm lớn nhất, thay đổi gần nhất, chuỗi tăng/giảm liên tiếp dài nhất và plateau ở cuối chuỗi trong các kỳ hợp lệ; tie chọn chuỗi hoặc kỳ kết thúc gần nhất. Chuỗi liên tiếp cần ít nhất hai transition cùng chiều; ending plateau cần ít nhất một transition không đổi. Đây là mô tả trong window, không phải threshold hoặc anomaly detection.
 - `AI-TR-031`: Phân biệt rõ “largest observed change” với “statistical anomaly”. Không được claim anomaly khi chưa có detector và calibration đã duyệt.
 - `AI-TR-032`: Mỗi flagged point MUST có date/period, measured value, comparator, change, valid coverage và exact/aggregate evidence.
 - `AI-TR-033`: Khi sample size hoặc coverage không đủ, trả `insufficient_data` thay vì xu hướng chắc chắn.
+- `AI-TR-034`: Policy `trailing-12-periods-v1` lấy tối đa 12 kỳ hợp lệ hoàn tất ngay trước window, cùng entity/metric/grain; kỳ tự nhiên chồng lấn với window MUST bị loại.
+- `AI-TR-035`: Historical context MUST cung cấp kỳ liền trước, biên thấp/cao, thay đổi từ kỳ liền trước tới kỳ đầu window và vị trí kỳ cuối hiện tại so với biên lịch sử.
+- `AI-TR-036`: Narrative MUST gọi rõ đây là các kỳ lịch sử được cung cấp, không được diễn đạt thành kỷ lục toàn bộ lịch sử, anomaly hoặc significance.
+- `AI-TR-037`: Mọi period-level/historical result MUST có fact ID và evidence của đúng kỳ tham gia phép so sánh.
 
 ## 4. Ranh giới mô tả và chẩn đoán
+
+### Analytical overview MVP — 02/10/2026
+
+- `AI-TR-038`: Cross-metric overview policy `aligned-overview-v1` MUST phân biệt relationship đầu–cuối với pattern toàn chuỗi. Relationship chỉ có khi endpoints cùng ngày/grain, đầy đủ ngày và kỳ tự nhiên, độc lập count khớp numerator/denominator của weighted rate, denominator dương và numerator không âm. Zero numerator không tạo relative-growth comparison. Không xác nhận quality/cause.
+- `AI-TR-039`: Overview MUST chọn có giới hạn candidates có fact/evidence; largest observed change không là anomaly. Partial/misaligned endpoints vẫn có descriptive/temporal content với limitation; không impute missing thành zero để tạo relationship. Structured investigation step chỉ mở nguồn đã có.
+
+Turning point/peak alignment chưa thuộc implementation MVP. Single-metric historical/period analytics giữ nguyên. Nội dung enum monotonic trên UI là “không có lần giảm/tăng giữa các kỳ hợp lệ”, không hứa strictly increasing hoặc adjacency theo lịch khi có missing.
 
 **Descriptive:** “Trong giai đoạn đã chọn, Báo sai/Lỗi tăng từ 12 lên 18; chênh lệch +6.” Câu này hợp lệ khi đã được tính và grounding.
 
@@ -74,6 +85,19 @@ Entry point là khu vực **Phân tích xu hướng bằng AI** nằm sau KPI v�
 - `AI-TR-050`: Phân biệt loading, ready, insufficient data, provider unavailable, validation rejected và stale.
 - `AI-TR-051`: Mỗi insight mở đúng source/evidence; legacy data không có safe ref phải hiện unavailable, không heuristic lookup.
 - `AI-TR-052`: Không được hiển thị generated answer cũ như current sau khi filter hoặc committed data version thay đổi.
+
+### Ưu tiên toàn chuỗi — runtime 02/10/2026
+
+- `AI-TR-053`: Mục tiêu cao nhất là hiểu KPI diễn biến trong toàn khoảng, không ưu tiên first/last. Thứ tự nội dung: bức tranh toàn khoảng → giai đoạn → mốc quan trọng → quan hệ có fact tương ứng → hạn chế → đầu–cuối bổ sung. Cảnh báo dữ liệu quan trọng vẫn hiển thị sớm để tránh đọc sai.
+- `AI-TR-054`: `chronological-stages-v1` chia các chuyển kỳ lịch liền nhau thành đoạn tăng/giảm/giữ nguyên tối đa, giữ đúng thứ tự. Missing period ngắt đoạn và không được nối thành consecutive run. Turning point chỉ là đảo chiều tăng ↔ giảm quan sát được giữa hai đoạn kề nhau; không phải anomaly/significance. Plateau là một giai đoạn riêng.
+- `AI-TR-055`: Summary ưu tiên cấu trúc toàn chuỗi, không dùng endpoint đại diện trend. Runtime có `synthesis` dùng claims v3 với relation facts và diễn đạt tương đương có giới hạn; không yêu cầu khớp nguyên văn `temporalStructure.summaryText`. Exact-copy v1/v2 chỉ giữ cho snapshot legacy không có synthesis. UI giữ đủ các đoạn ở chi tiết thu gọn.
+- `AI-TR-057`: Synthesis chọn tối đa hai nhận định grounded; ưu tiên reversal, endpoint che khuất diễn biến, peak-retreat/trough-recovery và cross-metric. Thiếu insight rõ ràng phải mô tả trung tính, không tự tạo threshold hoặc significance.
+- `AI-TR-058`: Quan hệ count/rate dùng mọi chuyển tiếp liền nhau trong đoạn đã căn chỉnh, cùng scope/grain và đầy đủ contributor operands; không suy ra từ endpoint. Quan hệ lệch peak yêu cầu peak duy nhất, căn cứ ranking và các kỳ hỗ trợ. Không nối qua kỳ thiếu hoặc dùng kỳ tuần/tháng không đầy đủ.
+- `AI-TR-059`: Numerical/date anchors, limitations và suggested checks do backend tạo từ captured facts; model chỉ diễn đạt nhận định đã xác nhận, không tự thêm số hoặc ngày. Mỗi check gắn candidate và evidence cụ thể.
+- `AI-TR-060`: Hai kỳ chỉ cho `period_comparison`, không peak/trough/sustained; ba kỳ là `short_sequence`. Ngôn ngữ xu hướng/“qua các kỳ” cần ít nhất bốn kỳ liên tiếp trong đoạn thực sự được diễn giải. Không cộng số kỳ hai phía missing để đạt ngưỡng.
+- `AI-TR-061`: Liên hệ ba KPI dựa trên chiều biến động đã kiểm chứng của Tổng số, Báo sai/Lỗi và tỷ lệ trong cùng đoạn liền nhau, cùng scope/grain/contributors. Giải thích khác biệt giữa số lượng và tỷ trọng; bao gồm số lỗi không đổi nhưng tỷ lệ thay đổi, số lỗi giảm nhưng tỷ trọng tăng, và tốc độ tương đối qua phép tính tỷ lệ. Ghi operandFactIds, evidenceIds và phạm vi. Không nối gap, tính correlation, suy diễn nhân quả hoặc chất lượng.
+- `AI-TR-062`: Cross-metric candidate thay thế primary ngắn/descriptive yếu khi có căn cứ, tránh lặp metric template trước insight. Primary reversal có ý nghĩa vẫn được giữ. Tương quan mô tả không tự xác nhận trend toàn khoảng.
+- `AI-TR-056`: UI giữ các đoạn theo thời gian, cả largestIncrease/largestDecrease có ngày và đơn vị, extrema, turning points và historical context có sẵn. Endpoint nằm trong disclosure bổ sung. Quan hệ liên KPI hiện có vẫn là endpoint-only và phải ghi nhãn rõ; không suy diễn quan hệ theo giai đoạn nếu chưa có corresponding fact.
 
 ## 6. Ví dụ minh họa
 

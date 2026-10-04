@@ -1,0 +1,472 @@
+{
+  "date": "2026-10-02",
+  "method": "Final verification after 269 passing Python tests: FastAPI TestClient with current committed SQLite read model; real external 9Router generation; no replay or mocked response.",
+  "validationPolicy": "semantic-grounding-v4",
+  "promptVersions": {
+    "trend": "trend-summary-v13",
+    "overview": "metric-overview-v9"
+  },
+  "privacy": "Normalized KPI facts only; no credentials, raw Excel or lineage targets.",
+  "offline": {
+    "testsPassed": 269,
+    "warnings": "18 existing FastAPI/Python deprecation warnings",
+    "compileall": "passed",
+    "diffCheck": "passed"
+  },
+  "preFinalFinding": {
+    "case": "same_errors",
+    "validation": {
+      "status": "rejected",
+      "errors": [
+        "unsupported_meaning"
+      ],
+      "categories": [
+        "semantic"
+      ],
+      "warnings": [],
+      "claimResults": [
+        {
+          "index": 0,
+          "candidateId": "insight-03-unchanged_errors_share_up",
+          "status": "rejected",
+          "errors": [
+            "unsupported_meaning"
+          ],
+          "warnings": [],
+          "categories": [
+            "semantic"
+          ]
+        }
+      ]
+    },
+    "rawNarrative": {
+      "schemaVersion": "ai-narrative-v4",
+      "analysisId": "ana_4438e3e98384478195c0611105fb42d4",
+      "status": "ready",
+      "claims": [
+        {
+          "candidateId": "insight-03-unchanged_errors_share_up",
+          "claimType": "unchanged_errors_share_up",
+          "text": "Báo sai/Lỗi giữ nguyên ở mức 22 giữa hai kỳ 15/09/2026 và 16/09/2026. Tổng số giảm từ 657 xuống 420 khiến tỷ lệ báo sai tăng từ 3.35% lên 5.24%. Tỷ lệ tăng ở đây không đồng nghĩa có thêm lỗi.",
+          "factIds": [
+            "relation:insight-03-unchanged_errors_share_up"
+          ]
+        }
+      ]
+    },
+    "resolution": "Replaced same-sentence fixed wording causal permission with verification of engine's unchanged-numerator relation, direction signatures and cause/effect metric clauses; regression tests and entire suite rerun before final provider calls."
+  },
+  "runs": [
+    {
+      "case": "overview",
+      "scope": {
+        "project": "VSO",
+        "entityRef": "1-1-chat-luong-canh-bao-ghi-nhan-tren-he-thong-ba6898fb1d78",
+        "entityLabel": "1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống",
+        "mode": "node",
+        "metricCode": "all",
+        "metricDisplayName": "Tất cả chỉ số"
+      },
+      "window": {
+        "start": "2026-09-07",
+        "end": "2026-09-16",
+        "groupBy": "day",
+        "comparisonBasis": "per_metric_period_over_period_and_first_last",
+        "previousDate": "2026-09-07",
+        "currentDate": "2026-09-16"
+      },
+      "status": "ready",
+      "provider": {
+        "name": "9router",
+        "model": "gemini-3.7-flash-tiered",
+        "promptVersion": "metric-overview-v9",
+        "latencyMs": 4738,
+        "attemptCount": 1
+      },
+      "requestLatencyMs": 6718,
+      "providerInputBytes": 43620,
+      "validation": {
+        "status": "accepted",
+        "errors": [],
+        "categories": [],
+        "warnings": [],
+        "claimResults": [
+          {
+            "index": 0,
+            "candidateId": "insight-01-peak_retreat",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 1,
+            "candidateId": "insight-03-errors_down_volume_up",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          }
+        ]
+      },
+      "rawNarrative": {
+        "schemaVersion": "ai-narrative-v4",
+        "analysisId": "ana_8d0549d996fb492e9d1557042353cac1",
+        "status": "ready",
+        "claims": [
+          {
+            "candidateId": "insight-01-peak_retreat",
+            "claimType": "peak_retreat",
+            "text": "Trong đoạn có dữ liệu liền nhau, Báo sai/Lỗi tăng lên mức cao nhất 43 vào 13/09/2026, sau đó đảo chiều giảm liên tiếp và giữ nguyên ở mức 22 tại kỳ cuối 16/09/2026.",
+            "factIds": [
+              "relation:insight-01-peak_retreat"
+            ]
+          },
+          {
+            "candidateId": "insight-03-errors_down_volume_up",
+            "claimType": "errors_down_volume_up",
+            "text": "Từ 07/09/2026 đến 08/09/2026, Tổng số tăng từ 71 lên 454 trong khi Báo sai/Lỗi giảm từ 16 xuống 8; tỷ lệ báo sai cũng giảm từ 22.54% xuống 1.76%. Cả số lỗi tuyệt đối và tỷ trọng lỗi đều giảm trong giai đoạn này.",
+            "factIds": [
+              "relation:insight-03-errors_down_volume_up"
+            ]
+          }
+        ]
+      },
+      "normalizedSeries": [
+        {
+          "metric": "total",
+          "points": [
+            {
+              "period": "2026-09-07",
+              "value": 71
+            },
+            {
+              "period": "2026-09-08",
+              "value": 454
+            },
+            {
+              "period": "2026-09-09",
+              "value": 342
+            },
+            {
+              "period": "2026-09-10",
+              "value": 251
+            },
+            {
+              "period": "2026-09-12",
+              "value": 515
+            },
+            {
+              "period": "2026-09-13",
+              "value": 214
+            },
+            {
+              "period": "2026-09-14",
+              "value": 209
+            },
+            {
+              "period": "2026-09-15",
+              "value": 657
+            },
+            {
+              "period": "2026-09-16",
+              "value": 420
+            }
+          ]
+        },
+        {
+          "metric": "error",
+          "points": [
+            {
+              "period": "2026-09-07",
+              "value": 16
+            },
+            {
+              "period": "2026-09-08",
+              "value": 8
+            },
+            {
+              "period": "2026-09-09",
+              "value": 10
+            },
+            {
+              "period": "2026-09-10",
+              "value": 8
+            },
+            {
+              "period": "2026-09-12",
+              "value": 19
+            },
+            {
+              "period": "2026-09-13",
+              "value": 43
+            },
+            {
+              "period": "2026-09-14",
+              "value": 32
+            },
+            {
+              "period": "2026-09-15",
+              "value": 22
+            },
+            {
+              "period": "2026-09-16",
+              "value": 22
+            }
+          ]
+        },
+        {
+          "metric": "error_rate",
+          "points": [
+            {
+              "period": "2026-09-07",
+              "value": 22.53521127
+            },
+            {
+              "period": "2026-09-08",
+              "value": 1.76211454
+            },
+            {
+              "period": "2026-09-09",
+              "value": 2.92397661
+            },
+            {
+              "period": "2026-09-10",
+              "value": 3.187251
+            },
+            {
+              "period": "2026-09-12",
+              "value": 3.68932039
+            },
+            {
+              "period": "2026-09-13",
+              "value": 20.09345794
+            },
+            {
+              "period": "2026-09-14",
+              "value": 15.31100478
+            },
+            {
+              "period": "2026-09-15",
+              "value": 3.34855403
+            },
+            {
+              "period": "2026-09-16",
+              "value": 5.23809524
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "errors_up",
+      "scope": {
+        "project": "VSO",
+        "entityRef": "1-1-chat-luong-canh-bao-ghi-nhan-tren-he-thong-ba6898fb1d78",
+        "entityLabel": "1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống",
+        "mode": "node",
+        "metricCode": "all",
+        "metricDisplayName": "Tất cả chỉ số"
+      },
+      "window": {
+        "start": "2026-09-12",
+        "end": "2026-09-13",
+        "groupBy": "day",
+        "comparisonBasis": "per_metric_period_over_period_and_first_last",
+        "previousDate": "2026-09-12",
+        "currentDate": "2026-09-13"
+      },
+      "status": "ready",
+      "provider": {
+        "name": "9router",
+        "model": "gemini-3.7-flash-tiered",
+        "promptVersion": "metric-overview-v9",
+        "latencyMs": 4074,
+        "attemptCount": 1
+      },
+      "requestLatencyMs": 5645,
+      "providerInputBytes": 9610,
+      "validation": {
+        "status": "accepted",
+        "errors": [],
+        "categories": [],
+        "warnings": [],
+        "claimResults": [
+          {
+            "index": 0,
+            "candidateId": "insight-03-errors_up_volume_down",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          }
+        ]
+      },
+      "rawNarrative": {
+        "schemaVersion": "ai-narrative-v4",
+        "analysisId": "ana_0b524ba728e943eba290876930cf1181",
+        "status": "ready",
+        "claims": [
+          {
+            "candidateId": "insight-03-errors_up_volume_down",
+            "claimType": "errors_up_volume_down",
+            "text": "Từ 12/09/2026 đến 13/09/2026, Tổng số giảm từ 515 xuống 214 nhưng Báo sai/Lỗi tăng từ 19 lên 43, kéo theo tỷ lệ báo sai tăng từ 3.69% lên 20.09%. Cả số lỗi tuyệt đối và tỷ trọng lỗi đều tăng giữa hai kỳ. Số lỗi tăng không đồng nghĩa lượng ghi nhận tăng.",
+            "factIds": [
+              "relation:insight-03-errors_up_volume_down"
+            ]
+          }
+        ]
+      },
+      "normalizedSeries": [
+        {
+          "metric": "total",
+          "points": [
+            {
+              "period": "2026-09-12",
+              "value": 515
+            },
+            {
+              "period": "2026-09-13",
+              "value": 214
+            }
+          ]
+        },
+        {
+          "metric": "error",
+          "points": [
+            {
+              "period": "2026-09-12",
+              "value": 19
+            },
+            {
+              "period": "2026-09-13",
+              "value": 43
+            }
+          ]
+        },
+        {
+          "metric": "error_rate",
+          "points": [
+            {
+              "period": "2026-09-12",
+              "value": 3.68932039
+            },
+            {
+              "period": "2026-09-13",
+              "value": 20.09345794
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "same_errors",
+      "scope": {
+        "project": "VSO",
+        "entityRef": "1-1-chat-luong-canh-bao-ghi-nhan-tren-he-thong-ba6898fb1d78",
+        "entityLabel": "1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống",
+        "mode": "node",
+        "metricCode": "all",
+        "metricDisplayName": "Tất cả chỉ số"
+      },
+      "window": {
+        "start": "2026-09-15",
+        "end": "2026-09-16",
+        "groupBy": "day",
+        "comparisonBasis": "per_metric_period_over_period_and_first_last",
+        "previousDate": "2026-09-15",
+        "currentDate": "2026-09-16"
+      },
+      "status": "ready",
+      "provider": {
+        "name": "9router",
+        "model": "gemini-3.7-flash-tiered",
+        "promptVersion": "metric-overview-v9",
+        "latencyMs": 3573,
+        "attemptCount": 1
+      },
+      "requestLatencyMs": 5222,
+      "providerInputBytes": 9660,
+      "validation": {
+        "status": "accepted",
+        "errors": [],
+        "categories": [],
+        "warnings": [],
+        "claimResults": [
+          {
+            "index": 0,
+            "candidateId": "insight-03-unchanged_errors_share_up",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          }
+        ]
+      },
+      "rawNarrative": {
+        "schemaVersion": "ai-narrative-v4",
+        "analysisId": "ana_3cdffb025b3243eba356579983436f8e",
+        "status": "ready",
+        "claims": [
+          {
+            "candidateId": "insight-03-unchanged_errors_share_up",
+            "claimType": "unchanged_errors_share_up",
+            "text": "Báo sai/Lỗi giữ nguyên ở mức 22 giữa ngày 15/09/2026 và 16/09/2026. Tổng số giảm từ 657 xuống 420 khiến tỷ lệ báo sai tăng từ 3.35% lên 5.24%. Tỷ trọng cao hơn không có nghĩa số lỗi đã tăng.",
+            "factIds": [
+              "relation:insight-03-unchanged_errors_share_up"
+            ]
+          }
+        ]
+      },
+      "normalizedSeries": [
+        {
+          "metric": "total",
+          "points": [
+            {
+              "period": "2026-09-15",
+              "value": 657
+            },
+            {
+              "period": "2026-09-16",
+              "value": 420
+            }
+          ]
+        },
+        {
+          "metric": "error",
+          "points": [
+            {
+              "period": "2026-09-15",
+              "value": 22
+            },
+            {
+              "period": "2026-09-16",
+              "value": 22
+            }
+          ]
+        },
+        {
+          "metric": "error_rate",
+          "points": [
+            {
+              "period": "2026-09-15",
+              "value": 3.34855403
+            },
+            {
+              "period": "2026-09-16",
+              "value": 5.23809524
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "assessment": {
+    "numericCorrectness": "All four final claims match normalized facts or Engine displayValue; no invented dates, counts or rates observed.",
+    "relationships": "All three responses include a count/total/rate explanation; overview no longer defaults to peak_offset.",
+    "shortWindows": "Both two-period responses avoid trend/extrema and explain aligned KPI movement.",
+    "readability": "Shorter linked explanations; residual jargon 'ty trong' and some repeated count/rate descriptions remain.",
+    "fullWindowCoverage": "Partial in generated overview: latest contiguous peak/retreat/plateau plus 07-08 relation; 09-10 and the 12-13 joint change are not developed in the two AI claims. Deterministic reading phases provide these periods separately.",
+    "limits": "Three scoped requests are not a production pass-rate estimate. No live-browser verification this turn; semantic extractor is bounded, not general entailment."
+  }
+}

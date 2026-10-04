@@ -1,0 +1,1097 @@
+{
+  "note": "Real 9Router calls on normalized committed VSO data. Full-window call followed final prompt and validator fixes; short-window calls used the preceding prompt revision. No credentials or lineage targets.",
+  "records": [
+    {
+      "scope": {
+        "project": "VSO",
+        "entityRef": "1-1-chat-luong-canh-bao-ghi-nhan-tren-he-thong-ba6898fb1d78",
+        "entityLabel": "1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống",
+        "mode": "node",
+        "metricCode": "all",
+        "metricDisplayName": "Tất cả chỉ số"
+      },
+      "window": {
+        "start": "2026-09-07",
+        "end": "2026-09-16",
+        "groupBy": "day",
+        "comparisonBasis": "per_metric_period_over_period_and_first_last",
+        "previousDate": "2026-09-07",
+        "currentDate": "2026-09-16"
+      },
+      "status": "ready",
+      "provider": {
+        "name": "9router",
+        "model": "gemini-3.7-flash-tiered",
+        "promptVersion": "metric-overview-v10",
+        "latencyMs": 7929,
+        "attemptCount": 1
+      },
+      "validation": {
+        "status": "accepted",
+        "errors": [],
+        "categories": [],
+        "warnings": [
+          "unquantified_magnitude"
+        ],
+        "claimResults": [
+          {
+            "index": 0,
+            "candidateId": "report-overview-00",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [
+              "unquantified_magnitude"
+            ],
+            "categories": []
+          },
+          {
+            "index": 1,
+            "candidateId": "report-phases-00",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 2,
+            "candidateId": "report-phases-01",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 3,
+            "candidateId": "report-phases-02",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [
+              "unquantified_magnitude"
+            ],
+            "categories": []
+          },
+          {
+            "index": 4,
+            "candidateId": "report-phases-03",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 5,
+            "candidateId": "insight-03-errors_down_volume_up",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 6,
+            "candidateId": "insight-08-errors_fall_faster",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 7,
+            "candidateId": "insight-07-errors_down_volume_up",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 8,
+            "candidateId": "insight-10-unchanged_errors_share_up",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          }
+        ]
+      },
+      "rawNarrative": "{\"schemaVersion\":\"ai-narrative-v5\",\"analysisId\":\"ana_92cca03ea0a74ddfa0a08b4e41af16d2\",\"status\":\"ready\",\"claims\":[{\"section\":\"overview\",\"candidateId\":\"report-overview-00\",\"claimType\":\"window_overview\",\"text\":\"Trong các kỳ có dữ liệu, số lỗi giảm rồi dao động ở giai đoạn đầu. Sau kỳ thiếu dữ liệu, số lỗi tăng mạnh lên mức cao nhất rồi liên tục giảm, trước khi giữ nguyên ở kỳ cuối. Tổng số và tỷ lệ báo sai biến động đa chiều trong toàn bộ giai đoạn. Có kỳ thiếu dữ liệu trong khoảng thời gian đang xem.\",\"factIds\":[\"relation:report-overview-00\"]},{\"section\":\"phases\",\"candidateId\":\"report-phases-00\",\"claimType\":\"phase_description\",\"text\":\"Từ 07/09/2026 đến 10/09/2026, số lỗi giảm từ 16 xuống 8 vào 08/09/2026, tăng lên 10 rồi giảm lại về 8 vào 10/09/2026, đây là mức thấp nhất của số lỗi trong các kỳ có dữ liệu. Tổng số thấp nhất là 71 vào 07/09/2026. Tỷ lệ báo sai đạt mức cao nhất là 22.54% vào 07/09/2026 và mức thấp nhất là 1.76% vào 08/09/2026.\",\"factIds\":[\"relation:report-phases-00\"]},{\"section\":\"phases\",\"candidateId\":\"report-phases-01\",\"claimType\":\"phase_description\",\"text\":\"Từ 12/09/2026 đến 13/09/2026, số lỗi tăng từ 19 lên 43 vào 13/09/2026, mức cao nhất trong các kỳ có dữ liệu. Tổng số giảm từ 515 xuống 214. Tỷ lệ báo sai tăng từ 3.69% lên 20.09%.\",\"factIds\":[\"relation:report-phases-01\"]},{\"section\":\"phases\",\"candidateId\":\"report-phases-02\",\"claimType\":\"phase_description\",\"text\":\"Từ 13/09/2026 đến 15/09/2026, số lỗi giảm liên tiếp từ 43 vào 13/09/2026 (mức cao nhất trong các kỳ có dữ liệu) xuống 32 và còn 22. Tỷ lệ báo sai cũng giảm từ 20.09% xuống 15.31% rồi 3.35%. Tổng số giảm nhẹ từ 214 xuống 209 trước khi tăng lên mức cao nhất là 657 vào 15/09/2026.\",\"factIds\":[\"relation:report-phases-02\"]},{\"section\":\"phases\",\"candidateId\":\"report-phases-03\",\"claimType\":\"phase_description\",\"text\":\"Từ 15/09/2026 đến 16/09/2026, số lỗi giữ nguyên ở mức 22. Tổng số giảm từ 657 (mức cao nhất trong các kỳ có dữ liệu) xuống 420. Tỷ lệ báo sai tăng từ 3.35% lên 5.24%.\",\"factIds\":[\"relation:report-phases-03\"]},{\"section\":\"relationships\",\"candidateId\":\"insight-03-errors_down_volume_up\",\"claimType\":\"errors_down_volume_up\",\"text\":\"Từ 07/09/2026 đến 08/09/2026, số lỗi giảm từ 16 xuống 8 trong khi Tổng số tăng từ 71 lên 454. Tỷ lệ báo sai giảm từ 22.54% xuống 1.76%. Cả số lỗi tuyệt đối và tỷ trọng lỗi đều giảm đồng thời.\",\"factIds\":[\"relation:insight-03-errors_down_volume_up\"]},{\"section\":\"relationships\",\"candidateId\":\"insight-08-errors_fall_faster\",\"claimType\":\"errors_fall_faster\",\"text\":\"Từ 13/09/2026 đến 14/09/2026, số lỗi giảm từ 43 xuống 32 và Tổng số giảm từ 214 xuống 209. Tỷ lệ báo sai giảm từ 20.09% xuống 15.31%, cho thấy số lỗi giảm nhanh hơn Tổng số trong phép tính tỷ lệ.\",\"factIds\":[\"relation:insight-08-errors_fall_faster\"]},{\"section\":\"relationships\",\"candidateId\":\"insight-07-errors_down_volume_up\",\"claimType\":\"errors_down_volume_up\",\"text\":\"Từ 14/09/2026 đến 15/09/2026, số lỗi giảm từ 32 xuống 22 trong khi Tổng số tăng từ 209 lên 657. Tỷ lệ báo sai giảm từ 15.31% xuống 3.35%, phản ánh sự sụt giảm của cả số lỗi tuyệt đối lẫn tỷ lệ.\",\"factIds\":[\"relation:insight-07-errors_down_volume_up\"]},{\"section\":\"relationships\",\"candidateId\":\"insight-10-unchanged_errors_share_up\",\"claimType\":\"unchanged_errors_share_up\",\"text\":\"Từ 15/09/2026 đến 16/09/2026, số lỗi giữ nguyên ở mức 22. Tổng số giảm từ 657 xuống 420 nên cùng số lỗi chiếm tỷ lệ cao hơn: 3.35% lên 5.24%. Tỷ lệ báo sai tăng không có nghĩa số lỗi tăng.\",\"factIds\":[\"relation:insight-10-unchanged_errors_share_up\"]}]}",
+      "requestLatencyMs": 9862,
+      "providerInputBytes": 55064,
+      "narrative": {
+        "mode": "ai",
+        "schemaVersion": "ai-narrative-v5",
+        "analysisId": "ana_92cca03ea0a74ddfa0a08b4e41af16d2",
+        "status": "ready",
+        "validationPolicy": "semantic-grounding-v5",
+        "claims": [
+          {
+            "section": "overview",
+            "candidateId": "report-overview-00",
+            "claimType": "window_overview",
+            "text": "Trong các kỳ có dữ liệu, số lỗi giảm rồi dao động ở giai đoạn đầu. Sau kỳ thiếu dữ liệu, số lỗi tăng mạnh lên mức cao nhất rồi liên tục giảm, trước khi giữ nguyên ở kỳ cuối. Tổng số và tỷ lệ báo sai biến động đa chiều trong toàn bộ giai đoạn. Có kỳ thiếu dữ liệu trong khoảng thời gian đang xem.",
+            "factIds": [
+              "relation:report-overview-00"
+            ]
+          },
+          {
+            "section": "phases",
+            "candidateId": "report-phases-00",
+            "claimType": "phase_description",
+            "text": "Từ 07/09/2026 đến 10/09/2026, số lỗi giảm từ 16 xuống 8 vào 08/09/2026, tăng lên 10 rồi giảm lại về 8 vào 10/09/2026, đây là mức thấp nhất của số lỗi trong các kỳ có dữ liệu. Tổng số thấp nhất là 71 vào 07/09/2026. Tỷ lệ báo sai đạt mức cao nhất là 22.54% vào 07/09/2026 và mức thấp nhất là 1.76% vào 08/09/2026.",
+            "factIds": [
+              "relation:report-phases-00"
+            ]
+          },
+          {
+            "section": "phases",
+            "candidateId": "report-phases-01",
+            "claimType": "phase_description",
+            "text": "Từ 12/09/2026 đến 13/09/2026, số lỗi tăng từ 19 lên 43 vào 13/09/2026, mức cao nhất trong các kỳ có dữ liệu. Tổng số giảm từ 515 xuống 214. Tỷ lệ báo sai tăng từ 3.69% lên 20.09%.",
+            "factIds": [
+              "relation:report-phases-01"
+            ]
+          },
+          {
+            "section": "phases",
+            "candidateId": "report-phases-02",
+            "claimType": "phase_description",
+            "text": "Từ 13/09/2026 đến 15/09/2026, số lỗi giảm liên tiếp từ 43 vào 13/09/2026 (mức cao nhất trong các kỳ có dữ liệu) xuống 32 và còn 22. Tỷ lệ báo sai cũng giảm từ 20.09% xuống 15.31% rồi 3.35%. Tổng số giảm nhẹ từ 214 xuống 209 trước khi tăng lên mức cao nhất là 657 vào 15/09/2026.",
+            "factIds": [
+              "relation:report-phases-02"
+            ]
+          },
+          {
+            "section": "phases",
+            "candidateId": "report-phases-03",
+            "claimType": "phase_description",
+            "text": "Từ 15/09/2026 đến 16/09/2026, số lỗi giữ nguyên ở mức 22. Tổng số giảm từ 657 (mức cao nhất trong các kỳ có dữ liệu) xuống 420. Tỷ lệ báo sai tăng từ 3.35% lên 5.24%.",
+            "factIds": [
+              "relation:report-phases-03"
+            ]
+          },
+          {
+            "section": "relationships",
+            "candidateId": "insight-03-errors_down_volume_up",
+            "claimType": "errors_down_volume_up",
+            "text": "Từ 07/09/2026 đến 08/09/2026, số lỗi giảm từ 16 xuống 8 trong khi Tổng số tăng từ 71 lên 454. Tỷ lệ báo sai giảm từ 22.54% xuống 1.76%. Cả số lỗi tuyệt đối và tỷ trọng lỗi đều giảm đồng thời.",
+            "factIds": [
+              "relation:insight-03-errors_down_volume_up"
+            ]
+          },
+          {
+            "section": "relationships",
+            "candidateId": "insight-08-errors_fall_faster",
+            "claimType": "errors_fall_faster",
+            "text": "Từ 13/09/2026 đến 14/09/2026, số lỗi giảm từ 43 xuống 32 và Tổng số giảm từ 214 xuống 209. Tỷ lệ báo sai giảm từ 20.09% xuống 15.31%, cho thấy số lỗi giảm nhanh hơn Tổng số trong phép tính tỷ lệ.",
+            "factIds": [
+              "relation:insight-08-errors_fall_faster"
+            ]
+          },
+          {
+            "section": "relationships",
+            "candidateId": "insight-07-errors_down_volume_up",
+            "claimType": "errors_down_volume_up",
+            "text": "Từ 14/09/2026 đến 15/09/2026, số lỗi giảm từ 32 xuống 22 trong khi Tổng số tăng từ 209 lên 657. Tỷ lệ báo sai giảm từ 15.31% xuống 3.35%, phản ánh sự sụt giảm của cả số lỗi tuyệt đối lẫn tỷ lệ.",
+            "factIds": [
+              "relation:insight-07-errors_down_volume_up"
+            ]
+          },
+          {
+            "section": "relationships",
+            "candidateId": "insight-10-unchanged_errors_share_up",
+            "claimType": "unchanged_errors_share_up",
+            "text": "Từ 15/09/2026 đến 16/09/2026, số lỗi giữ nguyên ở mức 22. Tổng số giảm từ 657 xuống 420 nên cùng số lỗi chiếm tỷ lệ cao hơn: 3.35% lên 5.24%. Tỷ lệ báo sai tăng không có nghĩa số lỗi tăng.",
+            "factIds": [
+              "relation:insight-10-unchanged_errors_share_up"
+            ]
+          }
+        ],
+        "summary": {
+          "text": "Trong các kỳ có dữ liệu, số lỗi giảm rồi dao động ở giai đoạn đầu. Sau kỳ thiếu dữ liệu, số lỗi tăng mạnh lên mức cao nhất rồi liên tục giảm, trước khi giữ nguyên ở kỳ cuối. Tổng số và tỷ lệ báo sai biến động đa chiều trong toàn bộ giai đoạn. Có kỳ thiếu dữ liệu trong khoảng thời gian đang xem.",
+          "factIds": [
+            "relation:report-overview-00"
+          ],
+          "candidateIds": [
+            "report-overview-00"
+          ],
+          "claimType": "descriptive"
+        },
+        "insights": [],
+        "limitations": [
+          "Có 1/10 kỳ thiếu dữ liệu hợp lệ. Không nối xu hướng qua khoảng trống và không coi kỳ thiếu là 0."
+        ],
+        "suggestedChecks": [],
+        "report": {
+          "policyVersion": "analytical-report-v1",
+          "overview": [
+            {
+              "candidateId": "report-overview-00",
+              "text": "Trong các kỳ có dữ liệu, số lỗi giảm rồi dao động ở giai đoạn đầu. Sau kỳ thiếu dữ liệu, số lỗi tăng mạnh lên mức cao nhất rồi liên tục giảm, trước khi giữ nguyên ở kỳ cuối. Tổng số và tỷ lệ báo sai biến động đa chiều trong toàn bộ giai đoạn. Có kỳ thiếu dữ liệu trong khoảng thời gian đang xem.",
+              "factIds": [
+                "relation:report-overview-00"
+              ],
+              "source": "ai"
+            }
+          ],
+          "phases": [
+            {
+              "candidateId": "report-phases-00",
+              "text": "Từ 07/09/2026 đến 10/09/2026, số lỗi giảm từ 16 xuống 8 vào 08/09/2026, tăng lên 10 rồi giảm lại về 8 vào 10/09/2026, đây là mức thấp nhất của số lỗi trong các kỳ có dữ liệu. Tổng số thấp nhất là 71 vào 07/09/2026. Tỷ lệ báo sai đạt mức cao nhất là 22.54% vào 07/09/2026 và mức thấp nhất là 1.76% vào 08/09/2026.",
+              "factIds": [
+                "relation:report-phases-00"
+              ],
+              "source": "ai",
+              "start": "2026-09-07",
+              "end": "2026-09-10",
+              "startLabel": "07/09/2026",
+              "endLabel": "10/09/2026"
+            },
+            {
+              "candidateId": "report-phases-01",
+              "text": "Từ 12/09/2026 đến 13/09/2026, số lỗi tăng từ 19 lên 43 vào 13/09/2026, mức cao nhất trong các kỳ có dữ liệu. Tổng số giảm từ 515 xuống 214. Tỷ lệ báo sai tăng từ 3.69% lên 20.09%.",
+              "factIds": [
+                "relation:report-phases-01"
+              ],
+              "source": "ai",
+              "start": "2026-09-12",
+              "end": "2026-09-13",
+              "startLabel": "12/09/2026",
+              "endLabel": "13/09/2026"
+            },
+            {
+              "candidateId": "report-phases-02",
+              "text": "Từ 13/09/2026 đến 15/09/2026, số lỗi giảm liên tiếp từ 43 vào 13/09/2026 (mức cao nhất trong các kỳ có dữ liệu) xuống 32 và còn 22. Tỷ lệ báo sai cũng giảm từ 20.09% xuống 15.31% rồi 3.35%. Tổng số giảm nhẹ từ 214 xuống 209 trước khi tăng lên mức cao nhất là 657 vào 15/09/2026.",
+              "factIds": [
+                "relation:report-phases-02"
+              ],
+              "source": "ai",
+              "start": "2026-09-13",
+              "end": "2026-09-15",
+              "startLabel": "13/09/2026",
+              "endLabel": "15/09/2026"
+            },
+            {
+              "candidateId": "report-phases-03",
+              "text": "Từ 15/09/2026 đến 16/09/2026, số lỗi giữ nguyên ở mức 22. Tổng số giảm từ 657 (mức cao nhất trong các kỳ có dữ liệu) xuống 420. Tỷ lệ báo sai tăng từ 3.35% lên 5.24%.",
+              "factIds": [
+                "relation:report-phases-03"
+              ],
+              "source": "ai",
+              "start": "2026-09-15",
+              "end": "2026-09-16",
+              "startLabel": "15/09/2026",
+              "endLabel": "16/09/2026"
+            }
+          ],
+          "relationships": [
+            {
+              "candidateId": "insight-03-errors_down_volume_up",
+              "text": "Từ 07/09/2026 đến 08/09/2026, số lỗi giảm từ 16 xuống 8 trong khi Tổng số tăng từ 71 lên 454. Tỷ lệ báo sai giảm từ 22.54% xuống 1.76%. Cả số lỗi tuyệt đối và tỷ trọng lỗi đều giảm đồng thời.",
+              "factIds": [
+                "relation:insight-03-errors_down_volume_up"
+              ],
+              "source": "ai"
+            },
+            {
+              "candidateId": "insight-08-errors_fall_faster",
+              "text": "Từ 13/09/2026 đến 14/09/2026, số lỗi giảm từ 43 xuống 32 và Tổng số giảm từ 214 xuống 209. Tỷ lệ báo sai giảm từ 20.09% xuống 15.31%, cho thấy số lỗi giảm nhanh hơn Tổng số trong phép tính tỷ lệ.",
+              "factIds": [
+                "relation:insight-08-errors_fall_faster"
+              ],
+              "source": "ai"
+            },
+            {
+              "candidateId": "insight-07-errors_down_volume_up",
+              "text": "Từ 14/09/2026 đến 15/09/2026, số lỗi giảm từ 32 xuống 22 trong khi Tổng số tăng từ 209 lên 657. Tỷ lệ báo sai giảm từ 15.31% xuống 3.35%, phản ánh sự sụt giảm của cả số lỗi tuyệt đối lẫn tỷ lệ.",
+              "factIds": [
+                "relation:insight-07-errors_down_volume_up"
+              ],
+              "source": "ai"
+            },
+            {
+              "candidateId": "insight-10-unchanged_errors_share_up",
+              "text": "Từ 15/09/2026 đến 16/09/2026, số lỗi giữ nguyên ở mức 22. Tổng số giảm từ 657 xuống 420 nên cùng số lỗi chiếm tỷ lệ cao hơn: 3.35% lên 5.24%. Tỷ lệ báo sai tăng không có nghĩa số lỗi tăng.",
+              "factIds": [
+                "relation:insight-10-unchanged_errors_share_up"
+              ],
+              "source": "ai"
+            }
+          ],
+          "omittedPhaseCount": 0
+        }
+      },
+      "reading": {
+        "policyVersion": "analytical-reading-v1",
+        "overview": {
+          "text": "Trong các đoạn có dữ liệu, Báo sai/Lỗi có cả lần tăng và giảm. Ở các kỳ cuối, Báo sai/Lỗi giữ nguyên.",
+          "factIds": [
+            "error:fact-period-000",
+            "error:fact-period-001",
+            "error:fact-period-002",
+            "error:fact-period-003",
+            "error:fact-period-004",
+            "error:fact-period-005",
+            "error:fact-period-006",
+            "error:fact-period-007",
+            "error:fact-period-008"
+          ]
+        },
+        "phases": [
+          {
+            "start": "2026-09-07",
+            "end": "2026-09-10",
+            "startLabel": "07/09/2026",
+            "endLabel": "10/09/2026",
+            "text": "Tổng số tăng rồi giảm. Báo sai/Lỗi có cả lần tăng và giảm. % báo sai giảm rồi tăng.",
+            "explanation": "",
+            "factIds": [
+              "total:fact-period-000",
+              "total:fact-period-001",
+              "total:fact-period-002",
+              "total:fact-period-003",
+              "error:fact-period-000",
+              "error:fact-period-001",
+              "error:fact-period-002",
+              "error:fact-period-003",
+              "error_rate:fact-period-000",
+              "error_rate:fact-period-001",
+              "error_rate:fact-period-002",
+              "error_rate:fact-period-003"
+            ],
+            "evidenceIds": [
+              "total:ev-period-000",
+              "total:ev-period-001",
+              "total:ev-period-002",
+              "total:ev-period-003",
+              "error:ev-period-000",
+              "error:ev-period-001",
+              "error:ev-period-002",
+              "error:ev-period-003",
+              "error_rate:ev-period-000",
+              "error_rate:ev-period-001",
+              "error_rate:ev-period-002",
+              "error_rate:ev-period-003"
+            ]
+          },
+          {
+            "start": "2026-09-12",
+            "end": "2026-09-13",
+            "startLabel": "12/09/2026",
+            "endLabel": "13/09/2026",
+            "text": "Tổng số giảm. Báo sai/Lỗi tăng từ 19 lên 43. % báo sai tăng.",
+            "explanation": "Số lỗi tuyệt đối và tỷ lệ báo sai đều tăng.",
+            "factIds": [
+              "total:fact-period-004",
+              "total:fact-period-005",
+              "error:fact-period-004",
+              "error:fact-period-005",
+              "error_rate:fact-period-004",
+              "error_rate:fact-period-005",
+              "relation:insight-09-errors_up_volume_down"
+            ],
+            "evidenceIds": [
+              "total:ev-period-005",
+              "total:ev-period-006",
+              "error:ev-period-005",
+              "error:ev-period-006",
+              "error_rate:ev-period-005",
+              "error_rate:ev-period-006"
+            ]
+          },
+          {
+            "start": "2026-09-13",
+            "end": "2026-09-15",
+            "startLabel": "13/09/2026",
+            "endLabel": "15/09/2026",
+            "text": "Tổng số giảm rồi tăng. Báo sai/Lỗi giảm từ 43 xuống 22. % báo sai giảm.",
+            "explanation": "",
+            "factIds": [
+              "total:fact-period-005",
+              "total:fact-period-006",
+              "total:fact-period-007",
+              "error:fact-period-005",
+              "error:fact-period-006",
+              "error:fact-period-007",
+              "error_rate:fact-period-005",
+              "error_rate:fact-period-006",
+              "error_rate:fact-period-007"
+            ],
+            "evidenceIds": [
+              "total:ev-period-006",
+              "total:ev-period-007",
+              "total:ev-period-008",
+              "error:ev-period-006",
+              "error:ev-period-007",
+              "error:ev-period-008",
+              "error_rate:ev-period-006",
+              "error_rate:ev-period-007",
+              "error_rate:ev-period-008"
+            ]
+          },
+          {
+            "start": "2026-09-15",
+            "end": "2026-09-16",
+            "startLabel": "15/09/2026",
+            "endLabel": "16/09/2026",
+            "text": "Tổng số giảm. Báo sai/Lỗi giữ nguyên ở 22. % báo sai tăng.",
+            "explanation": "Tỷ lệ báo sai cao hơn không có nghĩa số lỗi đã tăng.",
+            "factIds": [
+              "total:fact-period-007",
+              "total:fact-period-008",
+              "error:fact-period-007",
+              "error:fact-period-008",
+              "error_rate:fact-period-007",
+              "error_rate:fact-period-008",
+              "relation:insight-10-unchanged_errors_share_up"
+            ],
+            "evidenceIds": [
+              "total:ev-period-008",
+              "total:ev-period-009",
+              "error:ev-period-008",
+              "error:ev-period-009",
+              "error_rate:ev-period-008",
+              "error_rate:ev-period-009"
+            ]
+          }
+        ],
+        "takeaways": [
+          {
+            "text": "Trong đoạn có dữ liệu liền nhau, Báo sai/Lỗi không duy trì đà tăng sau khi đạt mức cao nhất.",
+            "candidateId": "insight-01-peak_retreat",
+            "factIds": [
+              "relation:insight-01-peak_retreat",
+              "error:fact-period-highest",
+              "error:fact-period-005",
+              "error:fact-period-004",
+              "error:fact-change-005",
+              "error:fact-change-relative-005",
+              "error:fact-change-direction-005",
+              "error:fact-period-006",
+              "error:fact-change-006",
+              "error:fact-change-relative-006",
+              "error:fact-change-direction-006",
+              "error:fact-period-007",
+              "error:fact-change-007",
+              "error:fact-change-relative-007",
+              "error:fact-change-direction-007",
+              "error:fact-period-008",
+              "error:fact-change-008",
+              "error:fact-change-relative-008",
+              "error:fact-change-direction-008"
+            ],
+            "evidenceIds": [
+              "error:ev-period-006",
+              "error:ev-period-005",
+              "error:ev-period-007",
+              "error:ev-period-008",
+              "error:ev-period-009"
+            ]
+          }
+        ]
+      },
+      "series": [
+        {
+          "metric": "total",
+          "points": [
+            {
+              "period": "2026-09-07",
+              "value": 71
+            },
+            {
+              "period": "2026-09-08",
+              "value": 454
+            },
+            {
+              "period": "2026-09-09",
+              "value": 342
+            },
+            {
+              "period": "2026-09-10",
+              "value": 251
+            },
+            {
+              "period": "2026-09-12",
+              "value": 515
+            },
+            {
+              "period": "2026-09-13",
+              "value": 214
+            },
+            {
+              "period": "2026-09-14",
+              "value": 209
+            },
+            {
+              "period": "2026-09-15",
+              "value": 657
+            },
+            {
+              "period": "2026-09-16",
+              "value": 420
+            }
+          ]
+        },
+        {
+          "metric": "error",
+          "points": [
+            {
+              "period": "2026-09-07",
+              "value": 16
+            },
+            {
+              "period": "2026-09-08",
+              "value": 8
+            },
+            {
+              "period": "2026-09-09",
+              "value": 10
+            },
+            {
+              "period": "2026-09-10",
+              "value": 8
+            },
+            {
+              "period": "2026-09-12",
+              "value": 19
+            },
+            {
+              "period": "2026-09-13",
+              "value": 43
+            },
+            {
+              "period": "2026-09-14",
+              "value": 32
+            },
+            {
+              "period": "2026-09-15",
+              "value": 22
+            },
+            {
+              "period": "2026-09-16",
+              "value": 22
+            }
+          ]
+        },
+        {
+          "metric": "error_rate",
+          "points": [
+            {
+              "period": "2026-09-07",
+              "value": 22.53521127
+            },
+            {
+              "period": "2026-09-08",
+              "value": 1.76211454
+            },
+            {
+              "period": "2026-09-09",
+              "value": 2.92397661
+            },
+            {
+              "period": "2026-09-10",
+              "value": 3.187251
+            },
+            {
+              "period": "2026-09-12",
+              "value": 3.68932039
+            },
+            {
+              "period": "2026-09-13",
+              "value": 20.09345794
+            },
+            {
+              "period": "2026-09-14",
+              "value": 15.31100478
+            },
+            {
+              "period": "2026-09-15",
+              "value": 3.34855403
+            },
+            {
+              "period": "2026-09-16",
+              "value": 5.23809524
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scope": {
+        "project": "VSO",
+        "entityRef": "1-1-chat-luong-canh-bao-ghi-nhan-tren-he-thong-ba6898fb1d78",
+        "entityLabel": "1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống",
+        "mode": "node",
+        "metricCode": "all",
+        "metricDisplayName": "Tất cả chỉ số"
+      },
+      "window": {
+        "start": "2026-09-12",
+        "end": "2026-09-13",
+        "groupBy": "day",
+        "comparisonBasis": "per_metric_period_over_period_and_first_last",
+        "previousDate": "2026-09-12",
+        "currentDate": "2026-09-13"
+      },
+      "status": "ready",
+      "provider": {
+        "name": "9router",
+        "model": "gemini-3.7-flash-tiered",
+        "promptVersion": "metric-overview-v10",
+        "latencyMs": 3794,
+        "attemptCount": 1
+      },
+      "validation": {
+        "status": "accepted",
+        "errors": [],
+        "categories": [],
+        "warnings": [],
+        "claimResults": [
+          {
+            "index": 0,
+            "candidateId": "report-overview-00",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 1,
+            "candidateId": "report-phases-00",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 2,
+            "candidateId": "insight-03-errors_up_volume_down",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          }
+        ]
+      },
+      "rawNarrative": "```json\n{\n  \"schemaVersion\": \"ai-narrative-v5\",\n  \"analysisId\": \"ana_a9870e82a7f9400fae36260244bb1b69\",\n  \"status\": \"ready\",\n  \"claims\": [\n    {\n      \"section\": \"overview\",\n      \"candidateId\": \"report-overview-00\",\n      \"claimType\": \"window_overview\",\n      \"text\": \"Trong hai ngày 12/09/2026 và 13/09/2026, số lỗi tăng trong khi Tổng số giảm.\",\n      \"factIds\": [\n        \"relation:report-overview-00\"\n      ]\n    },\n    {\n      \"section\": \"phases\",\n      \"candidateId\": \"report-phases-00\",\n      \"claimType\": \"phase_description\",\n      \"text\": \"Từ 12/09/2026 đến 13/09/2026, Tổng số giảm từ 515 xuống 214. Số lỗi tăng từ 19 lên 43, kéo theo tỷ lệ báo sai tăng từ 3.69% lên 20.09%.\",\n      \"factIds\": [\n        \"relation:report-phases-00\"\n      ]\n    },\n    {\n      \"section\": \"relationships\",\n      \"candidateId\": \"insight-03-errors_up_volume_down\",\n      \"claimType\": \"errors_up_volume_down\",\n      \"text\": \"Số lỗi tăng từ 19 lên 43 trong khi Tổng số giảm từ 515 xuống 214. Đồng thời, tỷ lệ báo sai tăng từ 3.69% lên 20.09%, phản ánh cả số lỗi tuyệt đối và tỷ lệ đều tăng.\",\n      \"factIds\": [\n        \"relation:insight-03-errors_up_volume_down\"\n      ]\n    }\n  ]\n}\n```",
+      "requestLatencyMs": 5579,
+      "providerInputBytes": 12731,
+      "narrative": {
+        "mode": "ai",
+        "schemaVersion": "ai-narrative-v5",
+        "analysisId": "ana_a9870e82a7f9400fae36260244bb1b69",
+        "status": "ready",
+        "validationPolicy": "semantic-grounding-v5",
+        "claims": [
+          {
+            "section": "overview",
+            "candidateId": "report-overview-00",
+            "claimType": "window_overview",
+            "text": "Trong hai ngày 12/09/2026 và 13/09/2026, số lỗi tăng trong khi Tổng số giảm.",
+            "factIds": [
+              "relation:report-overview-00"
+            ]
+          },
+          {
+            "section": "phases",
+            "candidateId": "report-phases-00",
+            "claimType": "phase_description",
+            "text": "Từ 12/09/2026 đến 13/09/2026, Tổng số giảm từ 515 xuống 214. Số lỗi tăng từ 19 lên 43, kéo theo tỷ lệ báo sai tăng từ 3.69% lên 20.09%.",
+            "factIds": [
+              "relation:report-phases-00"
+            ]
+          },
+          {
+            "section": "relationships",
+            "candidateId": "insight-03-errors_up_volume_down",
+            "claimType": "errors_up_volume_down",
+            "text": "Số lỗi tăng từ 19 lên 43 trong khi Tổng số giảm từ 515 xuống 214. Đồng thời, tỷ lệ báo sai tăng từ 3.69% lên 20.09%, phản ánh cả số lỗi tuyệt đối và tỷ lệ đều tăng.",
+            "factIds": [
+              "relation:insight-03-errors_up_volume_down"
+            ]
+          }
+        ],
+        "summary": {
+          "text": "Trong hai ngày 12/09/2026 và 13/09/2026, số lỗi tăng trong khi Tổng số giảm.",
+          "factIds": [
+            "relation:report-overview-00"
+          ],
+          "candidateIds": [
+            "report-overview-00"
+          ],
+          "claimType": "descriptive"
+        },
+        "insights": [],
+        "limitations": [],
+        "suggestedChecks": [],
+        "report": {
+          "policyVersion": "analytical-report-v1",
+          "overview": [
+            {
+              "candidateId": "report-overview-00",
+              "text": "Trong hai ngày 12/09/2026 và 13/09/2026, số lỗi tăng trong khi Tổng số giảm.",
+              "factIds": [
+                "relation:report-overview-00"
+              ],
+              "source": "ai"
+            }
+          ],
+          "phases": [
+            {
+              "candidateId": "report-phases-00",
+              "text": "Từ 12/09/2026 đến 13/09/2026, Tổng số giảm từ 515 xuống 214. Số lỗi tăng từ 19 lên 43, kéo theo tỷ lệ báo sai tăng từ 3.69% lên 20.09%.",
+              "factIds": [
+                "relation:report-phases-00"
+              ],
+              "source": "ai",
+              "start": "2026-09-12",
+              "end": "2026-09-13",
+              "startLabel": "12/09/2026",
+              "endLabel": "13/09/2026"
+            }
+          ],
+          "relationships": [
+            {
+              "candidateId": "insight-03-errors_up_volume_down",
+              "text": "Số lỗi tăng từ 19 lên 43 trong khi Tổng số giảm từ 515 xuống 214. Đồng thời, tỷ lệ báo sai tăng từ 3.69% lên 20.09%, phản ánh cả số lỗi tuyệt đối và tỷ lệ đều tăng.",
+              "factIds": [
+                "relation:insight-03-errors_up_volume_down"
+              ],
+              "source": "ai"
+            }
+          ],
+          "omittedPhaseCount": 0
+        }
+      },
+      "reading": {
+        "policyVersion": "analytical-reading-v1",
+        "overview": {
+          "text": "Báo sai/Lỗi tăng giữa hai kỳ. Hai kỳ chỉ cho biết mức thay đổi, chưa xác định xu hướng.",
+          "factIds": [
+            "error:fact-period-000",
+            "error:fact-period-001"
+          ]
+        },
+        "phases": [
+          {
+            "start": "2026-09-12",
+            "end": "2026-09-13",
+            "startLabel": "12/09/2026",
+            "endLabel": "13/09/2026",
+            "text": "Tổng số giảm. Báo sai/Lỗi tăng từ 19 lên 43. % báo sai tăng.",
+            "explanation": "Số lỗi tuyệt đối và tỷ lệ báo sai đều tăng.",
+            "factIds": [
+              "total:fact-period-000",
+              "total:fact-period-001",
+              "error:fact-period-000",
+              "error:fact-period-001",
+              "error_rate:fact-period-000",
+              "error_rate:fact-period-001",
+              "relation:insight-03-errors_up_volume_down"
+            ],
+            "evidenceIds": [
+              "total:ev-period-000",
+              "total:ev-period-001",
+              "error:ev-period-000",
+              "error:ev-period-001",
+              "error_rate:ev-period-000",
+              "error_rate:ev-period-001"
+            ]
+          }
+        ],
+        "takeaways": []
+      },
+      "series": [
+        {
+          "metric": "total",
+          "points": [
+            {
+              "period": "2026-09-12",
+              "value": 515
+            },
+            {
+              "period": "2026-09-13",
+              "value": 214
+            }
+          ]
+        },
+        {
+          "metric": "error",
+          "points": [
+            {
+              "period": "2026-09-12",
+              "value": 19
+            },
+            {
+              "period": "2026-09-13",
+              "value": 43
+            }
+          ]
+        },
+        {
+          "metric": "error_rate",
+          "points": [
+            {
+              "period": "2026-09-12",
+              "value": 3.68932039
+            },
+            {
+              "period": "2026-09-13",
+              "value": 20.09345794
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scope": {
+        "project": "VSO",
+        "entityRef": "1-1-chat-luong-canh-bao-ghi-nhan-tren-he-thong-ba6898fb1d78",
+        "entityLabel": "1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống",
+        "mode": "node",
+        "metricCode": "all",
+        "metricDisplayName": "Tất cả chỉ số"
+      },
+      "window": {
+        "start": "2026-09-15",
+        "end": "2026-09-16",
+        "groupBy": "day",
+        "comparisonBasis": "per_metric_period_over_period_and_first_last",
+        "previousDate": "2026-09-15",
+        "currentDate": "2026-09-16"
+      },
+      "status": "ready",
+      "provider": {
+        "name": "9router",
+        "model": "gemini-3.7-flash-tiered",
+        "promptVersion": "metric-overview-v10",
+        "latencyMs": 4532,
+        "attemptCount": 1
+      },
+      "validation": {
+        "status": "accepted",
+        "errors": [],
+        "categories": [],
+        "warnings": [
+          "relation_not_expressed"
+        ],
+        "claimResults": [
+          {
+            "index": 0,
+            "candidateId": "report-overview-00",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 1,
+            "candidateId": "report-phases-00",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [],
+            "categories": []
+          },
+          {
+            "index": 2,
+            "candidateId": "insight-03-unchanged_errors_share_up",
+            "status": "accepted",
+            "errors": [],
+            "warnings": [
+              "relation_not_expressed"
+            ],
+            "categories": []
+          }
+        ]
+      },
+      "rawNarrative": "```json\n{\n  \"schemaVersion\": \"ai-narrative-v5\",\n  \"analysisId\": \"ana_e8bfdfd98ae04e97b01b2229c42f2432\",\n  \"status\": \"ready\",\n  \"claims\": [\n    {\n      \"section\": \"overview\",\n      \"candidateId\": \"report-overview-00\",\n      \"claimType\": \"window_overview\",\n      \"text\": \"Số lỗi giữ nguyên ở mức 22 qua hai kỳ. Tổng số giảm từ 657 xuống 420, trong khi tỷ lệ báo sai tăng từ 3.35% lên 5.24%.\",\n      \"factIds\": [\n        \"relation:report-overview-00\"\n      ]\n    },\n    {\n      \"section\": \"phases\",\n      \"candidateId\": \"report-phases-00\",\n      \"claimType\": \"phase_description\",\n      \"text\": \"Từ 15/09/2026 đến 16/09/2026, số lỗi giữ nguyên ở mức 22. Tổng số giảm từ 657 xuống 420, đồng thời tỷ lệ báo sai tăng từ 3.35% lên 5.24%.\",\n      \"factIds\": [\n        \"relation:report-phases-00\"\n      ]\n    },\n    {\n      \"section\": \"relationships\",\n      \"candidateId\": \"insight-03-unchanged_errors_share_up\",\n      \"claimType\": \"unchanged_errors_share_up\",\n      \"text\": \"Số lỗi vẫn là 22 giữa hai kỳ. Tổng số giảm từ 657 xuống 420 nên cùng số lỗi chiếm tỷ lệ cao hơn: 3.35% lên 5.24%. Tỷ lệ tăng không có nghĩa số lỗi tăng.\",\n      \"factIds\": [\n        \"relation:insight-03-unchanged_errors_share_up\"\n      ]\n    }\n  ]\n}\n```",
+      "requestLatencyMs": 6350,
+      "providerInputBytes": 12775,
+      "narrative": {
+        "mode": "ai",
+        "schemaVersion": "ai-narrative-v5",
+        "analysisId": "ana_e8bfdfd98ae04e97b01b2229c42f2432",
+        "status": "ready",
+        "validationPolicy": "semantic-grounding-v5",
+        "claims": [
+          {
+            "section": "overview",
+            "candidateId": "report-overview-00",
+            "claimType": "window_overview",
+            "text": "Số lỗi giữ nguyên ở mức 22 qua hai kỳ. Tổng số giảm từ 657 xuống 420, trong khi tỷ lệ báo sai tăng từ 3.35% lên 5.24%.",
+            "factIds": [
+              "relation:report-overview-00"
+            ]
+          },
+          {
+            "section": "phases",
+            "candidateId": "report-phases-00",
+            "claimType": "phase_description",
+            "text": "Từ 15/09/2026 đến 16/09/2026, số lỗi giữ nguyên ở mức 22. Tổng số giảm từ 657 xuống 420, đồng thời tỷ lệ báo sai tăng từ 3.35% lên 5.24%.",
+            "factIds": [
+              "relation:report-phases-00"
+            ]
+          },
+          {
+            "section": "relationships",
+            "candidateId": "insight-03-unchanged_errors_share_up",
+            "claimType": "unchanged_errors_share_up",
+            "text": "Số lỗi vẫn là 22 giữa hai kỳ. Tổng số giảm từ 657 xuống 420 nên cùng số lỗi chiếm tỷ lệ cao hơn: 3.35% lên 5.24%. Tỷ lệ tăng không có nghĩa số lỗi tăng.",
+            "factIds": [
+              "relation:insight-03-unchanged_errors_share_up"
+            ]
+          }
+        ],
+        "summary": {
+          "text": "Số lỗi giữ nguyên ở mức 22 qua hai kỳ. Tổng số giảm từ 657 xuống 420, trong khi tỷ lệ báo sai tăng từ 3.35% lên 5.24%.",
+          "factIds": [
+            "relation:report-overview-00"
+          ],
+          "candidateIds": [
+            "report-overview-00"
+          ],
+          "claimType": "descriptive"
+        },
+        "insights": [],
+        "limitations": [],
+        "suggestedChecks": [],
+        "report": {
+          "policyVersion": "analytical-report-v1",
+          "overview": [
+            {
+              "candidateId": "report-overview-00",
+              "text": "Số lỗi giữ nguyên ở mức 22 qua hai kỳ. Tổng số giảm từ 657 xuống 420, trong khi tỷ lệ báo sai tăng từ 3.35% lên 5.24%.",
+              "factIds": [
+                "relation:report-overview-00"
+              ],
+              "source": "ai"
+            }
+          ],
+          "phases": [
+            {
+              "candidateId": "report-phases-00",
+              "text": "Từ 15/09/2026 đến 16/09/2026, số lỗi giữ nguyên ở mức 22. Tổng số giảm từ 657 xuống 420, đồng thời tỷ lệ báo sai tăng từ 3.35% lên 5.24%.",
+              "factIds": [
+                "relation:report-phases-00"
+              ],
+              "source": "ai",
+              "start": "2026-09-15",
+              "end": "2026-09-16",
+              "startLabel": "15/09/2026",
+              "endLabel": "16/09/2026"
+            }
+          ],
+          "relationships": [
+            {
+              "candidateId": "insight-03-unchanged_errors_share_up",
+              "text": "Số lỗi vẫn là 22 giữa hai kỳ. Tổng số giảm từ 657 xuống 420 nên cùng số lỗi chiếm tỷ lệ cao hơn: 3.35% lên 5.24%. Tỷ lệ tăng không có nghĩa số lỗi tăng.",
+              "factIds": [
+                "relation:insight-03-unchanged_errors_share_up"
+              ],
+              "source": "ai"
+            }
+          ],
+          "omittedPhaseCount": 0
+        }
+      },
+      "reading": {
+        "policyVersion": "analytical-reading-v1",
+        "overview": {
+          "text": "Báo sai/Lỗi giữ nguyên giữa hai kỳ. Hai kỳ chỉ cho biết mức thay đổi, chưa xác định xu hướng.",
+          "factIds": [
+            "error:fact-period-000",
+            "error:fact-period-001"
+          ]
+        },
+        "phases": [
+          {
+            "start": "2026-09-15",
+            "end": "2026-09-16",
+            "startLabel": "15/09/2026",
+            "endLabel": "16/09/2026",
+            "text": "Tổng số giảm. Báo sai/Lỗi giữ nguyên ở 22. % báo sai tăng.",
+            "explanation": "Tỷ lệ báo sai cao hơn không có nghĩa số lỗi đã tăng.",
+            "factIds": [
+              "total:fact-period-000",
+              "total:fact-period-001",
+              "error:fact-period-000",
+              "error:fact-period-001",
+              "error_rate:fact-period-000",
+              "error_rate:fact-period-001",
+              "relation:insight-03-unchanged_errors_share_up"
+            ],
+            "evidenceIds": [
+              "total:ev-period-000",
+              "total:ev-period-001",
+              "error:ev-period-000",
+              "error:ev-period-001",
+              "error_rate:ev-period-000",
+              "error_rate:ev-period-001"
+            ]
+          }
+        ],
+        "takeaways": [
+          {
+            "text": "Tỷ lệ báo sai tăng chưa có nghĩa số lỗi đã tăng.",
+            "candidateId": "insight-03-unchanged_errors_share_up",
+            "factIds": [
+              "relation:insight-03-unchanged_errors_share_up",
+              "total:fact-period-000",
+              "error:fact-period-000",
+              "error_rate:fact-period-000",
+              "total:fact-period-001",
+              "error:fact-period-001",
+              "error_rate:fact-period-001"
+            ],
+            "evidenceIds": [
+              "total:ev-period-000",
+              "error:ev-period-000",
+              "error_rate:ev-period-000",
+              "total:ev-period-001",
+              "error:ev-period-001",
+              "error_rate:ev-period-001"
+            ]
+          }
+        ]
+      },
+      "series": [
+        {
+          "metric": "total",
+          "points": [
+            {
+              "period": "2026-09-15",
+              "value": 657
+            },
+            {
+              "period": "2026-09-16",
+              "value": 420
+            }
+          ]
+        },
+        {
+          "metric": "error",
+          "points": [
+            {
+              "period": "2026-09-15",
+              "value": 22
+            },
+            {
+              "period": "2026-09-16",
+              "value": 22
+            }
+          ]
+        },
+        {
+          "metric": "error_rate",
+          "points": [
+            {
+              "period": "2026-09-15",
+              "value": 3.34855403
+            },
+            {
+              "period": "2026-09-16",
+              "value": 5.23809524
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

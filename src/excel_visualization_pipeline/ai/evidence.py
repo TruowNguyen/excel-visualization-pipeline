@@ -45,21 +45,26 @@ class EvidenceBuilder:
         source_run_id: int,
     ) -> list[dict[str, Any]]:
         evidence: list[dict[str, Any]] = []
-        for index, point in enumerate(computation.points):
-            target = self._target(
-                computation, point, project=project, entity=entity,
-                source_run_id=source_run_id,
-            )
-            evidence.append({
-                "evidenceId": point.evidence_id,
-                "period": "series",
-                "periodIndex": index,
-                "periodStart": point.period_start.isoformat(),
-                "periodEnd": point.period_end.isoformat(),
-                "periodLabel": point.period_label,
-                "observedDate": point.period_end.isoformat(),
-                "target": target,
-            })
+        point_groups = (
+            ("series", computation.points),
+            ("history", computation.historical_points),
+        )
+        for period_kind, points in point_groups:
+            for index, point in enumerate(points):
+                target = self._target(
+                    computation, point, project=project, entity=entity,
+                    source_run_id=source_run_id,
+                )
+                evidence.append({
+                    "evidenceId": point.evidence_id,
+                    "period": period_kind,
+                    "periodIndex": index,
+                    "periodStart": point.period_start.isoformat(),
+                    "periodEnd": point.period_end.isoformat(),
+                    "periodLabel": point.period_label,
+                    "observedDate": point.period_end.isoformat(),
+                    "target": target,
+                })
         return evidence
 
     def _target(
@@ -124,7 +129,9 @@ class EvidenceBuilder:
                 "project": project,
                 "entity": {
                     "ref": entity["entity_id"], "label": entity["entity_label"],
-                    "hierarchyPath": hierarchy, "effectiveUnit": entity.get("effective_unit"),
+                    "hierarchyPath": hierarchy, "effectiveUnit": (
+                        None if pd.isna(entity.get("effective_unit")) else entity.get("effective_unit")
+                    ),
                 },
                 "metric": computation.metric_display_name,
                 "series": "Tóm tắt xu hướng tự động",

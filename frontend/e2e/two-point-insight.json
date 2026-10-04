@@ -1,0 +1,2560 @@
+{
+  "comparisonBasis": {
+    "policyVersion": "aligned-overview-v1",
+    "status": "comparable",
+    "reason": "So sánh kỳ hợp lệ đầu và cuối, dùng cùng cặp tử số/mẫu số của tỷ lệ.",
+    "rule": "weighted_error_rate",
+    "periods": [
+      {
+        "periodStart": "2026-09-16",
+        "periodEnd": "2026-09-16",
+        "periodLabel": "16/09/2026",
+        "numerator": 10,
+        "denominator": 100,
+        "numeratorDisplay": "10",
+        "denominatorDisplay": "100",
+        "rateDisplay": "10%",
+        "eligibleDays": [
+          "2026-09-16"
+        ],
+        "eligibleDayCount": 1,
+        "expectedDayCount": 1,
+        "factIds": [
+          "error_rate:fact-period-000"
+        ],
+        "evidenceIds": [
+          "error_rate:ev-period-000"
+        ]
+      },
+      {
+        "periodStart": "2026-09-17",
+        "periodEnd": "2026-09-17",
+        "periodLabel": "17/09/2026",
+        "numerator": 15,
+        "denominator": 200,
+        "numeratorDisplay": "15",
+        "denominatorDisplay": "200",
+        "rateDisplay": "7.5%",
+        "eligibleDays": [
+          "2026-09-17"
+        ],
+        "eligibleDayCount": 1,
+        "expectedDayCount": 1,
+        "factIds": [
+          "error_rate:fact-period-001"
+        ],
+        "evidenceIds": [
+          "error_rate:ev-period-001"
+        ]
+      }
+    ],
+    "baseline": {
+      "periodStart": "2026-09-16",
+      "periodEnd": "2026-09-16",
+      "periodLabel": "16/09/2026",
+      "numerator": 10,
+      "denominator": 100,
+      "numeratorDisplay": "10",
+      "denominatorDisplay": "100",
+      "rateDisplay": "10%",
+      "eligibleDays": [
+        "2026-09-16"
+      ],
+      "eligibleDayCount": 1,
+      "expectedDayCount": 1,
+      "factIds": [
+        "error_rate:fact-period-000"
+      ],
+      "evidenceIds": [
+        "error_rate:ev-period-000"
+      ]
+    },
+    "current": {
+      "periodStart": "2026-09-17",
+      "periodEnd": "2026-09-17",
+      "periodLabel": "17/09/2026",
+      "numerator": 15,
+      "denominator": 200,
+      "numeratorDisplay": "15",
+      "denominatorDisplay": "200",
+      "rateDisplay": "7.5%",
+      "eligibleDays": [
+        "2026-09-17"
+      ],
+      "eligibleDayCount": 1,
+      "expectedDayCount": 1,
+      "factIds": [
+        "error_rate:fact-period-001"
+      ],
+      "evidenceIds": [
+        "error_rate:ev-period-001"
+      ]
+    }
+  },
+  "facts": [
+    {
+      "factId": "total:fact-period-000",
+      "kind": "period_value",
+      "value": 100,
+      "unit": "lượt",
+      "displayValue": "100",
+      "evidenceIds": [
+        "total:ev-period-000"
+      ]
+    },
+    {
+      "factId": "total:fact-period-001",
+      "kind": "period_value",
+      "value": 200,
+      "unit": "lượt",
+      "displayValue": "200",
+      "evidenceIds": [
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-change-001",
+      "kind": "period_change",
+      "value": 100,
+      "unit": "lượt",
+      "displayValue": "100",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-change-direction-001",
+      "kind": "period_direction",
+      "value": "increasing",
+      "unit": "enum",
+      "displayValue": "increasing",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-change-relative-001",
+      "kind": "period_relative_change",
+      "value": 100,
+      "unit": "percent",
+      "displayValue": "100%",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-period-count",
+      "kind": "period_count",
+      "value": 2,
+      "unit": "period",
+      "displayValue": "2",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-previous",
+      "kind": "previous",
+      "value": 100,
+      "unit": "lượt",
+      "displayValue": "100",
+      "evidenceIds": [
+        "total:ev-period-000"
+      ]
+    },
+    {
+      "factId": "total:fact-current",
+      "kind": "current",
+      "value": 200,
+      "unit": "lượt",
+      "displayValue": "200",
+      "evidenceIds": [
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-delta",
+      "kind": "absolute_change",
+      "value": 100,
+      "unit": "lượt",
+      "displayValue": "100",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-direction",
+      "kind": "direction",
+      "value": "increasing",
+      "unit": "enum",
+      "displayValue": "increasing",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-relative-change",
+      "kind": "relative_change",
+      "value": 100,
+      "unit": "percent",
+      "displayValue": "100%",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-trend-pattern",
+      "kind": "trend_pattern",
+      "value": "consistently_increasing",
+      "unit": "enum",
+      "displayValue": "consistently_increasing",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-temporal-structure",
+      "kind": "temporal_structure",
+      "value": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.",
+      "displayValue": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.",
+      "unit": "enum",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ],
+      "supportingFactIds": [
+        "total:fact-period-000",
+        "total:fact-period-001",
+        "total:fact-change-001",
+        "total:fact-change-relative-001",
+        "total:fact-change-direction-001"
+      ],
+      "policyVersion": "chronological-stages-v1"
+    },
+    {
+      "factId": "total:fact-temporal-story",
+      "kind": "temporal_narrative",
+      "value": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. 16/09/2026–17/09/2026: tăng từ 100 lên 200, đạt mức cao nhất trong khoảng.",
+      "displayValue": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. 16/09/2026–17/09/2026: tăng từ 100 lên 200, đạt mức cao nhất trong khoảng.",
+      "unit": "text",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ],
+      "supportingFactIds": [
+        "total:fact-period-000",
+        "total:fact-period-001",
+        "total:fact-change-001",
+        "total:fact-change-relative-001",
+        "total:fact-change-direction-001"
+      ],
+      "policyVersion": "chronological-stages-v1"
+    },
+    {
+      "factId": "total:fact-period-highest",
+      "kind": "period_highest_value",
+      "value": 200,
+      "unit": "lượt",
+      "displayValue": "200",
+      "evidenceIds": [
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-period-lowest",
+      "kind": "period_lowest_value",
+      "value": 100,
+      "unit": "lượt",
+      "displayValue": "100",
+      "evidenceIds": [
+        "total:ev-period-000"
+      ]
+    },
+    {
+      "factId": "total:fact-period-largest-increase",
+      "kind": "largest_period_increase",
+      "value": 100,
+      "unit": "lượt",
+      "displayValue": "100",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "total:fact-period-latest-change",
+      "kind": "latest_period_change",
+      "value": 100,
+      "unit": "lượt",
+      "displayValue": "100",
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-period-000",
+      "kind": "period_value",
+      "value": 10,
+      "unit": "lượt",
+      "displayValue": "10",
+      "evidenceIds": [
+        "error:ev-period-000"
+      ]
+    },
+    {
+      "factId": "error:fact-period-001",
+      "kind": "period_value",
+      "value": 15,
+      "unit": "lượt",
+      "displayValue": "15",
+      "evidenceIds": [
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-change-001",
+      "kind": "period_change",
+      "value": 5,
+      "unit": "lượt",
+      "displayValue": "5",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-change-direction-001",
+      "kind": "period_direction",
+      "value": "increasing",
+      "unit": "enum",
+      "displayValue": "increasing",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-change-relative-001",
+      "kind": "period_relative_change",
+      "value": 50,
+      "unit": "percent",
+      "displayValue": "50%",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-period-count",
+      "kind": "period_count",
+      "value": 2,
+      "unit": "period",
+      "displayValue": "2",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-previous",
+      "kind": "previous",
+      "value": 10,
+      "unit": "lượt",
+      "displayValue": "10",
+      "evidenceIds": [
+        "error:ev-period-000"
+      ]
+    },
+    {
+      "factId": "error:fact-current",
+      "kind": "current",
+      "value": 15,
+      "unit": "lượt",
+      "displayValue": "15",
+      "evidenceIds": [
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-delta",
+      "kind": "absolute_change",
+      "value": 5,
+      "unit": "lượt",
+      "displayValue": "5",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-direction",
+      "kind": "direction",
+      "value": "increasing",
+      "unit": "enum",
+      "displayValue": "increasing",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-relative-change",
+      "kind": "relative_change",
+      "value": 50,
+      "unit": "percent",
+      "displayValue": "50%",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-trend-pattern",
+      "kind": "trend_pattern",
+      "value": "consistently_increasing",
+      "unit": "enum",
+      "displayValue": "consistently_increasing",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-temporal-structure",
+      "kind": "temporal_structure",
+      "value": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.",
+      "displayValue": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.",
+      "unit": "enum",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ],
+      "supportingFactIds": [
+        "error:fact-period-000",
+        "error:fact-period-001",
+        "error:fact-change-001",
+        "error:fact-change-relative-001",
+        "error:fact-change-direction-001"
+      ],
+      "policyVersion": "chronological-stages-v1"
+    },
+    {
+      "factId": "error:fact-temporal-story",
+      "kind": "temporal_narrative",
+      "value": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. 16/09/2026–17/09/2026: tăng từ 10 lên 15, đạt mức cao nhất trong khoảng.",
+      "displayValue": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. 16/09/2026–17/09/2026: tăng từ 10 lên 15, đạt mức cao nhất trong khoảng.",
+      "unit": "text",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ],
+      "supportingFactIds": [
+        "error:fact-period-000",
+        "error:fact-period-001",
+        "error:fact-change-001",
+        "error:fact-change-relative-001",
+        "error:fact-change-direction-001"
+      ],
+      "policyVersion": "chronological-stages-v1"
+    },
+    {
+      "factId": "error:fact-period-highest",
+      "kind": "period_highest_value",
+      "value": 15,
+      "unit": "lượt",
+      "displayValue": "15",
+      "evidenceIds": [
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-period-lowest",
+      "kind": "period_lowest_value",
+      "value": 10,
+      "unit": "lượt",
+      "displayValue": "10",
+      "evidenceIds": [
+        "error:ev-period-000"
+      ]
+    },
+    {
+      "factId": "error:fact-period-largest-increase",
+      "kind": "largest_period_increase",
+      "value": 5,
+      "unit": "lượt",
+      "displayValue": "5",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error:fact-period-latest-change",
+      "kind": "latest_period_change",
+      "value": 5,
+      "unit": "lượt",
+      "displayValue": "5",
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-period-000",
+      "kind": "period_value",
+      "value": 10,
+      "unit": "percent",
+      "displayValue": "10%",
+      "evidenceIds": [
+        "error_rate:ev-period-000"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-period-001",
+      "kind": "period_value",
+      "value": 7.5,
+      "unit": "percent",
+      "displayValue": "7.5%",
+      "evidenceIds": [
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-change-001",
+      "kind": "period_change",
+      "value": -2.5,
+      "unit": "percentage_point",
+      "displayValue": "-2.5 pp",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-change-direction-001",
+      "kind": "period_direction",
+      "value": "decreasing",
+      "unit": "enum",
+      "displayValue": "decreasing",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-change-relative-001",
+      "kind": "period_relative_change",
+      "value": -25,
+      "unit": "percent",
+      "displayValue": "-25%",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-period-count",
+      "kind": "period_count",
+      "value": 2,
+      "unit": "period",
+      "displayValue": "2",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-previous",
+      "kind": "previous",
+      "value": 10,
+      "unit": "percent",
+      "displayValue": "10%",
+      "evidenceIds": [
+        "error_rate:ev-period-000"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-current",
+      "kind": "current",
+      "value": 7.5,
+      "unit": "percent",
+      "displayValue": "7.5%",
+      "evidenceIds": [
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-delta",
+      "kind": "absolute_change",
+      "value": -2.5,
+      "unit": "percentage_point",
+      "displayValue": "-2.5 pp",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-direction",
+      "kind": "direction",
+      "value": "decreasing",
+      "unit": "enum",
+      "displayValue": "decreasing",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-relative-change",
+      "kind": "relative_change",
+      "value": -25,
+      "unit": "percent",
+      "displayValue": "-25%",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-trend-pattern",
+      "kind": "trend_pattern",
+      "value": "consistently_decreasing",
+      "unit": "enum",
+      "displayValue": "consistently_decreasing",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-temporal-structure",
+      "kind": "temporal_structure",
+      "value": "Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng.",
+      "displayValue": "Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng.",
+      "unit": "enum",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ],
+      "supportingFactIds": [
+        "error_rate:fact-period-000",
+        "error_rate:fact-period-001",
+        "error_rate:fact-change-001",
+        "error_rate:fact-change-relative-001",
+        "error_rate:fact-change-direction-001"
+      ],
+      "policyVersion": "chronological-stages-v1"
+    },
+    {
+      "factId": "error_rate:fact-temporal-story",
+      "kind": "temporal_narrative",
+      "value": "Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng. 16/09/2026–17/09/2026: giảm từ 10% xuống 7.5%, chạm mức thấp nhất trong khoảng.",
+      "displayValue": "Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng. 16/09/2026–17/09/2026: giảm từ 10% xuống 7.5%, chạm mức thấp nhất trong khoảng.",
+      "unit": "text",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ],
+      "supportingFactIds": [
+        "error_rate:fact-period-000",
+        "error_rate:fact-period-001",
+        "error_rate:fact-change-001",
+        "error_rate:fact-change-relative-001",
+        "error_rate:fact-change-direction-001"
+      ],
+      "policyVersion": "chronological-stages-v1"
+    },
+    {
+      "factId": "error_rate:fact-period-highest",
+      "kind": "period_highest_value",
+      "value": 10,
+      "unit": "percent",
+      "displayValue": "10%",
+      "evidenceIds": [
+        "error_rate:ev-period-000"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-period-lowest",
+      "kind": "period_lowest_value",
+      "value": 7.5,
+      "unit": "percent",
+      "displayValue": "7.5%",
+      "evidenceIds": [
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-period-largest-decrease",
+      "kind": "largest_period_decrease",
+      "value": -2.5,
+      "unit": "percentage_point",
+      "displayValue": "-2.5 pp",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "error_rate:fact-period-latest-change",
+      "kind": "latest_period_change",
+      "value": -2.5,
+      "unit": "percentage_point",
+      "displayValue": "-2.5 pp",
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "cross:rate-relationship",
+      "kind": "numerator_denominator_relationship",
+      "value": "error_share_decreased",
+      "displayValue": "error_share_decreased",
+      "unit": "enum",
+      "operandFactIds": [
+        "total:fact-previous",
+        "total:fact-current",
+        "total:fact-delta",
+        "total:fact-direction",
+        "error:fact-previous",
+        "error:fact-current",
+        "error:fact-delta",
+        "error:fact-direction",
+        "error_rate:fact-previous",
+        "error_rate:fact-current",
+        "error_rate:fact-delta",
+        "error_rate:fact-direction"
+      ],
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001",
+        "error:ev-period-000",
+        "error:ev-period-001",
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ],
+      "policyVersion": "aligned-overview-v1"
+    },
+    {
+      "factId": "cross:growth-relationship",
+      "kind": "metric_growth_relationship",
+      "value": "total_higher",
+      "displayValue": "total_higher",
+      "unit": "enum",
+      "operandFactIds": [
+        "total:fact-previous",
+        "total:fact-current",
+        "total:fact-delta",
+        "total:fact-direction",
+        "error:fact-previous",
+        "error:fact-current",
+        "error:fact-delta",
+        "error:fact-direction",
+        "error_rate:fact-previous",
+        "error_rate:fact-current",
+        "error_rate:fact-delta",
+        "error_rate:fact-direction"
+      ],
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001",
+        "error:ev-period-000",
+        "error:ev-period-001",
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ],
+      "policyVersion": "aligned-overview-v1"
+    },
+    {
+      "factId": "relation:insight-00-period_comparison",
+      "kind": "insight_relation",
+      "value": "period_comparison",
+      "displayValue": "period_comparison",
+      "unit": "enum",
+      "policyVersion": "grounded-synthesis-v4",
+      "operandFactIds": [
+        "total:fact-period-000",
+        "total:fact-period-001"
+      ],
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001"
+      ]
+    },
+    {
+      "factId": "relation:insight-01-period_comparison",
+      "kind": "insight_relation",
+      "value": "period_comparison",
+      "displayValue": "period_comparison",
+      "unit": "enum",
+      "policyVersion": "grounded-synthesis-v4",
+      "operandFactIds": [
+        "error:fact-period-000",
+        "error:fact-period-001"
+      ],
+      "evidenceIds": [
+        "error:ev-period-000",
+        "error:ev-period-001"
+      ]
+    },
+    {
+      "factId": "relation:insight-02-period_comparison",
+      "kind": "insight_relation",
+      "value": "period_comparison",
+      "displayValue": "period_comparison",
+      "unit": "enum",
+      "policyVersion": "grounded-synthesis-v4",
+      "operandFactIds": [
+        "error_rate:fact-period-000",
+        "error_rate:fact-period-001"
+      ],
+      "evidenceIds": [
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "factId": "relation:insight-03-count_rate_contrast",
+      "kind": "insight_relation",
+      "value": "count_rate_contrast",
+      "displayValue": "count_rate_contrast",
+      "unit": "enum",
+      "policyVersion": "grounded-synthesis-v4",
+      "operandFactIds": [
+        "total:fact-period-000",
+        "error:fact-period-000",
+        "error_rate:fact-period-000",
+        "total:fact-period-001",
+        "error:fact-period-001",
+        "error_rate:fact-period-001"
+      ],
+      "evidenceIds": [
+        "total:ev-period-000",
+        "error:ev-period-000",
+        "error_rate:ev-period-000",
+        "total:ev-period-001",
+        "error:ev-period-001",
+        "error_rate:ev-period-001"
+      ]
+    }
+  ],
+  "insightCandidates": [
+    {
+      "candidateId": "whole-window",
+      "layer": "whole_series",
+      "text": "Tổng số: Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. Báo sai/Lỗi: Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. % báo sai: Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng.",
+      "factIds": [
+        "total:fact-temporal-structure",
+        "error:fact-temporal-structure",
+        "error_rate:fact-temporal-structure"
+      ],
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001",
+        "error:ev-period-000",
+        "error:ev-period-001",
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    },
+    {
+      "candidateId": "relationship",
+      "layer": "relational",
+      "text": "Từ 16/09/2026 đến 17/09/2026, tổng số tăng nhanh hơn Báo sai/Lỗi; tỷ trọng Báo sai/Lỗi trên Tổng số giảm trong phép tính tỷ lệ (10% → 7.5%; chênh lệch -2.5 điểm phần trăm). Lượng ghi nhận là 100 → 200; Báo sai/Lỗi là 10 → 15.",
+      "factIds": [
+        "total:fact-previous",
+        "total:fact-current",
+        "total:fact-delta",
+        "total:fact-direction",
+        "error:fact-previous",
+        "error:fact-current",
+        "error:fact-delta",
+        "error:fact-direction",
+        "error_rate:fact-previous",
+        "error_rate:fact-current",
+        "error_rate:fact-delta",
+        "error_rate:fact-direction",
+        "cross:growth-relationship",
+        "cross:rate-relationship"
+      ],
+      "evidenceIds": [
+        "total:ev-period-000",
+        "total:ev-period-001",
+        "error:ev-period-000",
+        "error:ev-period-001",
+        "error_rate:ev-period-000",
+        "error_rate:ev-period-001"
+      ]
+    }
+  ],
+  "inspectionChecks": [
+    {
+      "checkId": "check-insight-03-count_rate_contrast",
+      "candidateId": "insight-03-count_rate_contrast",
+      "text": "Đối chiếu số lượng và tỷ lệ từ 16/09/2026 đến 17/09/2026 để kiểm tra hai cách đọc dữ liệu.",
+      "factIds": [
+        "relation:insight-03-count_rate_contrast",
+        "total:fact-period-000",
+        "error:fact-period-000",
+        "error_rate:fact-period-000",
+        "total:fact-period-001",
+        "error:fact-period-001",
+        "error_rate:fact-period-001"
+      ],
+      "evidenceIds": [
+        "total:ev-period-000",
+        "error:ev-period-000",
+        "error_rate:ev-period-000",
+        "total:ev-period-001",
+        "error:ev-period-001",
+        "error_rate:ev-period-001"
+      ]
+    }
+  ],
+  "limitations": [],
+  "evidence": [
+    {
+      "evidenceId": "error:ev-period-000"
+    },
+    {
+      "evidenceId": "error:ev-period-001"
+    },
+    {
+      "evidenceId": "error_rate:ev-period-000"
+    },
+    {
+      "evidenceId": "error_rate:ev-period-001"
+    },
+    {
+      "evidenceId": "total:ev-period-000"
+    },
+    {
+      "evidenceId": "total:ev-period-001"
+    }
+  ],
+  "schemaVersion": "ai-overview-v2",
+  "analysisId": "test-overview",
+  "metrics": [
+    {
+      "metricCode": "total",
+      "metricDisplayName": "Tổng số",
+      "series": [
+        {
+          "periodStart": "2026-09-16",
+          "periodEnd": "2026-09-16",
+          "periodLabel": "16/09/2026",
+          "value": 100,
+          "displayValue": "100",
+          "observedDayCount": 1,
+          "expectedDayCount": 1,
+          "coverageRatio": 1,
+          "evidenceId": "total:ev-period-000",
+          "factId": "total:fact-period-000",
+          "change": null
+        },
+        {
+          "periodStart": "2026-09-17",
+          "periodEnd": "2026-09-17",
+          "periodLabel": "17/09/2026",
+          "value": 200,
+          "displayValue": "200",
+          "observedDayCount": 1,
+          "expectedDayCount": 1,
+          "coverageRatio": 1,
+          "evidenceId": "total:ev-period-001",
+          "factId": "total:fact-period-001",
+          "change": {
+            "fromPeriodStart": "2026-09-16",
+            "absolute": 100,
+            "absoluteDisplay": "100",
+            "relativePercent": 100,
+            "relativeDisplay": "100%",
+            "direction": "increasing",
+            "factIds": [
+              "total:fact-change-001",
+              "total:fact-change-relative-001",
+              "total:fact-change-direction-001"
+            ]
+          }
+        }
+      ],
+      "facts": [
+        {
+          "factId": "total:fact-period-000",
+          "kind": "period_value",
+          "value": 100,
+          "unit": "lượt",
+          "displayValue": "100",
+          "evidenceIds": [
+            "total:ev-period-000"
+          ]
+        },
+        {
+          "factId": "total:fact-period-001",
+          "kind": "period_value",
+          "value": 200,
+          "unit": "lượt",
+          "displayValue": "200",
+          "evidenceIds": [
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-change-001",
+          "kind": "period_change",
+          "value": 100,
+          "unit": "lượt",
+          "displayValue": "100",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-change-direction-001",
+          "kind": "period_direction",
+          "value": "increasing",
+          "unit": "enum",
+          "displayValue": "increasing",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-change-relative-001",
+          "kind": "period_relative_change",
+          "value": 100,
+          "unit": "percent",
+          "displayValue": "100%",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-period-count",
+          "kind": "period_count",
+          "value": 2,
+          "unit": "period",
+          "displayValue": "2",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-previous",
+          "kind": "previous",
+          "value": 100,
+          "unit": "lượt",
+          "displayValue": "100",
+          "evidenceIds": [
+            "total:ev-period-000"
+          ]
+        },
+        {
+          "factId": "total:fact-current",
+          "kind": "current",
+          "value": 200,
+          "unit": "lượt",
+          "displayValue": "200",
+          "evidenceIds": [
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-delta",
+          "kind": "absolute_change",
+          "value": 100,
+          "unit": "lượt",
+          "displayValue": "100",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-direction",
+          "kind": "direction",
+          "value": "increasing",
+          "unit": "enum",
+          "displayValue": "increasing",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-relative-change",
+          "kind": "relative_change",
+          "value": 100,
+          "unit": "percent",
+          "displayValue": "100%",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-trend-pattern",
+          "kind": "trend_pattern",
+          "value": "consistently_increasing",
+          "unit": "enum",
+          "displayValue": "consistently_increasing",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-temporal-structure",
+          "kind": "temporal_structure",
+          "value": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.",
+          "displayValue": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.",
+          "unit": "enum",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ],
+          "supportingFactIds": [
+            "total:fact-period-000",
+            "total:fact-period-001",
+            "total:fact-change-001",
+            "total:fact-change-relative-001",
+            "total:fact-change-direction-001"
+          ],
+          "policyVersion": "chronological-stages-v1"
+        },
+        {
+          "factId": "total:fact-temporal-story",
+          "kind": "temporal_narrative",
+          "value": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. 16/09/2026–17/09/2026: tăng từ 100 lên 200, đạt mức cao nhất trong khoảng.",
+          "displayValue": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. 16/09/2026–17/09/2026: tăng từ 100 lên 200, đạt mức cao nhất trong khoảng.",
+          "unit": "text",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ],
+          "supportingFactIds": [
+            "total:fact-period-000",
+            "total:fact-period-001",
+            "total:fact-change-001",
+            "total:fact-change-relative-001",
+            "total:fact-change-direction-001"
+          ],
+          "policyVersion": "chronological-stages-v1"
+        },
+        {
+          "factId": "total:fact-period-highest",
+          "kind": "period_highest_value",
+          "value": 200,
+          "unit": "lượt",
+          "displayValue": "200",
+          "evidenceIds": [
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-period-lowest",
+          "kind": "period_lowest_value",
+          "value": 100,
+          "unit": "lượt",
+          "displayValue": "100",
+          "evidenceIds": [
+            "total:ev-period-000"
+          ]
+        },
+        {
+          "factId": "total:fact-period-largest-increase",
+          "kind": "largest_period_increase",
+          "value": 100,
+          "unit": "lượt",
+          "displayValue": "100",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        },
+        {
+          "factId": "total:fact-period-latest-change",
+          "kind": "latest_period_change",
+          "value": 100,
+          "unit": "lượt",
+          "displayValue": "100",
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        }
+      ],
+      "quality": {
+        "status": "valid",
+        "validPointCount": 2,
+        "validPeriodCount": 2,
+        "expectedPeriodCount": 2,
+        "observedInputDayCount": 2,
+        "expectedCalendarDayCount": 2,
+        "coverageRatio": 1,
+        "dayCoverageRatio": 1,
+        "comparisonBasis": "period_over_period_and_first_last",
+        "groupBy": "day",
+        "policyVersion": "period-series-v3",
+        "limitations": []
+      },
+      "periodAnalytics": {
+        "temporalStructure": {
+          "policyVersion": "chronological-stages-v1",
+          "stages": [
+            {
+              "startIndex": 0,
+              "endIndex": 1,
+              "direction": "increasing",
+              "factIds": [
+                "total:fact-period-000",
+                "total:fact-period-001",
+                "total:fact-change-001",
+                "total:fact-change-relative-001",
+                "total:fact-change-direction-001"
+              ],
+              "evidenceIds": [
+                "total:ev-period-000",
+                "total:ev-period-001"
+              ],
+              "startPeriodStart": "2026-09-16",
+              "endPeriodStart": "2026-09-17",
+              "startPeriodLabel": "16/09/2026",
+              "endPeriodLabel": "17/09/2026",
+              "transitionCount": 1,
+              "displayValues": [
+                "100",
+                "200"
+              ],
+              "text": "16/09/2026–17/09/2026: tăng từ 100 lên 200, đạt mức cao nhất trong khoảng."
+            }
+          ],
+          "turningPoints": [],
+          "gaps": [],
+          "overviewText": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.",
+          "overviewFactIds": [
+            "total:fact-temporal-structure"
+          ],
+          "summaryText": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. 16/09/2026–17/09/2026: tăng từ 100 lên 200, đạt mức cao nhất trong khoảng.",
+          "summaryFactIds": [
+            "total:fact-temporal-story"
+          ],
+          "factIds": [
+            "total:fact-period-000",
+            "total:fact-period-001",
+            "total:fact-change-001",
+            "total:fact-change-relative-001",
+            "total:fact-change-direction-001"
+          ],
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001"
+          ]
+        },
+        "policyVersion": "period-level-v1",
+        "tieBreak": "latest_period",
+        "peak": {
+          "periodStart": "2026-09-17",
+          "periodEnd": "2026-09-17",
+          "periodLabel": "17/09/2026",
+          "value": 200,
+          "displayValue": "200",
+          "coverageRatio": 1,
+          "factIds": [
+            "total:fact-period-highest",
+            "total:fact-period-001"
+          ]
+        },
+        "lowest": {
+          "periodStart": "2026-09-16",
+          "periodEnd": "2026-09-16",
+          "periodLabel": "16/09/2026",
+          "value": 100,
+          "displayValue": "100",
+          "coverageRatio": 1,
+          "factIds": [
+            "total:fact-period-lowest",
+            "total:fact-period-000"
+          ]
+        },
+        "largestIncrease": {
+          "fromPeriodStart": "2026-09-16",
+          "fromPeriodLabel": "16/09/2026",
+          "fromValue": 100,
+          "fromDisplayValue": "100",
+          "toPeriodStart": "2026-09-17",
+          "toPeriodLabel": "17/09/2026",
+          "toValue": 200,
+          "toDisplayValue": "200",
+          "absolute": 100,
+          "absoluteDisplay": "100",
+          "relativePercent": 100,
+          "relativeDisplay": "100%",
+          "direction": "increasing",
+          "factIds": [
+            "total:fact-period-largest-increase",
+            "total:fact-period-000",
+            "total:fact-period-001",
+            "total:fact-change-001",
+            "total:fact-change-relative-001",
+            "total:fact-change-direction-001"
+          ]
+        },
+        "largestDecrease": null,
+        "consecutiveIncrease": null,
+        "consecutiveDecrease": null,
+        "endingPlateau": null,
+        "latestChange": {
+          "fromPeriodStart": "2026-09-16",
+          "fromPeriodLabel": "16/09/2026",
+          "fromValue": 100,
+          "fromDisplayValue": "100",
+          "toPeriodStart": "2026-09-17",
+          "toPeriodLabel": "17/09/2026",
+          "toValue": 200,
+          "toDisplayValue": "200",
+          "absolute": 100,
+          "absoluteDisplay": "100",
+          "relativePercent": 100,
+          "relativeDisplay": "100%",
+          "direction": "increasing",
+          "factIds": [
+            "total:fact-period-latest-change",
+            "total:fact-period-000",
+            "total:fact-period-001",
+            "total:fact-change-001",
+            "total:fact-change-relative-001",
+            "total:fact-change-direction-001"
+          ]
+        }
+      }
+    },
+    {
+      "metricCode": "error",
+      "metricDisplayName": "Báo sai/Lỗi",
+      "series": [
+        {
+          "periodStart": "2026-09-16",
+          "periodEnd": "2026-09-16",
+          "periodLabel": "16/09/2026",
+          "value": 10,
+          "displayValue": "10",
+          "observedDayCount": 1,
+          "expectedDayCount": 1,
+          "coverageRatio": 1,
+          "evidenceId": "error:ev-period-000",
+          "factId": "error:fact-period-000",
+          "change": null
+        },
+        {
+          "periodStart": "2026-09-17",
+          "periodEnd": "2026-09-17",
+          "periodLabel": "17/09/2026",
+          "value": 15,
+          "displayValue": "15",
+          "observedDayCount": 1,
+          "expectedDayCount": 1,
+          "coverageRatio": 1,
+          "evidenceId": "error:ev-period-001",
+          "factId": "error:fact-period-001",
+          "change": {
+            "fromPeriodStart": "2026-09-16",
+            "absolute": 5,
+            "absoluteDisplay": "5",
+            "relativePercent": 50,
+            "relativeDisplay": "50%",
+            "direction": "increasing",
+            "factIds": [
+              "error:fact-change-001",
+              "error:fact-change-relative-001",
+              "error:fact-change-direction-001"
+            ]
+          }
+        }
+      ],
+      "facts": [
+        {
+          "factId": "error:fact-period-000",
+          "kind": "period_value",
+          "value": 10,
+          "unit": "lượt",
+          "displayValue": "10",
+          "evidenceIds": [
+            "error:ev-period-000"
+          ]
+        },
+        {
+          "factId": "error:fact-period-001",
+          "kind": "period_value",
+          "value": 15,
+          "unit": "lượt",
+          "displayValue": "15",
+          "evidenceIds": [
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-change-001",
+          "kind": "period_change",
+          "value": 5,
+          "unit": "lượt",
+          "displayValue": "5",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-change-direction-001",
+          "kind": "period_direction",
+          "value": "increasing",
+          "unit": "enum",
+          "displayValue": "increasing",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-change-relative-001",
+          "kind": "period_relative_change",
+          "value": 50,
+          "unit": "percent",
+          "displayValue": "50%",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-period-count",
+          "kind": "period_count",
+          "value": 2,
+          "unit": "period",
+          "displayValue": "2",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-previous",
+          "kind": "previous",
+          "value": 10,
+          "unit": "lượt",
+          "displayValue": "10",
+          "evidenceIds": [
+            "error:ev-period-000"
+          ]
+        },
+        {
+          "factId": "error:fact-current",
+          "kind": "current",
+          "value": 15,
+          "unit": "lượt",
+          "displayValue": "15",
+          "evidenceIds": [
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-delta",
+          "kind": "absolute_change",
+          "value": 5,
+          "unit": "lượt",
+          "displayValue": "5",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-direction",
+          "kind": "direction",
+          "value": "increasing",
+          "unit": "enum",
+          "displayValue": "increasing",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-relative-change",
+          "kind": "relative_change",
+          "value": 50,
+          "unit": "percent",
+          "displayValue": "50%",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-trend-pattern",
+          "kind": "trend_pattern",
+          "value": "consistently_increasing",
+          "unit": "enum",
+          "displayValue": "consistently_increasing",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-temporal-structure",
+          "kind": "temporal_structure",
+          "value": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.",
+          "displayValue": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.",
+          "unit": "enum",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ],
+          "supportingFactIds": [
+            "error:fact-period-000",
+            "error:fact-period-001",
+            "error:fact-change-001",
+            "error:fact-change-relative-001",
+            "error:fact-change-direction-001"
+          ],
+          "policyVersion": "chronological-stages-v1"
+        },
+        {
+          "factId": "error:fact-temporal-story",
+          "kind": "temporal_narrative",
+          "value": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. 16/09/2026–17/09/2026: tăng từ 10 lên 15, đạt mức cao nhất trong khoảng.",
+          "displayValue": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. 16/09/2026–17/09/2026: tăng từ 10 lên 15, đạt mức cao nhất trong khoảng.",
+          "unit": "text",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ],
+          "supportingFactIds": [
+            "error:fact-period-000",
+            "error:fact-period-001",
+            "error:fact-change-001",
+            "error:fact-change-relative-001",
+            "error:fact-change-direction-001"
+          ],
+          "policyVersion": "chronological-stages-v1"
+        },
+        {
+          "factId": "error:fact-period-highest",
+          "kind": "period_highest_value",
+          "value": 15,
+          "unit": "lượt",
+          "displayValue": "15",
+          "evidenceIds": [
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-period-lowest",
+          "kind": "period_lowest_value",
+          "value": 10,
+          "unit": "lượt",
+          "displayValue": "10",
+          "evidenceIds": [
+            "error:ev-period-000"
+          ]
+        },
+        {
+          "factId": "error:fact-period-largest-increase",
+          "kind": "largest_period_increase",
+          "value": 5,
+          "unit": "lượt",
+          "displayValue": "5",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error:fact-period-latest-change",
+          "kind": "latest_period_change",
+          "value": 5,
+          "unit": "lượt",
+          "displayValue": "5",
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        }
+      ],
+      "quality": {
+        "status": "valid",
+        "validPointCount": 2,
+        "validPeriodCount": 2,
+        "expectedPeriodCount": 2,
+        "observedInputDayCount": 2,
+        "expectedCalendarDayCount": 2,
+        "coverageRatio": 1,
+        "dayCoverageRatio": 1,
+        "comparisonBasis": "period_over_period_and_first_last",
+        "groupBy": "day",
+        "policyVersion": "period-series-v3",
+        "limitations": []
+      },
+      "periodAnalytics": {
+        "temporalStructure": {
+          "policyVersion": "chronological-stages-v1",
+          "stages": [
+            {
+              "startIndex": 0,
+              "endIndex": 1,
+              "direction": "increasing",
+              "factIds": [
+                "error:fact-period-000",
+                "error:fact-period-001",
+                "error:fact-change-001",
+                "error:fact-change-relative-001",
+                "error:fact-change-direction-001"
+              ],
+              "evidenceIds": [
+                "error:ev-period-000",
+                "error:ev-period-001"
+              ],
+              "startPeriodStart": "2026-09-16",
+              "endPeriodStart": "2026-09-17",
+              "startPeriodLabel": "16/09/2026",
+              "endPeriodLabel": "17/09/2026",
+              "transitionCount": 1,
+              "displayValues": [
+                "10",
+                "15"
+              ],
+              "text": "16/09/2026–17/09/2026: tăng từ 10 lên 15, đạt mức cao nhất trong khoảng."
+            }
+          ],
+          "turningPoints": [],
+          "gaps": [],
+          "overviewText": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm.",
+          "overviewFactIds": [
+            "error:fact-temporal-structure"
+          ],
+          "summaryText": "Chỉ số đi lên trong toàn khoảng, không có nhịp giảm. 16/09/2026–17/09/2026: tăng từ 10 lên 15, đạt mức cao nhất trong khoảng.",
+          "summaryFactIds": [
+            "error:fact-temporal-story"
+          ],
+          "factIds": [
+            "error:fact-period-000",
+            "error:fact-period-001",
+            "error:fact-change-001",
+            "error:fact-change-relative-001",
+            "error:fact-change-direction-001"
+          ],
+          "evidenceIds": [
+            "error:ev-period-000",
+            "error:ev-period-001"
+          ]
+        },
+        "policyVersion": "period-level-v1",
+        "tieBreak": "latest_period",
+        "peak": {
+          "periodStart": "2026-09-17",
+          "periodEnd": "2026-09-17",
+          "periodLabel": "17/09/2026",
+          "value": 15,
+          "displayValue": "15",
+          "coverageRatio": 1,
+          "factIds": [
+            "error:fact-period-highest",
+            "error:fact-period-001"
+          ]
+        },
+        "lowest": {
+          "periodStart": "2026-09-16",
+          "periodEnd": "2026-09-16",
+          "periodLabel": "16/09/2026",
+          "value": 10,
+          "displayValue": "10",
+          "coverageRatio": 1,
+          "factIds": [
+            "error:fact-period-lowest",
+            "error:fact-period-000"
+          ]
+        },
+        "largestIncrease": {
+          "fromPeriodStart": "2026-09-16",
+          "fromPeriodLabel": "16/09/2026",
+          "fromValue": 10,
+          "fromDisplayValue": "10",
+          "toPeriodStart": "2026-09-17",
+          "toPeriodLabel": "17/09/2026",
+          "toValue": 15,
+          "toDisplayValue": "15",
+          "absolute": 5,
+          "absoluteDisplay": "5",
+          "relativePercent": 50,
+          "relativeDisplay": "50%",
+          "direction": "increasing",
+          "factIds": [
+            "error:fact-period-largest-increase",
+            "error:fact-period-000",
+            "error:fact-period-001",
+            "error:fact-change-001",
+            "error:fact-change-relative-001",
+            "error:fact-change-direction-001"
+          ]
+        },
+        "largestDecrease": null,
+        "consecutiveIncrease": null,
+        "consecutiveDecrease": null,
+        "endingPlateau": null,
+        "latestChange": {
+          "fromPeriodStart": "2026-09-16",
+          "fromPeriodLabel": "16/09/2026",
+          "fromValue": 10,
+          "fromDisplayValue": "10",
+          "toPeriodStart": "2026-09-17",
+          "toPeriodLabel": "17/09/2026",
+          "toValue": 15,
+          "toDisplayValue": "15",
+          "absolute": 5,
+          "absoluteDisplay": "5",
+          "relativePercent": 50,
+          "relativeDisplay": "50%",
+          "direction": "increasing",
+          "factIds": [
+            "error:fact-period-latest-change",
+            "error:fact-period-000",
+            "error:fact-period-001",
+            "error:fact-change-001",
+            "error:fact-change-relative-001",
+            "error:fact-change-direction-001"
+          ]
+        }
+      }
+    },
+    {
+      "metricCode": "error_rate",
+      "metricDisplayName": "% báo sai",
+      "series": [
+        {
+          "periodStart": "2026-09-16",
+          "periodEnd": "2026-09-16",
+          "periodLabel": "16/09/2026",
+          "value": 10,
+          "displayValue": "10%",
+          "observedDayCount": 1,
+          "expectedDayCount": 1,
+          "coverageRatio": 1,
+          "evidenceId": "error_rate:ev-period-000",
+          "factId": "error_rate:fact-period-000",
+          "change": null
+        },
+        {
+          "periodStart": "2026-09-17",
+          "periodEnd": "2026-09-17",
+          "periodLabel": "17/09/2026",
+          "value": 7.5,
+          "displayValue": "7.5%",
+          "observedDayCount": 1,
+          "expectedDayCount": 1,
+          "coverageRatio": 1,
+          "evidenceId": "error_rate:ev-period-001",
+          "factId": "error_rate:fact-period-001",
+          "change": {
+            "fromPeriodStart": "2026-09-16",
+            "absolute": -2.5,
+            "absoluteDisplay": "-2.5 pp",
+            "relativePercent": -25,
+            "relativeDisplay": "-25%",
+            "direction": "decreasing",
+            "factIds": [
+              "error_rate:fact-change-001",
+              "error_rate:fact-change-relative-001",
+              "error_rate:fact-change-direction-001"
+            ]
+          }
+        }
+      ],
+      "facts": [
+        {
+          "factId": "error_rate:fact-period-000",
+          "kind": "period_value",
+          "value": 10,
+          "unit": "percent",
+          "displayValue": "10%",
+          "evidenceIds": [
+            "error_rate:ev-period-000"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-period-001",
+          "kind": "period_value",
+          "value": 7.5,
+          "unit": "percent",
+          "displayValue": "7.5%",
+          "evidenceIds": [
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-change-001",
+          "kind": "period_change",
+          "value": -2.5,
+          "unit": "percentage_point",
+          "displayValue": "-2.5 pp",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-change-direction-001",
+          "kind": "period_direction",
+          "value": "decreasing",
+          "unit": "enum",
+          "displayValue": "decreasing",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-change-relative-001",
+          "kind": "period_relative_change",
+          "value": -25,
+          "unit": "percent",
+          "displayValue": "-25%",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-period-count",
+          "kind": "period_count",
+          "value": 2,
+          "unit": "period",
+          "displayValue": "2",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-previous",
+          "kind": "previous",
+          "value": 10,
+          "unit": "percent",
+          "displayValue": "10%",
+          "evidenceIds": [
+            "error_rate:ev-period-000"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-current",
+          "kind": "current",
+          "value": 7.5,
+          "unit": "percent",
+          "displayValue": "7.5%",
+          "evidenceIds": [
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-delta",
+          "kind": "absolute_change",
+          "value": -2.5,
+          "unit": "percentage_point",
+          "displayValue": "-2.5 pp",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-direction",
+          "kind": "direction",
+          "value": "decreasing",
+          "unit": "enum",
+          "displayValue": "decreasing",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-relative-change",
+          "kind": "relative_change",
+          "value": -25,
+          "unit": "percent",
+          "displayValue": "-25%",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-trend-pattern",
+          "kind": "trend_pattern",
+          "value": "consistently_decreasing",
+          "unit": "enum",
+          "displayValue": "consistently_decreasing",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-temporal-structure",
+          "kind": "temporal_structure",
+          "value": "Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng.",
+          "displayValue": "Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng.",
+          "unit": "enum",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ],
+          "supportingFactIds": [
+            "error_rate:fact-period-000",
+            "error_rate:fact-period-001",
+            "error_rate:fact-change-001",
+            "error_rate:fact-change-relative-001",
+            "error_rate:fact-change-direction-001"
+          ],
+          "policyVersion": "chronological-stages-v1"
+        },
+        {
+          "factId": "error_rate:fact-temporal-story",
+          "kind": "temporal_narrative",
+          "value": "Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng. 16/09/2026–17/09/2026: giảm từ 10% xuống 7.5%, chạm mức thấp nhất trong khoảng.",
+          "displayValue": "Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng. 16/09/2026–17/09/2026: giảm từ 10% xuống 7.5%, chạm mức thấp nhất trong khoảng.",
+          "unit": "text",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ],
+          "supportingFactIds": [
+            "error_rate:fact-period-000",
+            "error_rate:fact-period-001",
+            "error_rate:fact-change-001",
+            "error_rate:fact-change-relative-001",
+            "error_rate:fact-change-direction-001"
+          ],
+          "policyVersion": "chronological-stages-v1"
+        },
+        {
+          "factId": "error_rate:fact-period-highest",
+          "kind": "period_highest_value",
+          "value": 10,
+          "unit": "percent",
+          "displayValue": "10%",
+          "evidenceIds": [
+            "error_rate:ev-period-000"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-period-lowest",
+          "kind": "period_lowest_value",
+          "value": 7.5,
+          "unit": "percent",
+          "displayValue": "7.5%",
+          "evidenceIds": [
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-period-largest-decrease",
+          "kind": "largest_period_decrease",
+          "value": -2.5,
+          "unit": "percentage_point",
+          "displayValue": "-2.5 pp",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        },
+        {
+          "factId": "error_rate:fact-period-latest-change",
+          "kind": "latest_period_change",
+          "value": -2.5,
+          "unit": "percentage_point",
+          "displayValue": "-2.5 pp",
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        }
+      ],
+      "quality": {
+        "status": "valid",
+        "validPointCount": 2,
+        "validPeriodCount": 2,
+        "expectedPeriodCount": 2,
+        "observedInputDayCount": 2,
+        "expectedCalendarDayCount": 2,
+        "coverageRatio": 1,
+        "dayCoverageRatio": 1,
+        "comparisonBasis": "period_over_period_and_first_last",
+        "groupBy": "day",
+        "policyVersion": "period-series-v3",
+        "limitations": []
+      },
+      "periodAnalytics": {
+        "temporalStructure": {
+          "policyVersion": "chronological-stages-v1",
+          "stages": [
+            {
+              "startIndex": 0,
+              "endIndex": 1,
+              "direction": "decreasing",
+              "factIds": [
+                "error_rate:fact-period-000",
+                "error_rate:fact-period-001",
+                "error_rate:fact-change-001",
+                "error_rate:fact-change-relative-001",
+                "error_rate:fact-change-direction-001"
+              ],
+              "evidenceIds": [
+                "error_rate:ev-period-000",
+                "error_rate:ev-period-001"
+              ],
+              "startPeriodStart": "2026-09-16",
+              "endPeriodStart": "2026-09-17",
+              "startPeriodLabel": "16/09/2026",
+              "endPeriodLabel": "17/09/2026",
+              "transitionCount": 1,
+              "displayValues": [
+                "10%",
+                "7.5%"
+              ],
+              "text": "16/09/2026–17/09/2026: giảm từ 10% xuống 7.5%, chạm mức thấp nhất trong khoảng."
+            }
+          ],
+          "turningPoints": [],
+          "gaps": [],
+          "overviewText": "Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng.",
+          "overviewFactIds": [
+            "error_rate:fact-temporal-structure"
+          ],
+          "summaryText": "Chỉ số đi xuống trong toàn khoảng, không có nhịp tăng. 16/09/2026–17/09/2026: giảm từ 10% xuống 7.5%, chạm mức thấp nhất trong khoảng.",
+          "summaryFactIds": [
+            "error_rate:fact-temporal-story"
+          ],
+          "factIds": [
+            "error_rate:fact-period-000",
+            "error_rate:fact-period-001",
+            "error_rate:fact-change-001",
+            "error_rate:fact-change-relative-001",
+            "error_rate:fact-change-direction-001"
+          ],
+          "evidenceIds": [
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        },
+        "policyVersion": "period-level-v1",
+        "tieBreak": "latest_period",
+        "peak": {
+          "periodStart": "2026-09-16",
+          "periodEnd": "2026-09-16",
+          "periodLabel": "16/09/2026",
+          "value": 10,
+          "displayValue": "10%",
+          "coverageRatio": 1,
+          "factIds": [
+            "error_rate:fact-period-highest",
+            "error_rate:fact-period-000"
+          ]
+        },
+        "lowest": {
+          "periodStart": "2026-09-17",
+          "periodEnd": "2026-09-17",
+          "periodLabel": "17/09/2026",
+          "value": 7.5,
+          "displayValue": "7.5%",
+          "coverageRatio": 1,
+          "factIds": [
+            "error_rate:fact-period-lowest",
+            "error_rate:fact-period-001"
+          ]
+        },
+        "largestIncrease": null,
+        "largestDecrease": {
+          "fromPeriodStart": "2026-09-16",
+          "fromPeriodLabel": "16/09/2026",
+          "fromValue": 10,
+          "fromDisplayValue": "10%",
+          "toPeriodStart": "2026-09-17",
+          "toPeriodLabel": "17/09/2026",
+          "toValue": 7.5,
+          "toDisplayValue": "7.5%",
+          "absolute": -2.5,
+          "absoluteDisplay": "-2.5 pp",
+          "relativePercent": -25,
+          "relativeDisplay": "-25%",
+          "direction": "decreasing",
+          "factIds": [
+            "error_rate:fact-period-largest-decrease",
+            "error_rate:fact-period-000",
+            "error_rate:fact-period-001",
+            "error_rate:fact-change-001",
+            "error_rate:fact-change-relative-001",
+            "error_rate:fact-change-direction-001"
+          ]
+        },
+        "consecutiveIncrease": null,
+        "consecutiveDecrease": null,
+        "endingPlateau": null,
+        "latestChange": {
+          "fromPeriodStart": "2026-09-16",
+          "fromPeriodLabel": "16/09/2026",
+          "fromValue": 10,
+          "fromDisplayValue": "10%",
+          "toPeriodStart": "2026-09-17",
+          "toPeriodLabel": "17/09/2026",
+          "toValue": 7.5,
+          "toDisplayValue": "7.5%",
+          "absolute": -2.5,
+          "absoluteDisplay": "-2.5 pp",
+          "relativePercent": -25,
+          "relativeDisplay": "-25%",
+          "direction": "decreasing",
+          "factIds": [
+            "error_rate:fact-period-latest-change",
+            "error_rate:fact-period-000",
+            "error_rate:fact-period-001",
+            "error_rate:fact-change-001",
+            "error_rate:fact-change-relative-001",
+            "error_rate:fact-change-direction-001"
+          ]
+        }
+      }
+    }
+  ],
+  "window": {
+    "start": "2026-09-16",
+    "end": "2026-09-17",
+    "groupBy": "day"
+  },
+  "synthesis": {
+    "policyVersion": "grounded-synthesis-v4",
+    "minimumTrendPeriods": 4,
+    "candidates": [
+      {
+        "candidateId": "insight-03-count_rate_contrast",
+        "kind": "count_rate_contrast",
+        "metricCodes": [
+          "total",
+          "error",
+          "error_rate"
+        ],
+        "factIds": [
+          "relation:insight-03-count_rate_contrast",
+          "total:fact-period-000",
+          "error:fact-period-000",
+          "error_rate:fact-period-000",
+          "total:fact-period-001",
+          "error:fact-period-001",
+          "error_rate:fact-period-001"
+        ],
+        "evidenceIds": [
+          "total:ev-period-000",
+          "error:ev-period-000",
+          "error_rate:ev-period-000",
+          "total:ev-period-001",
+          "error:ev-period-001",
+          "error_rate:ev-period-001"
+        ],
+        "anchors": [
+          {
+            "metricCode": "total",
+            "metricDisplayName": "Tổng số",
+            "periodLabel": "16/09/2026",
+            "displayValue": "100",
+            "factId": "total:fact-period-000",
+            "evidenceId": "total:ev-period-000"
+          },
+          {
+            "metricCode": "error",
+            "metricDisplayName": "Báo sai/Lỗi",
+            "periodLabel": "16/09/2026",
+            "displayValue": "10",
+            "factId": "error:fact-period-000",
+            "evidenceId": "error:ev-period-000"
+          },
+          {
+            "metricCode": "error_rate",
+            "metricDisplayName": "% báo sai",
+            "periodLabel": "16/09/2026",
+            "displayValue": "10%",
+            "factId": "error_rate:fact-period-000",
+            "evidenceId": "error_rate:ev-period-000"
+          },
+          {
+            "metricCode": "total",
+            "metricDisplayName": "Tổng số",
+            "periodLabel": "17/09/2026",
+            "displayValue": "200",
+            "factId": "total:fact-period-001",
+            "evidenceId": "total:ev-period-001"
+          },
+          {
+            "metricCode": "error",
+            "metricDisplayName": "Báo sai/Lỗi",
+            "periodLabel": "17/09/2026",
+            "displayValue": "15",
+            "factId": "error:fact-period-001",
+            "evidenceId": "error:ev-period-001"
+          },
+          {
+            "metricCode": "error_rate",
+            "metricDisplayName": "% báo sai",
+            "periodLabel": "17/09/2026",
+            "displayValue": "7.5%",
+            "factId": "error_rate:fact-period-001",
+            "evidenceId": "error_rate:ev-period-001"
+          }
+        ],
+        "scope": "selected_window",
+        "priority": 95,
+        "fallbackText": "Báo sai/Lỗi tăng về số lượng nhưng tỷ lệ báo sai giảm giữa hai kỳ. Tổng số tăng nhanh hơn Báo sai/Lỗi khi tính tỷ lệ báo sai.",
+        "expressions": [
+          "(?:Báo sai/Lỗi tăng về số lượng nhưng tỷ lệ báo sai giảm|Số Báo sai/Lỗi tăng nhưng tỷ trọng trên Tổng số giảm) giữa hai kỳ; (?:Tổng số tăng nhanh hơn Báo sai/Lỗi trong phép tính tỷ lệ|chỉ nhìn số lỗi tuyệt đối chưa phản ánh đầy đủ diễn biến)\\.",
+          "(?:Báo sai/Lỗi tăng về số lượng nhưng tỷ lệ báo sai giảm|Số Báo sai/Lỗi tăng nhưng tỷ lệ báo sai giảm) giữa hai kỳ\\. (?:Tổng số tăng nhanh hơn Báo sai/Lỗi khi tính tỷ lệ báo sai|chỉ nhìn số lỗi tuyệt đối chưa phản ánh đầy đủ diễn biến)\\.",
+          "Báo\\ sai/Lỗi\\ tăng\\ về\\ số\\ lượng\\ nhưng\\ tỷ\\ lệ\\ báo\\ sai\\ giảm\\ giữa\\ hai\\ kỳ\\.\\ Tổng\\ số\\ tăng\\ nhanh\\ hơn\\ Báo\\ sai/Lỗi\\ khi\\ tính\\ tỷ\\ lệ\\ báo\\ sai\\."
+        ],
+        "comparisonContext": "giữa hai kỳ"
+      },
+      {
+        "candidateId": "insight-01-period_comparison",
+        "kind": "period_comparison",
+        "metricCodes": [
+          "error"
+        ],
+        "factIds": [
+          "relation:insight-01-period_comparison",
+          "error:fact-period-000",
+          "error:fact-period-001"
+        ],
+        "evidenceIds": [
+          "error:ev-period-000",
+          "error:ev-period-001"
+        ],
+        "anchors": [
+          {
+            "metricCode": "error",
+            "metricDisplayName": "Báo sai/Lỗi",
+            "periodLabel": "16/09/2026",
+            "displayValue": "10",
+            "factId": "error:fact-period-000",
+            "evidenceId": "error:ev-period-000"
+          },
+          {
+            "metricCode": "error",
+            "metricDisplayName": "Báo sai/Lỗi",
+            "periodLabel": "17/09/2026",
+            "displayValue": "15",
+            "factId": "error:fact-period-001",
+            "evidenceId": "error:ev-period-001"
+          }
+        ],
+        "scope": "selected_window",
+        "priority": 10,
+        "fallbackText": "Báo sai/Lỗi: kỳ sau tăng so với kỳ trước. Đây là so sánh hai kỳ, chưa đủ để xác định xu hướng.",
+        "expressions": [
+          "Báo\\ sai/Lỗi:\\ kỳ\\ sau\\ tăng\\ so\\ với\\ kỳ\\ trước;\\ đây\\ là\\ so\\ sánh\\ hai\\ kỳ,\\ chưa\\ đủ\\ để\\ xác\\ định\\ xu\\ hướng\\.",
+          "Báo\\ sai/Lỗi:\\ kỳ\\ sau\\ tăng\\ so\\ với\\ kỳ\\ trước;\\ đây\\ là\\ so\\ sánh\\ hai\\ kỳ,\\ chưa\\ đủ\\ để\\ xác\\ định\\ xu\\ hướng\\.",
+          "Báo\\ sai/Lỗi:\\ kỳ\\ sau\\ tăng\\ so\\ với\\ kỳ\\ trước\\.\\ Đây\\ là\\ so\\ sánh\\ hai\\ kỳ,\\ chưa\\ đủ\\ để\\ xác\\ định\\ xu\\ hướng\\."
+        ],
+        "observedDirections": [
+          "tăng"
+        ]
+      },
+      {
+        "candidateId": "insight-02-period_comparison",
+        "kind": "period_comparison",
+        "metricCodes": [
+          "error_rate"
+        ],
+        "factIds": [
+          "relation:insight-02-period_comparison",
+          "error_rate:fact-period-000",
+          "error_rate:fact-period-001"
+        ],
+        "evidenceIds": [
+          "error_rate:ev-period-000",
+          "error_rate:ev-period-001"
+        ],
+        "anchors": [
+          {
+            "metricCode": "error_rate",
+            "metricDisplayName": "% báo sai",
+            "periodLabel": "16/09/2026",
+            "displayValue": "10%",
+            "factId": "error_rate:fact-period-000",
+            "evidenceId": "error_rate:ev-period-000"
+          },
+          {
+            "metricCode": "error_rate",
+            "metricDisplayName": "% báo sai",
+            "periodLabel": "17/09/2026",
+            "displayValue": "7.5%",
+            "factId": "error_rate:fact-period-001",
+            "evidenceId": "error_rate:ev-period-001"
+          }
+        ],
+        "scope": "selected_window",
+        "priority": 10,
+        "fallbackText": "% báo sai: kỳ sau giảm so với kỳ trước. Đây là so sánh hai kỳ, chưa đủ để xác định xu hướng.",
+        "expressions": [
+          "%\\ báo\\ sai:\\ kỳ\\ sau\\ giảm\\ so\\ với\\ kỳ\\ trước;\\ đây\\ là\\ so\\ sánh\\ hai\\ kỳ,\\ chưa\\ đủ\\ để\\ xác\\ định\\ xu\\ hướng\\.",
+          "%\\ báo\\ sai:\\ kỳ\\ sau\\ giảm\\ so\\ với\\ kỳ\\ trước;\\ đây\\ là\\ so\\ sánh\\ hai\\ kỳ,\\ chưa\\ đủ\\ để\\ xác\\ định\\ xu\\ hướng\\.",
+          "%\\ báo\\ sai:\\ kỳ\\ sau\\ giảm\\ so\\ với\\ kỳ\\ trước\\.\\ Đây\\ là\\ so\\ sánh\\ hai\\ kỳ,\\ chưa\\ đủ\\ để\\ xác\\ định\\ xu\\ hướng\\."
+        ],
+        "observedDirections": [
+          "giảm"
+        ]
+      },
+      {
+        "candidateId": "insight-00-period_comparison",
+        "kind": "period_comparison",
+        "metricCodes": [
+          "total"
+        ],
+        "factIds": [
+          "relation:insight-00-period_comparison",
+          "total:fact-period-000",
+          "total:fact-period-001"
+        ],
+        "evidenceIds": [
+          "total:ev-period-000",
+          "total:ev-period-001"
+        ],
+        "anchors": [
+          {
+            "metricCode": "total",
+            "metricDisplayName": "Tổng số",
+            "periodLabel": "16/09/2026",
+            "displayValue": "100",
+            "factId": "total:fact-period-000",
+            "evidenceId": "total:ev-period-000"
+          },
+          {
+            "metricCode": "total",
+            "metricDisplayName": "Tổng số",
+            "periodLabel": "17/09/2026",
+            "displayValue": "200",
+            "factId": "total:fact-period-001",
+            "evidenceId": "total:ev-period-001"
+          }
+        ],
+        "scope": "selected_window",
+        "priority": 10,
+        "fallbackText": "Tổng số: kỳ sau tăng so với kỳ trước. Đây là so sánh hai kỳ, chưa đủ để xác định xu hướng.",
+        "expressions": [
+          "Tổng\\ số:\\ kỳ\\ sau\\ tăng\\ so\\ với\\ kỳ\\ trước;\\ đây\\ là\\ so\\ sánh\\ hai\\ kỳ,\\ chưa\\ đủ\\ để\\ xác\\ định\\ xu\\ hướng\\.",
+          "Tổng\\ số:\\ kỳ\\ sau\\ tăng\\ so\\ với\\ kỳ\\ trước;\\ đây\\ là\\ so\\ sánh\\ hai\\ kỳ,\\ chưa\\ đủ\\ để\\ xác\\ định\\ xu\\ hướng\\.",
+          "Tổng\\ số:\\ kỳ\\ sau\\ tăng\\ so\\ với\\ kỳ\\ trước\\.\\ Đây\\ là\\ so\\ sánh\\ hai\\ kỳ,\\ chưa\\ đủ\\ để\\ xác\\ định\\ xu\\ hướng\\."
+        ],
+        "observedDirections": [
+          "tăng"
+        ]
+      }
+    ],
+    "selectedCandidateIds": [
+      "insight-03-count_rate_contrast"
+    ],
+    "facts": [
+      {
+        "factId": "relation:insight-00-period_comparison",
+        "kind": "insight_relation",
+        "value": "period_comparison",
+        "displayValue": "period_comparison",
+        "unit": "enum",
+        "policyVersion": "grounded-synthesis-v4",
+        "operandFactIds": [
+          "total:fact-period-000",
+          "total:fact-period-001"
+        ],
+        "evidenceIds": [
+          "total:ev-period-000",
+          "total:ev-period-001"
+        ]
+      },
+      {
+        "factId": "relation:insight-01-period_comparison",
+        "kind": "insight_relation",
+        "value": "period_comparison",
+        "displayValue": "period_comparison",
+        "unit": "enum",
+        "policyVersion": "grounded-synthesis-v4",
+        "operandFactIds": [
+          "error:fact-period-000",
+          "error:fact-period-001"
+        ],
+        "evidenceIds": [
+          "error:ev-period-000",
+          "error:ev-period-001"
+        ]
+      },
+      {
+        "factId": "relation:insight-02-period_comparison",
+        "kind": "insight_relation",
+        "value": "period_comparison",
+        "displayValue": "period_comparison",
+        "unit": "enum",
+        "policyVersion": "grounded-synthesis-v4",
+        "operandFactIds": [
+          "error_rate:fact-period-000",
+          "error_rate:fact-period-001"
+        ],
+        "evidenceIds": [
+          "error_rate:ev-period-000",
+          "error_rate:ev-period-001"
+        ]
+      },
+      {
+        "factId": "relation:insight-03-count_rate_contrast",
+        "kind": "insight_relation",
+        "value": "count_rate_contrast",
+        "displayValue": "count_rate_contrast",
+        "unit": "enum",
+        "policyVersion": "grounded-synthesis-v4",
+        "operandFactIds": [
+          "total:fact-period-000",
+          "error:fact-period-000",
+          "error_rate:fact-period-000",
+          "total:fact-period-001",
+          "error:fact-period-001",
+          "error_rate:fact-period-001"
+        ],
+        "evidenceIds": [
+          "total:ev-period-000",
+          "error:ev-period-000",
+          "error_rate:ev-period-000",
+          "total:ev-period-001",
+          "error:ev-period-001",
+          "error_rate:ev-period-001"
+        ]
+      }
+    ],
+    "inspectionChecks": [
+      {
+        "checkId": "check-insight-03-count_rate_contrast",
+        "candidateId": "insight-03-count_rate_contrast",
+        "text": "Đối chiếu số lượng và tỷ lệ từ 16/09/2026 đến 17/09/2026 để kiểm tra hai cách đọc dữ liệu.",
+        "factIds": [
+          "relation:insight-03-count_rate_contrast",
+          "total:fact-period-000",
+          "error:fact-period-000",
+          "error_rate:fact-period-000",
+          "total:fact-period-001",
+          "error:fact-period-001",
+          "error_rate:fact-period-001"
+        ],
+        "evidenceIds": [
+          "total:ev-period-000",
+          "error:ev-period-000",
+          "error_rate:ev-period-000",
+          "total:ev-period-001",
+          "error:ev-period-001",
+          "error_rate:ev-period-001"
+        ]
+      }
+    ],
+    "limitations": [],
+    "reading": {
+      "policyVersion": "analytical-reading-v1",
+      "overview": {
+        "text": "Báo sai/Lỗi tăng giữa hai kỳ. Hai kỳ chỉ cho biết mức thay đổi, chưa xác định xu hướng.",
+        "factIds": [
+          "error:fact-period-000",
+          "error:fact-period-001"
+        ]
+      },
+      "phases": [
+        {
+          "start": "2026-09-16",
+          "end": "2026-09-17",
+          "startLabel": "16/09/2026",
+          "endLabel": "17/09/2026",
+          "text": "Tổng số tăng. Báo sai/Lỗi tăng từ 10 lên 15. % báo sai giảm.",
+          "explanation": "Tổng số tăng nhanh hơn số lỗi khi tính tỷ lệ báo sai.",
+          "factIds": [
+            "total:fact-period-000",
+            "total:fact-period-001",
+            "error:fact-period-000",
+            "error:fact-period-001",
+            "error_rate:fact-period-000",
+            "error_rate:fact-period-001",
+            "relation:insight-03-count_rate_contrast"
+          ],
+          "evidenceIds": [
+            "total:ev-period-000",
+            "total:ev-period-001",
+            "error:ev-period-000",
+            "error:ev-period-001",
+            "error_rate:ev-period-000",
+            "error_rate:ev-period-001"
+          ]
+        }
+      ],
+      "takeaways": [
+        {
+          "text": "Số lỗi tăng không đồng nghĩa tỷ lệ báo sai tăng.",
+          "candidateId": "insight-03-count_rate_contrast",
+          "factIds": [
+            "relation:insight-03-count_rate_contrast",
+            "total:fact-period-000",
+            "error:fact-period-000",
+            "error_rate:fact-period-000",
+            "total:fact-period-001",
+            "error:fact-period-001",
+            "error_rate:fact-period-001"
+          ],
+          "evidenceIds": [
+            "total:ev-period-000",
+            "error:ev-period-000",
+            "error_rate:ev-period-000",
+            "total:ev-period-001",
+            "error:ev-period-001",
+            "error_rate:ev-period-001"
+          ]
+        }
+      ]
+    }
+  },
+  "narrative": {
+    "mode": "deterministic",
+    "schemaVersion": "ai-narrative-v3",
+    "summary": {
+      "text": "Báo sai/Lỗi tăng về số lượng nhưng tỷ lệ báo sai giảm giữa hai kỳ. Tổng số tăng nhanh hơn Báo sai/Lỗi khi tính tỷ lệ báo sai.",
+      "candidateIds": [
+        "insight-03-count_rate_contrast"
+      ],
+      "factIds": [
+        "relation:insight-03-count_rate_contrast",
+        "total:fact-period-000",
+        "error:fact-period-000",
+        "error_rate:fact-period-000",
+        "total:fact-period-001",
+        "error:fact-period-001",
+        "error_rate:fact-period-001"
+      ],
+      "claimType": "descriptive"
+    },
+    "insights": [],
+    "limitations": [],
+    "suggestedChecks": []
+  }
+}

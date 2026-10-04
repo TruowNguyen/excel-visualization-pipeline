@@ -87,7 +87,7 @@ for (const viewport of [
     await expectAa(page.locator('.tab.active'), 'selected tab');
 
     await clickRealBar(page, 'overview-root');
-    await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Tổng số ghi nhận 14/ })).toBeVisible();
     await expectAa(page.locator('.validation-line > span').last(), 'validation secondary text');
     await expectAa(page.locator('.entity-path'), 'entity path');
     await expectAa(page.locator('.entity-path span').first(), 'entity path separator');

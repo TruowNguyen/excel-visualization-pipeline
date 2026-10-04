@@ -2,6 +2,43 @@ import type { Entity } from './types';
 
 export type EntityLevel = Entity['entity_level'] | null | undefined;
 
+/** Public labels are independent of normalized storage/API keys. */
+const METRIC_LABELS: Record<string, string> = {
+  'Tổng số': 'Tổng số ghi nhận',
+  'Báo sai/Lỗi': 'Tổng báo sai (lỗi)',
+  '% báo sai': 'Tỷ lệ báo sai',
+  '%báo sai': 'Tỷ lệ báo sai',
+};
+
+export function getMetricDisplayLabel(metric: string): string {
+  return METRIC_LABELS[metric] || metric;
+}
+
+/** Format metric references in system copy, including legacy chart tooltip aliases. */
+export function formatMetricText(text: string): string {
+  return text.replace(/Tổng số(?:\/Cảnh báo)?(?! ghi nhận)|Báo sai\/Lỗi|%\s*báo sai/giu, match => {
+    if (/^Tổng số/iu.test(match)) return METRIC_LABELS['Tổng số'];
+    if (/^Báo sai/iu.test(match)) return METRIC_LABELS['Báo sai/Lỗi'];
+    return METRIC_LABELS['% báo sai'];
+  });
+}
+
+/** Copy only display fields; retain IDs, codes, evidence and raw source values unchanged. */
+export function metricPresentation<T>(value: T): T {
+  const displayFields = new Set(['metricDisplayName', 'text', 'reason', 'explanation', 'overviewText']);
+  const displayLists = new Set(['limitations', 'suggestedChecks']);
+  const visit = (current: unknown): unknown => {
+    if (Array.isArray(current)) return current.map(visit);
+    if (!current || typeof current !== 'object') return current;
+    return Object.fromEntries(Object.entries(current).map(([key, field]) => [key,
+      displayFields.has(key) && typeof field === 'string' ? formatMetricText(field)
+        : displayLists.has(key) && Array.isArray(field) ? field.map(item => typeof item === 'string' ? formatMetricText(item) : visit(item))
+          : visit(field),
+    ]));
+  };
+  return visit(value) as T;
+}
+
 export type ComparisonTerminology = {
   title: string;
   description: string;
@@ -123,10 +160,10 @@ export function getEligibilityReasonMessage(reasonCode: string | null | undefine
     UNIT_MISMATCH: `Không thể so sánh vì ${noun} này sử dụng đơn vị đo khác.`,
     ANCHOR_NO_VALUE: `${terms.anchorLabel} không có dữ liệu trong khoảng thời gian này.`,
     NO_METRIC_VALUE: `${getEntityLevelLabel(level)} này không có dữ liệu cho chỉ số đang chọn.`,
-    RATE_NUMERATOR_MISSING: 'Có tỷ lệ nguồn nhưng thiếu số Báo sai/Lỗi, nên chưa thể tổng hợp tỷ lệ theo kỳ một cách chính xác.',
+    RATE_NUMERATOR_MISSING: 'Có tỷ lệ nguồn nhưng thiếu Tổng báo sai (lỗi), nên chưa thể tổng hợp tỷ lệ theo kỳ một cách chính xác.',
     STATISTIC_VALUE_MISSING: `${getEntityLevelLabel(level)} này không có giá trị thống kê cho chỉ số và phép tính đang chọn.`,
     NO_ELIGIBLE_DAYS: 'Không có ngày hợp lệ để tính trung bình mỗi ngày trong khoảng thời gian này.',
-    DIRECT_TOTAL_REQUIRED: 'Chỉ số Tổng số chưa được ghi trực tiếp cho nội dung này; dữ liệu cấp trên chỉ dùng để xác định ngày hợp lệ.',
+    DIRECT_TOTAL_REQUIRED: 'Chỉ số Tổng số ghi nhận chưa được ghi trực tiếp cho nội dung này; dữ liệu cấp trên chỉ dùng để xác định ngày hợp lệ.',
     NO_OVERLAPPING_PERIOD: 'Không có khoảng thời gian chung để so sánh.',
     NOT_SIBLING: level === 'section'
       ? 'Nhóm vấn đề này không thuộc cùng dự án.'

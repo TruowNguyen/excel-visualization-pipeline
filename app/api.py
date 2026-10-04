@@ -85,7 +85,7 @@ _AI_SNAPSHOTS = AnalysisSnapshotRepository(limit=100)
 
 class TrendSummaryRequest(BaseModel):
     entityRef: str = Field(min_length=1)
-    metricCode: str = Field(pattern="^(total|error|error_rate)$")
+    metricCode: str = Field(pattern="^(all|total|error|error_rate)$")
     start: date
     end: date
     groupBy: str = Field(default="day", pattern="^(day|week|month)$")

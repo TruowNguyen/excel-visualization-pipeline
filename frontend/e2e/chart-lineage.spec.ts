@@ -19,7 +19,7 @@ test('Overview uses the real Plotly point, ignores the transparent helper trace,
   await openApp(page);
   await clickRealBar(page, 'overview-root');
   await expect(page.getByText('Đang xác minh nguồn dữ liệu…')).toBeVisible();
-  await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Tổng số ghi nhận 14/ })).toBeVisible();
   expect(harness.calls.some(call => call.pathname.includes('/observations/obs_overview_2/provenance') && call.search.includes('lineageRef=lin_overview_2'))).toBeTruthy();
 });
 
@@ -28,7 +28,7 @@ test('keyboard investigation surface is removed while direct chart investigation
   await openApp(page);
   await expect(page.locator('.chart-keyboard, .chart-keyboard-empty, [data-chart-point]')).toHaveCount(0);
   await clickRealBar(page, 'overview-root');
-  await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Tổng số ghi nhận 14/ })).toBeVisible();
   await page.getByRole('button', { name: 'Đóng', exact: true }).click();
   await expect(page.locator('#investigation-drawer')).not.toHaveClass(/open/);
 });
@@ -40,7 +40,7 @@ test('Statistics, contextual comparison, and child-node surfaces dispatch real P
   await page.getByRole('button', { name: /Thống kê/ }).click();
   await expect(page.locator('[data-plot="statistics-root"].js-plotly-plot')).toBeVisible();
   await clickRealBar(page, 'statistics-root');
-  await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Tổng số ghi nhận 14/ })).toBeVisible();
   await page.getByRole('button', { name: 'Đóng', exact: true }).click();
 
   await page.locator('[data-field="scope"]').selectOption('children');
@@ -49,14 +49,14 @@ test('Statistics, contextual comparison, and child-node surfaces dispatch real P
   await page.locator('[data-context-compare="child-b"]').check();
   await expect(page.locator('[data-plot="contextual-comparison"].js-plotly-plot')).toBeVisible();
   await clickRealBar(page, 'contextual-comparison');
-  await expect(page.getByRole('heading', { name: /Tổng số 10/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Tổng số ghi nhận 10/ })).toBeVisible();
   await page.getByRole('button', { name: 'Đóng', exact: true }).click();
   await page.getByRole('button', { name: 'Xong' }).click();
 
   await page.getByRole('button', { name: /Tổng quan/ }).click();
   await expect(page.locator('[data-plot="overview-child-b"].js-plotly-plot')).toBeVisible();
   await clickRealBar(page, 'overview-child-b');
-  await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Tổng số ghi nhận 14/ })).toBeVisible();
 
   const paths = harness.calls.filter(call => call.pathname.includes('/provenance')).map(call => call.pathname);
   expect(paths).toContain('/api/projects/VSO/observations/obs_statistics_2/provenance');
@@ -70,7 +70,7 @@ test('drawer error can retry and keeps the exact observation and lineage referen
   await clickRealBar(page, 'overview-root');
   await expect(page.locator('.lineage-state strong').getByText('Không tải được nguồn dữ liệu', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Thử tải lại nguồn' }).click();
-  await expect(page.getByRole('heading', { name: /Tổng số 14/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Tổng số ghi nhận 14/ })).toBeVisible();
   const calls = harness.calls.filter(call => call.pathname.endsWith('/obs_overview_2/provenance'));
   expect(calls).toHaveLength(2);
   expect(calls.every(call => call.search.includes('lineageRef=lin_overview_2'))).toBeTruthy();

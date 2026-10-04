@@ -76,7 +76,7 @@ src/excel_visualization_pipeline/ai/
 │   └── comparison.py
 ├── evidence.py
 ├── prompts/
-│   └── trend-summary-v2.md
+│   └── system-prompt-v2.md  # PromptRegistry version trend-summary-v6
 ├── providers/
 │   ├── base.py
 │   └── nine_router.py
@@ -110,7 +110,7 @@ Tên file là đề xuất kỹ thuật; module boundary và responsibility mớ
 | `LLMAdapter` | Tạo interface và 9Router implementation | Dùng cùng adapter, chỉ đổi prompt/schema | Dùng cùng adapter theo từng allowed narrative section | Chỉ regenerate draft; không tham gia approval/export |
 | `OutputValidator` | Schema, fact, number, evidence, cause guard | Thêm comparison policy dưới dạng rule/plugin | Thêm template/section validation | Thêm approval/export gate và sanitization |
 | `AIApplicationService` | Điều phối trend request | Thêm use case comparison | Thêm compose-report use case | Thêm review/approve/export use case có quyền |
-| `PromptRegistry` | `trend-summary-v2` | Thêm `comparison-v1` | Thêm prompt theo section/template | Không đổi prompt của version đã approved |
+| `PromptRegistry` | `trend-summary-v6` | Thêm `comparison-v1` | Thêm prompt theo section/template | Không đổi prompt của version đã approved |
 | Snapshot repository | Lưu analysis/generation theo quyết định | Tái sử dụng cùng schema, chỉ thêm analysis kind | Report version tham chiếu snapshot | Review/export event tham chiếu exact report version |
 
 Mọi thay đổi interface dùng chung phải backward-compatible hoặc có version/migration rõ ràng. Không copy provider client, evidence resolver hoặc numeric validator vào thư mục feature.
@@ -176,7 +176,7 @@ Mục tiêu: người dùng chọn một project/entity/metric/window, yêu cầ
 
 - Định nghĩa `LLMAdapter` interface và `NineRouterLLMAdapter` duy nhất.
 - Cài model discovery/health behavior, timeout, bounded retry và error mapping.
-- Thêm `trend-summary-v2` vào `PromptRegistry`; payload chứa chuỗi kỳ đã tính sẵn.
+- Thêm `trend-summary-v6` vào `PromptRegistry`; payload gửi facts cần thiết, hỗ trợ một metric hoặc overview ba metric, không lặp toàn bộ chuỗi kỳ.
 - Prompt chỉ nhận deterministic fact/evidence ID/coverage/label đã được allowlist; không nhận raw workbook.
 - Có deterministic-only fallback khi provider không dùng được.
 

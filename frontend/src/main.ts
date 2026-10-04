@@ -9,6 +9,9 @@ import {
   getEligibilityReasonMessage,
   getEntityDisplayName,
   getEntityLevelLabel,
+  getMetricDisplayLabel,
+  formatMetricText,
+  metricPresentation,
 } from './terminology';
 import type { ChartPointSelection, Entity, Figure } from './types';
 import {
@@ -82,25 +85,90 @@ type AISeriesPoint = {
     direction: 'increasing' | 'decreasing' | 'unchanged'; factIds: string[];
   };
 };
+type AIPeriodHighlight = {
+  periodStart: string; periodEnd: string; periodLabel: string;
+  value: number; displayValue: string; coverageRatio: number; factIds: string[];
+};
+type AIChangeHighlight = {
+  fromPeriodStart: string; fromPeriodLabel: string; fromValue: number; fromDisplayValue: string;
+  toPeriodStart: string; toPeriodLabel: string; toValue: number; toDisplayValue: string;
+  absolute: number; absoluteDisplay: string; relativePercent: number | null;
+  relativeDisplay: string; direction: 'increasing' | 'decreasing' | 'unchanged'; factIds: string[];
+};
+type AISequenceHighlight = {
+  transitionCount: number; startPeriodLabel: string; endPeriodLabel: string;
+  values: number[]; displayValues: string[]; periodLabels: string[]; factIds: string[];
+};
+type AIPeriodAnalytics = {
+  temporalStructure?: {
+    overviewText: string; summaryText: string;
+    stages: { startIndex: number; endIndex: number; direction: string; text: string; startPeriodLabel: string; endPeriodLabel: string; factIds: string[]; evidenceIds: string[] }[];
+    turningPoints: { text: string; periodLabel: string; factIds: string[]; evidenceIds: string[] }[];
+    gaps: { startIndex: number; text: string; afterPeriodLabel: string; beforePeriodLabel: string }[];
+  };
+  policyVersion: string; tieBreak: string;
+  peak: AIPeriodHighlight | null; lowest: AIPeriodHighlight | null;
+  largestIncrease: AIChangeHighlight | null; largestDecrease: AIChangeHighlight | null;
+  consecutiveIncrease: AISequenceHighlight | null; consecutiveDecrease: AISequenceHighlight | null;
+  endingPlateau: AISequenceHighlight | null; latestChange: AIChangeHighlight | null;
+};
+type AIHistoricalContext = {
+  status: 'available' | 'unavailable'; policyVersion: string; lookbackPeriodLimit: number;
+  observedPeriodCount: number;
+  currentPosition: null | { value: 'above_historical_range' | 'below_historical_range' | 'within_historical_range' | 'matches_historical_range'; currentPeriodLabel: string; factIds: string[] };
+};
+type AIOverviewMetric = {
+  metricCode: 'total' | 'error' | 'error_rate'; metricDisplayName: string;
+  status: 'ready' | 'insufficient_data'; unit: string; aggregationRule: string;
+  facts: AIFact[]; series: AISeriesPoint[]; periodAnalytics: AIPeriodAnalytics;
+  historicalContext: AIHistoricalContext;
+  quality: { validPeriodCount: number; expectedPeriodCount: number; limitations: string[] };
+  evidence: AIEvidence[];
+};
 type AIAnalysis = {
-  schemaVersion: string; analysisId: string;
+  schemaVersion: string; analysisId: string; kind: 'trend' | 'metric_overview';
   status: 'ready' | 'insufficient_data' | 'provider_unavailable' | 'rejected_output' | 'stale';
   scope: { project: string; entityRef: string; entityLabel: string; mode: 'node'; metricCode: string; metricDisplayName: string };
   window: { start: string; end: string; groupBy: 'day' | 'week' | 'month'; comparisonBasis: string; previousDate: string | null; currentDate: string | null };
   dataAsOf: { committedImportRef: string; snapshotId: string; generatedAt: string; stale: boolean; checksum: string };
-  metric: { unit: string; aggregationRule: string };
+  metric?: { unit: string; aggregationRule: string };
   facts: AIFact[];
-  series: AISeriesPoint[];
+  series?: AISeriesPoint[];
+  metrics?: AIOverviewMetric[];
+  periodAnalytics?: AIPeriodAnalytics;
+  historicalContext?: AIHistoricalContext;
+  comparisonBasis?: {
+    status: 'comparable' | 'limited' | 'unavailable'; reason: string;
+    baseline: null | { periodLabel: string; numeratorDisplay: string; denominatorDisplay: string; rateDisplay: string; eligibleDayCount: number; expectedDayCount: number };
+    current: null | { periodLabel: string; numeratorDisplay: string; denominatorDisplay: string; rateDisplay: string; eligibleDayCount: number; expectedDayCount: number };
+  };
+  insightCandidates?: { candidateId: string; layer: string; text: string; factIds: string[]; evidenceIds: string[] }[];
+  inspectionChecks?: { checkId: string; text: string; factIds: string[]; evidenceIds: string[] }[];
+  synthesis?: {
+    reading?: { overview: { text: string; factIds: string[] } | null; phases: { start: string; end: string; startLabel: string; endLabel: string; text: string; explanation: string; factIds: string[]; evidenceIds: string[] }[]; takeaways: { text: string; candidateId: string; factIds: string[] }[] };
+    policyVersion: string; selectedCandidateIds: string[];
+    candidates: { candidateId: string; kind: string; anchors: { metricDisplayName: string; periodLabel: string; displayValue: string; factId: string; evidenceId: string }[] }[];
+  };
   quality: { status: string; validPointCount: number; validPeriodCount: number; expectedPeriodCount: number; expectedCalendarDayCount: number; coverageRatio: number; limitations: string[] };
   evidence: AIEvidence[];
-  provider: { name: string; model: string };
-  validation: { status: string; errors: string[] };
+  provider: { name: string; model: string; latencyMs?: number | null; attemptCount?: number };
+  validation: { status: string; errors: string[]; categories?: string[]; claimResults?: { index: number; candidateId: string; status: string; errors: string[] }[] };
   narrative: {
     mode: 'ai' | 'deterministic';
-    summary: { text: string; factIds: string[]; claimType: string };
+    schemaVersion?: string;
+    summary: { text: string; factIds: string[]; claimType: string; candidateIds?: string[] };
     insights: { type: string; text: string; factIds: string[]; claimType: string }[];
     limitations: string[]; suggestedChecks: string[];
+    report?: {
+      policyVersion: string;
+      overview: AIReportItem[]; phases: AIReportItem[]; relationships: AIReportItem[];
+      omittedPhaseCount: number;
+    };
   };
+};
+type AIReportItem = {
+  candidateId: string; text: string; factIds: string[]; source: 'ai' | 'deterministic';
+  startLabel?: string; endLabel?: string; metricDisplayName?: string;
 };
 type Tab = 'overview' | 'statistics' | 'comparison' | 'audit' | 'import' | 'history';
 type State = {
@@ -111,7 +179,7 @@ type State = {
   statisticsRange: 'recent' | 'all' | 'custom'; statisticsCount: number;
   statisticsFrom: string; statisticsTo: string; includeIncomplete: boolean;
   comparisonMetric: string; comparisonEntities: string[]; auditOffset: number; tab: Tab;
-  aiMetricCode: 'total' | 'error' | 'error_rate';
+  aiMetricCode: 'all' | 'total' | 'error' | 'error_rate';
   aiGroupBy: 'day' | 'week' | 'month';
 };
 type ValidationIssue = { severity: string; code: string; message: string };
@@ -195,7 +263,7 @@ const defaults: State = {
   statisticsGroup: 'week', statisticsMode: 'both', statisticsRange: 'recent', statisticsCount: 8,
   statisticsFrom: '', statisticsTo: '', includeIncomplete: true,
   comparisonMetric: 'Báo sai/Lỗi', comparisonEntities: [], auditOffset: 0, tab: 'overview',
-  aiMetricCode: 'error',
+  aiMetricCode: 'all',
   aiGroupBy: 'day',
 };
 let state: State = { ...defaults };
@@ -255,6 +323,7 @@ let sidebarCollapsed = false;
 try { sidebarCollapsed = sessionStorage.getItem(SIDEBAR_KEY) === '1'; } catch { /* Optional UI preference. */ }
 
 const esc = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+const escMetric = (value: unknown): string => esc(formatMetricText(String(value ?? '')));
 const fmt = (value: number): string => new Intl.NumberFormat('vi-VN').format(value);
 const dateLabel = (value: string): string => value ? (/^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`).toLocaleDateString('vi-VN') : value) : '—';
 const shortHash = (value: string): string => value.length > 24 ? `${value.slice(0, 12)}…${value.slice(-8)}` : value;
@@ -287,7 +356,7 @@ async function api<T>(path: string, init?: RequestInit, trace?: WorkspacePerform
   return result;
 }
 function select(options: { value: string; label: string }[], current: string): string {
-  return options.map(option => `<option value="${esc(option.value)}" ${option.value === current ? 'selected' : ''}>${esc(option.label)}</option>`).join('');
+  return options.map(option => `<option value="${esc(option.value)}" ${option.value === current ? 'selected' : ''}>${esc(getMetricDisplayLabel(option.label))}</option>`).join('');
 }
 function currentProject(): Project | undefined { return projects.find(project => project.label === state.project); }
 function currentEntity(): Entity | undefined { return entities.find(entity => entity.entity_id === state.entity); }
@@ -379,6 +448,7 @@ function auditCell(column: string, value: string | number | null | undefined): s
   if (value === null || value === undefined || value === '') return '—';
   if (column === 'date' && typeof value === 'string') return dateLabel(value.slice(0, 10));
   if (column === 'entity_path') return displayRawEntityPath(value);
+  if (column === 'metric_normalized') return getMetricDisplayLabel(String(value));
   if (column === 'validation_status') return validationLabel(String(value));
   if (column === 'value_kind') return valueKinds[String(value)] || String(value);
   return String(value);
@@ -416,9 +486,9 @@ function aggregateMarkup(p: AggregateProvenance, contributors: Contributor[], ne
   return `<div class="drawer-body">
     ${p.freshness.newerDataAvailable ? '<div class="lineage-banner">Đã có lần nhập dữ liệu mới hơn sau bản dữ liệu này. Giá trị tổng hợp đang xem vẫn giữ nguyên; hãy tải lại không gian phân tích để đối chiếu.</div>' : ''}
     <section class="provenance-context"><div class="entity-path">${displayHierarchyParts(p.context.entity.hierarchyPath).map(esc).join('<span>›</span>')}</div><dl><div><dt>Dự án</dt><dd>${esc(p.context.project)}</dd></div><div><dt>Đơn vị đo</dt><dd>${esc(p.context.entity.effectiveUnit || '—')}</dd></div><div><dt>Khoảng thời gian</dt><dd>${dateLabel(p.context.period.start)} – ${dateLabel(p.context.period.end)}</dd></div></dl></section>
-    <section><h3>Cách tính</h3><p>${esc(p.aggregation.explanation)}</p><dl class="provenance-grid compact"><div><dt>Giá trị tổng hợp</dt><dd>${esc(p.result.displayValue)}</dd></div><div><dt>Số giá trị được dùng</dt><dd>${fmt(p.aggregation.valueObservationCount)}</dd></div><div><dt>Điểm dữ liệu xác định ngày hợp lệ</dt><dd>${fmt(p.aggregation.coverageObservationCount)}</dd></div>${p.aggregation.eligibleDayCount !== null ? `<div><dt>Ngày hợp lệ</dt><dd>${fmt(p.aggregation.eligibleDayCount)}</dd></div>` : ''}${p.aggregation.inferredZero ? '<div class="wide-row"><dt>Lưu ý</dt><dd>Giá trị 0 được suy ra theo quy tắc biểu đồ; không có ô Excel chứa giá trị 0 tương ứng.</dd></div>' : ''}</dl></section>
+    <section><h3>Cách tính</h3><p>${escMetric(p.aggregation.explanation)}</p><dl class="provenance-grid compact"><div><dt>Giá trị tổng hợp</dt><dd>${esc(p.result.displayValue)}</dd></div><div><dt>Số giá trị được dùng</dt><dd>${fmt(p.aggregation.valueObservationCount)}</dd></div><div><dt>Điểm dữ liệu xác định ngày hợp lệ</dt><dd>${fmt(p.aggregation.coverageObservationCount)}</dd></div>${p.aggregation.eligibleDayCount !== null ? `<div><dt>Ngày hợp lệ</dt><dd>${fmt(p.aggregation.eligibleDayCount)}</dd></div>` : ''}${p.aggregation.inferredZero ? '<div class="wide-row"><dt>Lưu ý</dt><dd>Giá trị 0 được suy ra theo quy tắc biểu đồ; không có ô Excel chứa giá trị 0 tương ứng.</dd></div>' : ''}</dl></section>
     <section><h3>Dữ liệu dùng để tính <span class="muted-copy">${fmt(contributors.length)}/${fmt(p.contributors.total)}</span></h3><p class="muted-copy">Điểm tổng hợp không tương ứng với một ô Excel. Chọn một điểm dữ liệu để xem nguồn chính xác.</p>
-    <div class="contributor-list">${contributors.map((item, index) => `<button class="contributor-item" data-action="open-contributor" data-index="${index}"><span><strong>${esc(displayEntityName(entities.find(entity => entity.entity_label === item.entityLabel), item.entityLabel))} · ${esc(item.metric)}</strong><small>${dateLabel(item.date)} · ${esc(roleLabel[item.role] || item.role)}${item.included ? '' : ' · không đưa vào phép tính'}</small></span><span>${esc(item.displayValue)} ›</span></button>`).join('') || '<p>Không có điểm dữ liệu nào được lưu cho điểm này.</p>'}</div>
+    <div class="contributor-list">${contributors.map((item, index) => `<button class="contributor-item" data-action="open-contributor" data-index="${index}"><span><strong>${esc(displayEntityName(entities.find(entity => entity.entity_label === item.entityLabel), item.entityLabel))} · ${escMetric(item.metric)}</strong><small>${dateLabel(item.date)} · ${esc(roleLabel[item.role] || item.role)}${item.included ? '' : ' · không đưa vào phép tính'}</small></span><span>${esc(item.displayValue)} ›</span></button>`).join('') || '<p>Không có điểm dữ liệu nào được lưu cho điểm này.</p>'}</div>
     ${nextCursor ? `<button class="ghost" data-action="load-contributors" ${pageStatus === 'loading' ? 'disabled' : ''}>${pageStatus === 'loading' ? 'Đang tải…' : 'Xem thêm'}</button>` : ''}${pageStatus === 'error' ? '<p class="lineage-error">Không tải được trang tiếp theo. Bạn có thể thử lại.</p>' : ''}
     </section><section><h3>Thời điểm dữ liệu</h3><p>Đến ngày ${esc(p.freshness.observedThrough ? dateLabel(p.freshness.observedThrough) : '—')} · Lưu phiên bản lúc ${esc(new Date(p.freshness.snapshotCreatedAt).toLocaleString('vi-VN'))}</p></section>
   </div>`;
@@ -462,19 +532,19 @@ function renderInvestigation(): void {
   const live = `<div class="sr-live" role="status" aria-live="polite" aria-atomic="true">${esc(investigationLiveMessage)}</div>`;
   if (activeInvestigation.status === 'aggregate-ready') {
     const p = activeInvestigation.provenance;
-    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu tổng hợp</span><h2 id="investigation-title">${esc(p.context.metric)} <strong>${esc(p.result.displayValue)}</strong></h2><p>${dateLabel(p.context.period.start)} – ${dateLabel(p.context.period.end)} · ${esc(origin.seriesName)}</p></div>${close}</div>${live}${aggregateMarkup(p, activeInvestigation.contributors, activeInvestigation.nextCursor, activeInvestigation.pageStatus)}`;
+    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu tổng hợp</span><h2 id="investigation-title">${escMetric(p.context.metric)} <strong>${esc(p.result.displayValue)}</strong></h2><p>${dateLabel(p.context.period.start)} – ${dateLabel(p.context.period.end)} · ${escMetric(origin.seriesName)}</p></div>${close}</div>${live}${aggregateMarkup(p, activeInvestigation.contributors, activeInvestigation.nextCursor, activeInvestigation.pageStatus)}`;
   } else if (activeInvestigation.status === 'loading') {
-    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu</span><h2 id="investigation-title">${esc(origin.seriesName)}</h2><p>${esc(dateLabel(origin.observedDate))} · ${esc(origin.displayedValue)}</p></div>${close}</div>${live}<div class="drawer-body" aria-busy="true"><div class="lineage-loading"><strong>Đang xác minh nguồn dữ liệu…</strong><span>Đối chiếu điểm biểu đồ với ô Excel và lần nhập tương ứng.</span><i></i><i></i><i></i></div></div>`;
+    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu</span><h2 id="investigation-title">${escMetric(origin.seriesName)}</h2><p>${esc(dateLabel(origin.observedDate))} · ${esc(origin.displayedValue)}</p></div>${close}</div>${live}<div class="drawer-body" aria-busy="true"><div class="lineage-loading"><strong>Đang xác minh nguồn dữ liệu…</strong><span>Đối chiếu điểm biểu đồ với ô Excel và lần nhập tương ứng.</span><i></i><i></i><i></i></div></div>`;
   } else if (activeInvestigation.status === 'unavailable') {
-    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu</span><h2 id="investigation-title">${esc(origin.seriesName)}</h2><p>${esc(dateLabel(origin.observedDate))} · ${esc(origin.displayedValue)}</p></div>${close}</div>${live}<div class="drawer-body"><div class="lineage-state"><strong>Chưa truy vết được điểm này</strong><p>Dữ liệu cũ chưa lưu tham chiếu chính xác đến ô Excel. Để tránh mở nhầm nguồn, hệ thống không tự ghép theo ngày, chỉ số hoặc giá trị. Bạn vẫn có thể xem các điểm khác trên biểu đồ.</p></div></div>`;
+    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu</span><h2 id="investigation-title">${escMetric(origin.seriesName)}</h2><p>${esc(dateLabel(origin.observedDate))} · ${esc(origin.displayedValue)}</p></div>${close}</div>${live}<div class="drawer-body"><div class="lineage-state"><strong>Chưa truy vết được điểm này</strong><p>Dữ liệu cũ chưa lưu tham chiếu chính xác đến ô Excel. Để tránh mở nhầm nguồn, hệ thống không tự ghép theo ngày, chỉ số hoặc giá trị. Bạn vẫn có thể xem các điểm khác trên biểu đồ.</p></div></div>`;
   } else if (activeInvestigation.status === 'error') {
-    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu</span><h2 id="investigation-title">${esc(origin.seriesName)}</h2><p>${esc(dateLabel(origin.observedDate))} · ${esc(origin.displayedValue)}</p></div>${close}</div>${live}<div class="drawer-body"><div class="lineage-state error"><strong>Không tải được nguồn dữ liệu</strong><p>${esc(activeInvestigation.error)}</p><button class="ghost" data-action="retry-provenance">Thử tải lại nguồn</button></div></div>`;
+    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu</span><h2 id="investigation-title">${escMetric(origin.seriesName)}</h2><p>${esc(dateLabel(origin.observedDate))} · ${esc(origin.displayedValue)}</p></div>${close}</div>${live}<div class="drawer-body"><div class="lineage-state error"><strong>Không tải được nguồn dữ liệu</strong><p>${escMetric(activeInvestigation.error)}</p><button class="ghost" data-action="retry-provenance">Thử tải lại nguồn</button></div></div>`;
   } else {
     const p = activeInvestigation.provenance;
     const warnings = p.validation.issues.length
-      ? `<div class="provenance-issues">${p.validation.issues.map(issue => `<div><p>${esc(issue.message)}</p></div>`).join('')}</div>`
+      ? `<div class="provenance-issues">${p.validation.issues.map(issue => `<div><p>${escMetric(issue.message)}</p></div>`).join('')}</div>`
       : '<p class="muted-copy">Không có cảnh báo nào gắn trực tiếp với ô nguồn của giá trị này.</p>';
-    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu</span><h2 id="investigation-title">${esc(p.context.metric.label)} <strong>${esc(p.values.display)}</strong></h2><p>${esc(dateLabel(p.context.observedDate))} · Chuỗi ${esc(origin.seriesName)}</p></div>${close}</div>${live}
+    drawer.innerHTML = `<div class="drawer-head"><div><span>Nguồn dữ liệu</span><h2 id="investigation-title">${escMetric(p.context.metric.label)} <strong>${esc(p.values.display)}</strong></h2><p>${esc(dateLabel(p.context.observedDate))} · Chuỗi ${escMetric(origin.seriesName)}</p></div>${close}</div>${live}
       <div class="drawer-body">
         ${p.freshness.newerSnapshotAvailable ? '<div class="lineage-banner">Nguồn của điểm này đã có lần nhập mới hơn. Giá trị đang xem vẫn là phiên bản tại thời điểm chọn.</div>' : ''}
         <section class="provenance-context"><div class="entity-path">${displayHierarchyParts(p.context.entity.hierarchyPath).map(esc).join('<span>›</span>')}</div><dl><div><dt>Dự án</dt><dd>${esc(p.context.project.label)}</dd></div><div><dt>Đơn vị đo</dt><dd>${esc(p.context.entity.effectiveUnit || 'Chưa xác định')}</dd></div></dl></section>
@@ -769,18 +839,9 @@ function statisticsReceipt(): string {
 
 function aiStatusLabel(value: AIAnalysis['status']): string {
   return ({
-    ready: 'Đã kiểm chứng', insufficient_data: 'Chưa đủ dữ liệu',
-    provider_unavailable: 'Tóm tắt dự phòng', rejected_output: 'Đã loại phần thiếu căn cứ', stale: 'Cần phân tích lại',
+    ready: 'Số liệu đã được kiểm tra', insufficient_data: 'Chưa đủ dữ liệu',
+    provider_unavailable: 'Tóm tắt dự phòng', rejected_output: 'Đang dùng kết quả từ số liệu', stale: 'Cần phân tích lại',
   })[value];
-}
-
-function aiFactLabel(kind: string): string {
-  return ({ previous: 'Kỳ đầu', current: 'Kỳ cuối', absolute_change: 'Thay đổi toàn khoảng', relative_change: 'Tỷ lệ toàn khoảng', direction: 'Chiều thay đổi' } as Record<string, string>)[kind] || kind;
-}
-
-function aiFactValue(fact: AIFact): string {
-  if (fact.kind !== 'direction') return fact.displayValue;
-  return ({ increasing: 'Tăng', decreasing: 'Giảm', unchanged: 'Không đổi' } as Record<string, string>)[String(fact.value)] || String(fact.value);
 }
 
 function aiGroupLabel(value: 'day' | 'week' | 'month'): string {
@@ -789,7 +850,7 @@ function aiGroupLabel(value: 'day' | 'week' | 'month'): string {
 
 function aiPatternLabel(value: unknown): string {
   return ({
-    consistently_increasing: 'Tăng liên tục', consistently_decreasing: 'Giảm liên tục',
+    consistently_increasing: 'Không có lần giảm giữa các kỳ hợp lệ', consistently_decreasing: 'Không có lần tăng giữa các kỳ hợp lệ',
     unchanged: 'Không đổi qua các kỳ', fluctuating: 'Dao động tăng giảm',
   } as Record<string, string>)[String(value)] || String(value);
 }
@@ -797,9 +858,210 @@ function aiPatternLabel(value: unknown): string {
 function aiPeriodChange(point: AISeriesPoint): string {
   if (!point.change) return '<span class="ai-change baseline">Mốc đầu</span>';
   const direction = ({ increasing: 'Tăng', decreasing: 'Giảm', unchanged: 'Không đổi' })[point.change.direction];
-  const absolute = point.change.absoluteDisplay.replace(/^[+-]/, '');
+  const absolute = point.change.absoluteDisplay.replace(/^[+-]/, '').replace(' pp', ' điểm phần trăm');
   const relative = point.change.relativePercent === null ? 'không tính được %' : point.change.relativeDisplay.replace(/^[+-]/, '');
   return `<span class="ai-change ${esc(point.change.direction)}"><strong>${esc(direction)} ${esc(absolute)}</strong><small>${esc(relative)}</small></span>`;
+}
+
+function aiSequenceText(sequence: AISequenceHighlight): string {
+  return sequence.displayValues.map(value => esc(value)).join(' → ');
+}
+
+function aiChronologicalStory(analytics: AIPeriodAnalytics, label: string, history?: AIHistoricalContext): string {
+  const structure = analytics.temporalStructure;
+  if (!structure) return '';
+  const entries = [
+    ...structure.stages.map(stage => ({ index: stage.startIndex, text: stage.text })),
+    ...structure.gaps.map(gap => ({ index: gap.startIndex, text: gap.text })),
+  ].sort((a, b) => a.index - b.index);
+  const stages = `<ol class="ai-stage-list">${entries.map(entry => `<li>${esc(entry.text)}</li>`).join('')}</ol>`;
+  const milestones = [analytics.peak ? `Cao nhất ${analytics.peak.displayValue} tại ${analytics.peak.periodLabel}.` : '', analytics.lowest ? `Thấp nhất ${analytics.lowest.displayValue} tại ${analytics.lowest.periodLabel}.` : ''].filter(Boolean).join(' ');
+  const changes = [analytics.largestIncrease, analytics.largestDecrease].filter((item): item is AIChangeHighlight => !!item).map(item => `<p>${item.direction === 'increasing' ? 'Tăng' : 'Giảm'} lớn nhất giữa hai kỳ: ${esc(item.fromPeriodLabel)}–${esc(item.toPeriodLabel)}, ${esc(item.fromDisplayValue)} → ${esc(item.toDisplayValue)} (${esc(item.absoluteDisplay.replace(' pp', ' điểm phần trăm'))}).</p>`).join('');
+  const turns = structure.turningPoints.length ? `<details><summary>Các mốc đổi chiều</summary>${structure.turningPoints.map(turn => `<p>${esc(turn.text)}</p>`).join('')}</details>` : '';
+  const historicalLabel = history?.currentPosition ? ({ above_historical_range: 'cao hơn tất cả', below_historical_range: 'thấp hơn tất cả', within_historical_range: 'nằm trong khoảng giá trị của', matches_historical_range: 'bằng mức đã ghi nhận trong' })[history.currentPosition.value] : '';
+  const historical = history?.status === 'available' && historicalLabel ? `<details><summary>Bối cảnh trước khoảng đang xem</summary><p>Kỳ cuối hiện tại ${historicalLabel} ${fmt(history.observedPeriodCount)} kỳ hợp lệ liền trước được cung cấp; không phải toàn bộ lịch sử.</p></details>` : '';
+  return `<section class="ai-chronology"><h4>${esc(label)}</h4>${entries.length > 8 ? `<details><summary>Diễn biến theo các giai đoạn</summary>${stages}</details>` : stages}${milestones ? `<p class="ai-evidence-note">${esc(milestones)}</p>` : ''}${changes}${turns}${historical}</section>`;
+}
+
+function aiOverviewStory(analysis: AIAnalysis): string {
+  const chronology = (analysis.metrics || []).map(metric => aiChronologicalStory(metric.periodAnalytics, metric.metricDisplayName, metric.historicalContext)).join('');
+  if (chronology) return `<section class="ai-story ai-overview-story" aria-labelledby="ai-story-title"><h4 id="ai-story-title">Diễn biến trong thời gian đã chọn</h4>${chronology}</section>`;
+  if (analysis.comparisonBasis) {
+    const basis = analysis.comparisonBasis;
+    const endpoints = [basis.baseline, basis.current].filter((point): point is NonNullable<typeof point> => !!point).filter((point, index, points) => index === 0 || point.periodLabel !== points[0].periodLabel);
+    const operands = endpoints.map(point => `<li><span>${esc(point.periodLabel)}</span><p>${esc(point.numeratorDisplay)} Tổng báo sai (lỗi) trên ${esc(point.denominatorDisplay)} lượng ghi nhận đủ điều kiện: <strong>${esc(point.rateDisplay)}</strong>.<small>${fmt(point.eligibleDayCount)}/${fmt(point.expectedDayCount)} ngày đủ dữ liệu tính tỷ lệ</small></p></li>`).join('');
+    return `<section class="ai-story ai-overview-story" aria-labelledby="ai-story-title"><h4 id="ai-story-title">Mối quan hệ giữa các chỉ số</h4><p>${esc(basis.reason)}</p>${operands ? `<ul>${operands}</ul>` : ''}<p class="ai-evidence-note">Đây là so sánh kỳ đầu–cuối, không phải tổng của thời gian đã chọn hay kết luận chất lượng và nguyên nhân.</p></section>`;
+  }
+  if (!analysis.metrics?.length) return '';
+  const rows = analysis.metrics.map(metric => {
+    const current = metric.facts.find(fact => fact.kind === 'current');
+    const delta = metric.facts.find(fact => fact.kind === 'absolute_change');
+    const relative = metric.facts.find(fact => fact.kind === 'relative_change');
+    const direction = metric.facts.find(fact => fact.kind === 'direction');
+    const pattern = metric.facts.find(fact => fact.kind === 'trend_pattern');
+    const movement = direction ? ({
+      increasing: 'tăng', decreasing: 'giảm', unchanged: 'không đổi',
+    } as Record<string, string>)[String(direction.value)] : 'chưa đủ dữ liệu so sánh';
+    const change = delta
+      ? `${movement} ${esc(String(delta.displayValue).replace(/^[-+]/, ''))}${relative ? ` (${esc(String(relative.displayValue).replace(/^[-+]/, ''))})` : ''} so với kỳ đầu`
+      : movement;
+    const range = metric.periodAnalytics.lowest && metric.periodAnalytics.peak
+      ? `Thấp nhất ${esc(metric.periodAnalytics.lowest.displayValue)} · cao nhất ${esc(metric.periodAnalytics.peak.displayValue)}`
+      : 'Chưa đủ dữ liệu xác định khoảng biến động';
+    const last = metric.series.at(-1);
+    return `<li class="ai-overview-metric"><div><span>${esc(metric.metricDisplayName)} · kỳ cuối ${last ? esc(last.periodLabel) : ''}</span><strong>${current ? esc(current.displayValue) : last ? esc(last.displayValue) : '—'}</strong></div><p>${esc(change)}. ${pattern ? `${esc(aiPatternLabel(pattern.value))}. ` : ''}<small>${range}</small></p></li>`;
+  }).join('');
+  return `<section class="ai-story ai-overview-story" aria-labelledby="ai-story-title"><div class="ai-section-heading"><h4 id="ai-story-title">Bức tranh ba chỉ số</h4><span>Cùng phạm vi · cùng thời gian</span></div><ul>${rows}</ul></section>`;
+}
+
+function aiDataStory(analysis: AIAnalysis): string {
+  if (analysis.kind === 'metric_overview') return aiOverviewStory(analysis);
+  const analytics = analysis.periodAnalytics;
+  if (!analytics) return '';
+  if (analytics.temporalStructure) return `<section class="ai-story">${aiChronologicalStory(analytics, 'Diễn biến trong thời gian đã chọn', analysis.historicalContext)}</section>`;
+  const beats: string[] = [];
+  if (analytics.lowest && analytics.peak) {
+    beats.push(`<li><span>Mức thấp và cao</span><p>Mức thấp nhất là <strong>${esc(analytics.lowest.displayValue)}</strong> vào ${esc(analytics.lowest.periodLabel)}; mức cao nhất là <strong>${esc(analytics.peak.displayValue)}</strong> vào ${esc(analytics.peak.periodLabel)}.</p></li>`);
+  }
+  const changes: string[] = [];
+  if (analytics.largestIncrease) {
+    const item = analytics.largestIncrease;
+    const relative = item.relativePercent === null ? '' : `, tương ứng ${item.relativeDisplay}`;
+    changes.push(`nhịp tăng lớn nhất đi từ <strong>${esc(item.fromDisplayValue)}</strong> lên <strong>${esc(item.toDisplayValue)}</strong> (${esc(item.absoluteDisplay)}${esc(relative)})`);
+  }
+  if (analytics.largestDecrease) {
+    const item = analytics.largestDecrease;
+    const relative = item.relativePercent === null ? '' : `, tương ứng ${item.relativeDisplay}`;
+    changes.push(`nhịp giảm lớn nhất đi từ <strong>${esc(item.fromDisplayValue)}</strong> xuống <strong>${esc(item.toDisplayValue)}</strong> (${esc(item.absoluteDisplay)}${esc(relative)})`);
+  }
+  if (changes.length) {
+    const sentence = changes.map((item, index) => index ? `${item}` : `${item[0].toUpperCase()}${item.slice(1)}`).join('; ');
+    beats.push(`<li><span>Biến động lớn nhất</span><p>${sentence}.</p></li>`);
+  }
+  const runs: string[] = [];
+  if (analytics.consecutiveIncrease) runs.push(`tăng liên tiếp ${aiSequenceText(analytics.consecutiveIncrease)}`);
+  if (analytics.consecutiveDecrease) runs.push(`giảm liên tiếp ${aiSequenceText(analytics.consecutiveDecrease)}`);
+  if (runs.length) {
+    beats.push(`<li><span>Nhịp liên tiếp</span><p>Các đoạn được ghi nhận: ${runs.join('; ')}.</p></li>`);
+  }
+  if (analytics.endingPlateau) {
+    beats.push(`<li><span>Trạng thái cuối kỳ</span><p>Các kỳ cuối giữ nguyên ở cùng một mức: ${aiSequenceText(analytics.endingPlateau)}.</p></li>`);
+  } else if (analytics.latestChange) {
+    const item = analytics.latestChange;
+    const alreadyCovered = [analytics.largestIncrease, analytics.largestDecrease].some(change => (
+      change?.fromPeriodStart === item.fromPeriodStart && change.toPeriodStart === item.toPeriodStart
+    ));
+    if (!alreadyCovered) {
+      const movement = item.direction === 'increasing'
+        ? `tăng từ <strong>${esc(item.fromDisplayValue)}</strong> lên <strong>${esc(item.toDisplayValue)}</strong>`
+        : item.direction === 'decreasing'
+          ? `giảm từ <strong>${esc(item.fromDisplayValue)}</strong> xuống <strong>${esc(item.toDisplayValue)}</strong>`
+          : `giữ nguyên ở <strong>${esc(item.toDisplayValue)}</strong>`;
+      beats.push(`<li><span>Chuyển động gần nhất</span><p>Từ ${esc(item.fromPeriodLabel)} đến ${esc(item.toPeriodLabel)}, chỉ số ${movement}.</p></li>`);
+    }
+  }
+  const history = analysis.historicalContext;
+  if (history?.status === 'available' && history.currentPosition) {
+    const label = ({
+      above_historical_range: 'cao hơn tất cả',
+      below_historical_range: 'thấp hơn tất cả',
+      within_historical_range: 'nằm trong khoảng giá trị của',
+      matches_historical_range: 'bằng mức đã ghi nhận trong',
+    })[history.currentPosition.value];
+    beats.push(`<li><span>Bối cảnh lịch sử</span><p>Kỳ cuối hiện tại ${label} ${fmt(history.observedPeriodCount)} kỳ hợp lệ liền trước.</p></li>`);
+  }
+  if (!beats.length) return '';
+  const pattern = analysis.facts.find(fact => fact.kind === 'trend_pattern');
+  const lead = pattern
+    ? `Qua ${fmt(analysis.quality.validPeriodCount)} kỳ hợp lệ, chuỗi ${aiPatternLabel(pattern.value).toLowerCase()}.`
+    : '';
+  return `<section class="ai-story" aria-labelledby="ai-story-title"><div class="ai-section-heading"><h4 id="ai-story-title">Câu chuyện dữ liệu</h4><span>Từ số liệu đã kiểm chứng</span></div>${lead ? `<p class="ai-story-lead">${esc(lead)}</p>` : ''}<ul>${beats.join('')}</ul></section>`;
+}
+
+function aiReadable(text: string): string {
+  return text.replaceAll('toàn khoảng', 'thời gian đã chọn').replaceAll('endpoint', 'đầu và cuối giai đoạn')
+    .replaceAll('tỷ trọng trên Tổng số ghi nhận', 'tỷ lệ báo sai').replaceAll('tỷ trọng trên Tổng số', 'tỷ lệ báo sai').replaceAll('tỷ trọng', 'tỷ lệ báo sai')
+    .replaceAll('; ', '. ').split('. ').map(sentence => sentence.charAt(0).toUpperCase() + sentence.slice(1)).join('. ');
+}
+
+function aiReadingStory(analysis: AIAnalysis): string {
+  const reportPhases = analysis.narrative.report?.phases;
+  if (reportPhases?.length) {
+    const rows = reportPhases.map(phase => `<li><h5>${esc(phase.startLabel || '')} → ${esc(phase.endLabel || '')}</h5><p>${esc(aiReadable(phase.text))}</p>${phase.source === 'deterministic' && analysis.narrative.mode === 'ai' ? '<small>Tổng hợp từ số liệu</small>' : ''}</li>`);
+    return `<section class="ai-reading-story"><h4>${aiShortWindow(analysis) ? 'So sánh các kỳ đã có' : 'Các chỉ số thay đổi như thế nào?'}</h4><ol class="ai-reading-phases">${rows.slice(0, 4).join('')}</ol>${rows.length > 4 ? `<details class="ai-more-phases"><summary>Xem các giai đoạn tiếp theo</summary><ol class="ai-reading-phases">${rows.slice(4).join('')}</ol></details>` : ''}${analysis.narrative.report?.omittedPhaseCount ? '<p>Còn các giai đoạn khác trong phần số liệu và nguồn.</p>' : ''}</section>`;
+  }
+  const phases = analysis.synthesis?.reading?.phases || [];
+  if (!phases.length) return '';
+  const rows = phases.map(phase => {
+    const label = phase.startLabel === phase.endLabel ? phase.startLabel : `${phase.startLabel} → ${phase.endLabel}`;
+    return `<li><h5>${esc(label)}</h5><p>${esc(aiReadable(phase.text))}</p>${phase.explanation ? `<p class="ai-phase-meaning">${esc(aiReadable(phase.explanation))}</p>` : ''}</li>`;
+  });
+  const short = aiShortWindow(analysis);
+  const title = short ? (phases.length === 1 && (analysis.metrics?.[0].series.length || analysis.series?.length) === 2 ? 'So sánh hai kỳ' : 'Diễn biến các kỳ đã có') : 'Các chỉ số thay đổi như thế nào?';
+  return `<section class="ai-reading-story"><h4>${title}</h4><ol class="ai-reading-phases">${rows.slice(0, 4).join('')}</ol>${rows.length > 4 ? `<details class="ai-more-phases"><summary>Xem các giai đoạn tiếp theo</summary><ol class="ai-reading-phases">${rows.slice(4).join('')}</ol></details>` : ''}</section>`;
+}
+
+function aiReportSection(analysis: AIAnalysis, section: 'relationships', title: string): string {
+  const items = analysis.narrative.report?.[section] || [];
+  if (!items.length) return '';
+  return `<section class="ai-report-${section}"><h4>${esc(title)}</h4><ul class="ai-reading-phases">${items.map(item => `<li>${item.metricDisplayName ? `<h5>${esc(item.metricDisplayName)}</h5>` : ''}<p>${esc(aiReadable(item.text))}</p>${item.source === 'deterministic' && analysis.narrative.mode === 'ai' ? '<small>Tổng hợp từ số liệu</small>' : ''}</li>`).join('')}</ul></section>`;
+}
+
+function aiAnalyticalDetails(analysis: AIAnalysis): string {
+  const sourceButtons = (ids: string[]) => ids.map(id => {
+    const evidence = analysis.evidence.find(item => item.evidenceId === id);
+    if (!evidence) return '';
+    const metric = analysis.metrics?.find(item => item.evidence.some(source => source.evidenceId === id));
+    const label = `${metric?.metricDisplayName || analysis.scope.metricDisplayName} · ${evidence.periodLabel}`;
+    return `<button class="text-action" data-action="open-ai-evidence" data-evidence-id="${esc(id)}">${esc(label)}</button>`;
+  }).join('');
+  const selected = new Set(analysis.narrative.summary.candidateIds || []);
+  const hasChronology = !!analysis.periodAnalytics?.temporalStructure || !!analysis.metrics?.some(metric => metric.periodAnalytics.temporalStructure);
+  const temporal = hasChronology ? [] : analysis.insightCandidates?.filter(item => item.layer === 'temporal' && !selected.has(item.candidateId)) || [];
+  const events = temporal.length ? `<section class="ai-story"><h4>Diễn biến cần chú ý</h4>${temporal.map(item => `<p>${esc(item.text)}</p><div class="ai-source-actions">${sourceButtons(item.evidenceIds)}</div>`).join('')}</section>` : '';
+  const checks = analysis.inspectionChecks || [];
+  const next = checks.length ? `<section class="ai-story"><h4>Đối chiếu nguồn</h4><ul>${checks.map(item => `<li><span>Đối chiếu nguồn</span><div><p>${esc(item.text)}</p><div class="ai-source-actions">${sourceButtons(item.evidenceIds)}</div></div></li>`).join('')}</ul></section>` : analysis.narrative.suggestedChecks.length ? `<section class="ai-story"><h4>Gợi ý kiểm tra</h4><ul>${analysis.narrative.suggestedChecks.map(text => `<li><p>${esc(text)}</p></li>`).join('')}</ul></section>` : '';
+  if (aiShortWindow(analysis)) return next;
+  const basis = analysis.comparisonBasis;
+  const relationship = analysis.insightCandidates?.find(item => item.layer === 'relational');
+  const supplemental = basis ? `<details class="ai-supplement"><summary>Thông tin bổ sung: so sánh đầu–cuối</summary><p>${esc(basis.reason)}</p>${relationship ? `<p>${esc(relationship.text)}</p><div class="ai-source-actions">${sourceButtons(relationship.evidenceIds)}</div>` : ''}${[basis.baseline, basis.current].filter(point => !!point).map(point => `<p>${esc(point!.periodLabel)}: ${esc(point!.numeratorDisplay)} Tổng báo sai (lỗi) trên ${esc(point!.denominatorDisplay)} lượng ghi nhận đủ điều kiện (${esc(point!.rateDisplay)}); ${fmt(point!.eligibleDayCount)}/${fmt(point!.expectedDayCount)} ngày đủ dữ liệu.</p>`).join('')}<p class="ai-evidence-note">Đầu–cuối không đại diện cho diễn biến các kỳ ở giữa, không phải kết luận chất lượng hay nguyên nhân.</p></details>` : '';
+  const first = analysis.series?.[0];
+  const last = analysis.series?.at(-1);
+  const delta = analysis.facts.find(fact => fact.kind === 'absolute_change');
+  const singleSupplement = !basis && first && last && analysis.series!.length > 1 ? `<details class="ai-supplement"><summary>Thông tin bổ sung: so sánh đầu–cuối</summary><p>Kỳ đầu ${esc(first.periodLabel)}: ${esc(first.displayValue)}; kỳ cuối ${esc(last.periodLabel)}: ${esc(last.displayValue)}.${delta ? ` Chênh lệch đầu–cuối: ${esc(delta.displayValue.replace(' pp', ' điểm phần trăm'))}.` : ''}</p><p class="ai-evidence-note">So sánh này không thay thế diễn biến các kỳ ở giữa.</p></details>` : '';
+  return events + next + supplemental + singleSupplement;
+}
+
+function aiInsightEvidence(analysis: AIAnalysis): string {
+  if (!analysis.synthesis) return '';
+  const selectedIds = analysis.narrative.mode === 'ai' ? analysis.narrative.summary.candidateIds || analysis.synthesis.selectedCandidateIds : analysis.synthesis.selectedCandidateIds;
+  const anchors = selectedIds.flatMap(id => analysis.synthesis!.candidates.find(c => c.candidateId === id)?.anchors || []).filter((anchor, index, all) => all.findIndex(item => item.factId === anchor.factId) === index);
+  if (!anchors.length) return '';
+  return `<section class="ai-insight-evidence"><h4>Số liệu hỗ trợ phân tích</h4><ul>${anchors.map(anchor => `<li><span>${esc(anchor.metricDisplayName)} · ${esc(anchor.periodLabel)}: <strong>${esc(anchor.displayValue)}</strong></span> <button class="text-action" data-action="open-ai-evidence" data-evidence-id="${esc(anchor.evidenceId)}" aria-label="Mở căn cứ ${esc(anchor.metricDisplayName)} · ${esc(anchor.periodLabel)}">Mở nguồn</button></li>`).join('')}</ul></section>`;
+}
+
+function aiShortWindow(analysis: AIAnalysis): boolean {
+  return (analysis.metrics ? Math.max(0, ...analysis.metrics.map(metric => metric.series.length)) : (analysis.series?.length || 0)) < 4;
+}
+
+function aiCompactPeriod(point: { periodStart: string; periodEnd: string }): string {
+  const [sy, sm, sd] = point.periodStart.split('-');
+  const [ey, em, ed] = point.periodEnd.split('-');
+  if (point.periodStart === point.periodEnd) return `${sd}/${sm}`;
+  if (sy !== ey) return `${sd}/${sm}/${sy} → ${ed}/${em}/${ey}`;
+  return sm === em ? `${sd}–${ed}/${em}` : `${sd}/${sm}–${ed}/${em}`;
+}
+
+function aiComparisonTable(analysis: AIAnalysis): string {
+  const metrics = analysis.metrics || [{ metricDisplayName: analysis.scope.metricDisplayName, series: analysis.series || [] }];
+  const points = [...new Map(metrics.flatMap(metric => metric.series).map(point => [point.periodStart, point])).values()].sort((a, b) => a.periodStart.localeCompare(b.periodStart));
+  if (!points.length) return '';
+  const labels = points.map((point, index) => `Kỳ ${index + 1} (${aiCompactPeriod(point)})`);
+  const rows = metrics.map(metric => `<tr><th scope="row">${esc(metric.metricDisplayName)}</th>${points.map(period => {
+    const point = metric.series.find(item => item.periodStart === period.periodStart && item.periodEnd === period.periodEnd);
+    return `<td>${point ? `<strong>${esc(point.displayValue)}</strong> <button class="text-action" data-action="open-ai-evidence" data-evidence-id="${esc(point.evidenceId)}" aria-label="Mở nguồn ${esc(metric.metricDisplayName)} · ${esc(point.periodLabel)}">Nguồn</button>` : 'Thiếu dữ liệu'}</td>`;
+  }).join('')}</tr>`).join('');
+  return `<details class="ai-disclosure ai-periods ai-comparison"><summary>So sánh các KPI giữa các kỳ</summary><div class="ai-disclosure-body"><p>${esc(labels.join(' → '))}</p><p class="ai-evidence-note">Số kỳ còn ít: chỉ so sánh, chưa xác định xu hướng. Năm và phạm vi đầy đủ được ghi ở trên.</p><div class="ai-period-table"><table><thead><tr><th>Chỉ số</th>${labels.map(label => `<th scope="col">${esc(label)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div></details>`;
 }
 
 function aiFriendlyError(): string {
@@ -817,7 +1079,8 @@ function announceAI(message: string): void {
   });
 }
 
-function renderAIInsights(): string {
+function renderAIInsights(rawAnalysis = aiAnalysis): string {
+  const aiAnalysis = metricPresentation(rawAnalysis);
   const scopeBlocked = state.scope !== 'node';
   const statusUnavailable = aiStatus && !aiStatus.enabled;
   const notConfigured = aiStatus && !aiStatus.configured;
@@ -836,7 +1099,9 @@ function renderAIInsights(): string {
             ? '<p id="ai-availability-note" class="ai-privacy-note">Chế độ riêng tư đang bật: hệ thống chỉ dùng số liệu đã kiểm chứng trong máy chủ và không gọi dịch vụ trí tuệ nhân tạo bên ngoài.</p>'
             : '<p id="ai-availability-note" class="ai-trust-note">Chỉ số liệu đã chuẩn hóa và mã định danh thay thế được gửi đến dịch vụ trí tuệ nhân tạo. Tệp Excel gốc và thông tin truy vết luôn ở lại máy chủ.</p>';
   const selectedEntity = currentEntity();
-  const selectedName = displayEntityName(selectedEntity, aiAnalysis?.scope.entityLabel || 'Nội dung đang xem');
+  const resultRef = aiAnalysis?.scope.entityRef;
+  const resultEntity = aiAnalysis ? entities.find(entity => entity.entity_id === resultRef) : selectedEntity;
+  const selectedName = aiAnalysis ? displayEntityName(undefined, aiAnalysis.scope.entityLabel) : displayEntityName(selectedEntity, 'Nội dung đang xem');
   const selectedScope = getCurrentScopeLabel(selectedEntity?.entity_level);
   const scopeCopy = scopeBlocked
     ? `<div id="ai-scope-note" class="ai-scope-note"><div><strong>Mức hiển thị này chưa hỗ trợ phân tích tự động.</strong><p>Hiện tại tính năng phân tích từng nội dung. Chuyển về “${esc(selectedScope)}” để tiếp tục.</p></div><button class="ghost" data-action="use-selected-entity">Dùng nội dung đang chọn</button></div>`
@@ -850,53 +1115,82 @@ function renderAIInsights(): string {
   if (aiAnalysis && !scopeBlocked) {
     const stale = aiLocallyStale || aiAnalysis.status === 'stale' || aiAnalysis.dataAsOf.stale;
     const stateValue: AIAnalysis['status'] = stale ? 'stale' : aiAnalysis.status;
-    const facts = aiAnalysis.facts.filter(fact => ['previous', 'current', 'absolute_change', 'relative_change'].includes(fact.kind)).map(fact => `<div><dt>${esc(aiFactLabel(fact.kind))}</dt><dd>${esc(aiFactValue(fact))}</dd></div>`).join('');
-    const direction = aiAnalysis.facts.find(fact => fact.kind === 'direction');
-    const pattern = aiAnalysis.facts.find(fact => fact.kind === 'trend_pattern');
-    const periods = aiAnalysis.series.map(point => {
+    const periodRows = (series: AISeriesPoint[], metricLabel = aiAnalysis!.scope.metricDisplayName) => series.map(point => {
       const evidence = aiAnalysis?.evidence.find(item => item.evidenceId === point.evidenceId);
-      return `<tr><th scope="row"><strong>${esc(point.periodLabel)}</strong><small>${fmt(point.observedDayCount)}/${fmt(point.expectedDayCount)} ngày dữ liệu</small></th><td>${esc(point.displayValue)}</td><td>${aiPeriodChange(point)}</td><td>${evidence ? `<button class="text-action" data-action="open-ai-evidence" data-evidence-id="${esc(point.evidenceId)}" aria-label="Mở nguồn kỳ ${esc(point.periodLabel)}">Nguồn</button>` : '—'}</td></tr>`;
+      return `<tr><th scope="row"><strong>${esc(point.periodLabel)}</strong><small>${fmt(point.observedDayCount)}/${fmt(point.expectedDayCount)} ngày dữ liệu</small></th><td>${esc(point.displayValue)}</td><td>${aiPeriodChange(point)}</td><td>${evidence ? `<button class="text-action" data-action="open-ai-evidence" data-evidence-id="${esc(point.evidenceId)}" aria-label="Mở nguồn ${esc(metricLabel)} · ${esc(point.periodLabel)}">Nguồn</button>` : '—'}</td></tr>`;
     }).join('');
+    const periods = periodRows(aiAnalysis.series ?? []);
     const limitations = [...new Set([...(aiAnalysis.quality.limitations || []), ...(aiAnalysis.narrative.limitations || [])])];
+    const providerFailure = aiAnalysis.validation.errors[0];
+    const providerFailureDetail = providerFailure === 'timeout'
+      ? 'Mô hình không trả lời trong thời gian cho phép nên hệ thống đã dừng chờ.'
+      : providerFailure === 'rate_limited'
+        ? 'Dịch vụ đang giới hạn số yêu cầu và có thể sẵn sàng lại sau.'
+        : 'Không kết nối được với dịch vụ diễn giải tự động.';
+    const validationCategories = aiAnalysis.validation.categories || [];
+    const rejectionDetail = validationCategories.includes('structure') || ['invalid_json', 'claim_schema', 'narrative_identity'].includes(providerFailure)
+      ? 'Dịch vụ trả về nội dung sai định dạng nên hệ thống chưa thể sử dụng.'
+      : validationCategories.includes('numerical_temporal')
+        ? 'Một số giá trị hoặc ngày trong phần diễn giải không khớp với dữ liệu được trích dẫn.'
+        : validationCategories.includes('grounding')
+          ? 'Phần diễn giải chưa liên kết đầy đủ với dữ liệu nguồn trong phạm vi đang xem.'
+          : 'Hệ thống chưa xác minh được một số nhận định trong phần diễn giải.';
     const providerNotice = aiAnalysis.status === 'provider_unavailable'
-      ? '<div class="ai-callout warning"><strong>Dịch vụ phân tích tự động tạm thời không phản hồi.</strong><p>Kết quả bên dưới vẫn được tạo từ số liệu đã kiểm chứng và bảng điều khiển tiếp tục hoạt động.</p></div>'
+      ? `<div class="ai-callout warning"><strong>Dịch vụ phân tích tự động tạm thời không phản hồi.</strong><p>${esc(providerFailureDetail)} Kết quả bên dưới vẫn được tạo từ số liệu đã kiểm chứng.</p></div>`
       : aiAnalysis.status === 'rejected_output'
-        ? '<div class="ai-callout warning"><strong>Phần diễn giải tự động không đủ căn cứ.</strong><p>Hệ thống đã loại phần đó và chỉ hiển thị kết quả có thể đối chiếu với dữ liệu nguồn.</p></div>'
+        ? `<div class="ai-callout warning"><strong>Chưa sử dụng được phần diễn giải tự động.</strong><p>${esc(rejectionDetail)} Kết quả từ số liệu đã kiểm chứng vẫn được giữ lại. Bạn có thể chọn “Phân tích lại”.</p></div>`
+        : aiAnalysis.validation.status === 'partial'
+          ? '<div class="ai-callout warning"><strong>Một số nhận định đã được lược bỏ.</strong><p>Các nhận định đã kiểm chứng và diễn biến từ số liệu vẫn được giữ lại.</p></div>'
         : '';
-    const trendCopy = direction && pattern
-      ? `<p class="ai-direction"><span>Xu hướng theo ${esc(aiGroupLabel(aiAnalysis.window.groupBy))}</span><strong>${esc(aiPatternLabel(pattern.value))}</strong><small>Toàn khoảng: ${esc(aiFactValue(direction).toLowerCase())}</small></p>`
-      : '<p class="ai-section-empty">Chưa đủ kỳ hợp lệ để xác định xu hướng toàn chuỗi.</p>';
     const narrativeInsights = aiAnalysis.narrative.insights
-      .map(item => `<p class="ai-insight-copy">${esc(item.text)}</p>`)
+      .map(item => `<li>${esc(item.text)}</li>`)
       .join('');
+    const storyContent = aiShortWindow(aiAnalysis) ? '' : aiDataStory(aiAnalysis);
+    const story = storyContent ? `<details class="ai-details"><summary>Xem chi tiết diễn biến</summary>${storyContent}</details>` : '';
+    const periodDisclosure = aiShortWindow(aiAnalysis) ? aiComparisonTable(aiAnalysis) : aiAnalysis.metrics?.length
+      ? `<div class="ai-metric-disclosures">${aiAnalysis.metrics.map(metric => `<details class="ai-disclosure ai-periods"><summary><span>${esc(metric.metricDisplayName)}</span><small>${fmt(metric.quality.validPeriodCount)}/${fmt(metric.quality.expectedPeriodCount)} kỳ hợp lệ · xem chi tiết</small></summary><div class="ai-disclosure-body">${metric.series.length ? `<div class="ai-period-table"><table><thead><tr><th>Kỳ</th><th>Giá trị</th><th>So với kỳ hợp lệ trước</th><th>Bằng chứng</th></tr></thead><tbody>${periodRows(metric.series, metric.metricDisplayName)}</tbody></table></div>` : '<p>Chưa có kỳ hợp lệ. Kiểm tra dữ liệu nguồn hoặc chọn khoảng khác.</p>'}</div></details>`).join('')}</div>`
+      : `<details class="ai-disclosure ai-periods"><summary><span>Biến động từng ${esc(aiGroupLabel(aiAnalysis.window.groupBy))}</span><small>${fmt(aiAnalysis.series?.length ?? 0)} kỳ · mở để xem bằng chứng</small></summary><div class="ai-disclosure-body"><div class="ai-period-table"><table><thead><tr><th>Kỳ</th><th>Giá trị</th><th>So với kỳ trước</th><th>Bằng chứng</th></tr></thead><tbody>${periods}</tbody></table></div></div></details>`;
+    const reading = aiAnalysis.synthesis?.reading;
+    const reportOverview = aiAnalysis.narrative.report?.overview?.[0];
+    const overviewText = reportOverview?.text || reading?.overview?.text || aiAnalysis.narrative.summary.text;
+    const takeawayText = aiAnalysis.narrative.report ? '' : aiAnalysis.narrative.mode === 'ai' && aiAnalysis.narrative.schemaVersion === 'ai-narrative-v4'
+      ? aiAnalysis.narrative.summary.text
+      : reading?.overview ? (reading.takeaways || []).map(item => item.text).filter(text => !aiReadable(overviewText).includes(aiReadable(text))).join(' ') : '';
     const qualityAlert = limitations.length
       ? `<div class="ai-quality-alert"><strong>Dữ liệu cần lưu ý</strong><p>${esc(limitations[0])}${limitations.length > 1 ? ` Còn ${fmt(limitations.length - 1)} giới hạn khác trong phần chi tiết.` : ''}</p></div>`
       : '';
     result = `<div class="ai-result ${stale ? 'stale' : ''}">
-      <div class="ai-result-head"><span class="ai-state ${esc(stateValue)}">${esc(aiStatusLabel(stateValue))}</span><span>${fmt(aiAnalysis.quality.validPeriodCount)}/${fmt(aiAnalysis.quality.expectedPeriodCount)} kỳ ${esc(aiGroupLabel(aiAnalysis.window.groupBy))} có dữ liệu hợp lệ</span></div>
-      <dl class="ai-scope-receipt" aria-label="Mức hiển thị của kết quả phân tích"><div><dt>${esc(getEntityLevelLabel(selectedEntity?.entity_level))}</dt><dd>${esc(selectedName)}</dd></div><div><dt>Khoảng ngày</dt><dd>${dateLabel(aiAnalysis.window.start)}–${dateLabel(aiAnalysis.window.end)}</dd></div><div><dt>Chỉ số</dt><dd>${esc(aiAnalysis.scope.metricDisplayName)}</dd></div><div><dt>Xem theo</dt><dd>${esc(aiGroupLabel(aiAnalysis.window.groupBy))}</dd></div></dl>
+      <div class="ai-result-head"><span class="ai-state ${esc(stateValue)}">${esc(aiStatusLabel(stateValue))}</span><span>${aiAnalysis.metrics ? `${fmt(aiAnalysis.metrics.filter(metric => metric.status === 'ready').length)}/${fmt(aiAnalysis.metrics.length)} chỉ số đủ dữ liệu so sánh · theo ${esc(aiGroupLabel(aiAnalysis.window.groupBy))}` : `${fmt(aiAnalysis.quality.validPeriodCount)}/${fmt(aiAnalysis.quality.expectedPeriodCount)} kỳ ${esc(aiGroupLabel(aiAnalysis.window.groupBy))} có dữ liệu hợp lệ`}</span></div>
+      <dl class="ai-scope-receipt" aria-label="Mức hiển thị của kết quả phân tích"><div><dt>${esc(getEntityLevelLabel(resultEntity?.entity_level))}</dt><dd>${esc(selectedName)}</dd></div><div><dt>Khoảng ngày</dt><dd>${dateLabel(aiAnalysis.window.start)}–${dateLabel(aiAnalysis.window.end)}</dd></div><div><dt>Chỉ số</dt><dd>${esc(aiAnalysis.scope.metricDisplayName)}</dd></div><div><dt>Xem theo</dt><dd>${esc(aiGroupLabel(aiAnalysis.window.groupBy))}</dd></div></dl>
       ${stale ? '<div class="ai-callout warning"><strong>Kết quả cũ hơn dữ liệu đang xem.</strong><p>Bộ lọc hoặc dữ liệu đã nhập đã thay đổi. Kết quả cũ được giữ để đối chiếu; hãy chọn “Phân tích lại”.</p></div>' : ''}
       ${providerNotice}
+      ${aiAnalysis.status === 'insufficient_data' ? qualityAlert : ''}
       <section class="ai-executive" aria-labelledby="ai-executive-title">
-        <div class="ai-section-heading"><h4 id="ai-executive-title">Tổng quan phân tích</h4><span>${aiAnalysis.narrative.mode === 'ai' ? 'Đã đối chiếu bằng chứng' : 'Tóm tắt từ số liệu'}</span></div>
-        <p>${esc(aiAnalysis.narrative.summary.text)}</p>
+        <div class="ai-section-heading"><h4 id="ai-executive-title">Tổng quan trong thời gian đã chọn</h4><span>${reportOverview ? reportOverview.source === 'ai' ? 'Diễn giải tự động' : 'Tổng hợp từ số liệu' : reading?.overview ? 'Tổng hợp từ số liệu' : aiAnalysis.narrative.mode === 'ai' ? 'Diễn giải tự động' : 'Tóm tắt từ số liệu'}</span></div>
+        <p>${esc(aiReadable(overviewText))}</p>
+        ${narrativeInsights ? `<ul class="ai-summary-points">${narrativeInsights}</ul>` : ''}
       </section>
-      ${qualityAlert}
-      <div class="ai-reading-grid">
-        <section class="ai-trend-block" aria-labelledby="ai-trend-title"><h4 id="ai-trend-title">Diễn giải xu hướng</h4>${trendCopy}${narrativeInsights}</section>
-        <section class="ai-fact-block" aria-labelledby="ai-facts-title"><h4 id="ai-facts-title">Các mốc so sánh</h4>${facts ? `<dl class="ai-facts">${facts}</dl>` : '<p class="ai-section-empty">Chưa có đủ hai kỳ hợp lệ để tạo các mốc so sánh.</p>'}</section>
-      </div>
-      <details class="ai-disclosure ai-periods"><summary><span>Biến động từng ${esc(aiGroupLabel(aiAnalysis.window.groupBy))}</span><small>${fmt(aiAnalysis.series.length)} kỳ · mở để xem bằng chứng</small></summary><div class="ai-disclosure-body"><div class="ai-period-table"><table><thead><tr><th>Kỳ</th><th>Giá trị</th><th>So với kỳ trước</th><th>Bằng chứng</th></tr></thead><tbody>${periods}</tbody></table></div></div></details>
+      ${aiAnalysis.status !== 'insufficient_data' ? qualityAlert : ''}
+
+      ${aiReadingStory(aiAnalysis)}
+      ${aiReportSection(aiAnalysis, 'relationships', 'Các chỉ số liên quan với nhau như thế nào?')}
+      ${takeawayText ? `<section class="ai-takeaways"><div class="ai-section-heading"><h4>Điều cần chú ý</h4>${aiAnalysis.narrative.mode === 'ai' && aiAnalysis.narrative.schemaVersion === 'ai-narrative-v4' ? '<span>Diễn giải tự động đã kiểm chứng</span>' : ''}</div><p>${esc(aiReadable(takeawayText))}</p></section>` : ''}
+      <details class="ai-verification"><summary>Xem số liệu và nguồn</summary><div class="ai-verification-body">
+      ${aiInsightEvidence(aiAnalysis)}
+      ${aiAnalyticalDetails(aiAnalysis)}
+      ${story}
+      ${periodDisclosure}
       <details class="ai-disclosure ai-quality"><summary><span>Bằng chứng &amp; chất lượng dữ liệu</span><small>${limitations.length ? `${fmt(limitations.length)} giới hạn` : 'Không có cảnh báo về độ đầy đủ'}</small></summary><div class="ai-disclosure-body">
         <p class="ai-evidence-note">Mỗi kỳ có thể mở đúng điểm dữ liệu hoặc nhóm dữ liệu nguồn trong bảng biến động.</p>
         ${limitations.length ? `<div class="ai-limitations"><h5>Giới hạn dữ liệu</h5><ul>${limitations.map(item => `<li>${esc(item)}</li>`).join('')}</ul></div>` : '<p class="ai-quality-ok">Các kỳ đang hiển thị không có cảnh báo chất lượng bổ sung.</p>'}
         <details class="ai-technical"><summary>Thông tin kỹ thuật</summary><dl class="ai-meta"><div><dt>Dữ liệu đến</dt><dd>${dateLabel(aiAnalysis.window.currentDate || aiAnalysis.window.end)}</dd></div><div><dt>Tạo lúc</dt><dd>${esc(new Date(aiAnalysis.dataAsOf.generatedAt).toLocaleString('vi-VN'))}</dd></div><div><dt>Dịch vụ</dt><dd>${esc(aiAnalysis.provider.name)}</dd></div><div><dt>Mô hình trí tuệ nhân tạo</dt><dd>${esc(aiAnalysis.provider.model)}</dd></div><div><dt>Mã phiên dữ liệu</dt><dd><code title="${esc(aiAnalysis.dataAsOf.snapshotId)}">${esc(shortHash(aiAnalysis.dataAsOf.snapshotId))}</code></dd></div></dl></details>
       </div></details>
+      </div></details>
     </div>`;
   }
   return `<section id="ai-insights" class="ai-panel" aria-labelledby="ai-insights-title">
-    <div class="ai-panel-head"><div><h3 id="ai-insights-title">Nhận định xu hướng tự động</h3><p>Tóm tắt biến động từ dữ liệu đã chuẩn hóa và kiểm chứng. Phần diễn giải không thay đổi số liệu trên biểu đồ.</p></div>${aiAnalysis && !scopeBlocked ? `<span class="ai-mode">${aiAnalysis.narrative.mode === 'ai' ? 'Tự động · đã kiểm chứng' : 'Tóm tắt từ số liệu'}</span>` : ''}</div>
-    <div class="ai-controls"><label class="ai-metric">Chỉ số<select data-field="aiMetricCode">${select([{value:'total',label:'Tổng số'},{value:'error',label:'Báo sai/Lỗi'},{value:'error_rate',label:'% báo sai'}], state.aiMetricCode)}</select></label><label class="ai-metric">Nhóm dữ liệu<select data-field="aiGroupBy">${select([{value:'day',label:'Theo ngày'},{value:'week',label:'Theo tuần'},{value:'month',label:'Theo tháng'}], state.aiGroupBy)}</select></label><button class="primary ai-generate" data-action="generate-ai-insight" aria-disabled="${disabled}" aria-describedby="ai-availability-note${scopeBlocked ? ' ai-scope-note' : ''}" ${hardDisabled ? 'disabled' : ''}>${actionLabel}</button></div>
+    <div class="ai-panel-head"><div><h3 id="ai-insights-title">Phân tích KPI tự động</h3><p>Giải thích mối liên hệ và diễn biến KPI; không thay đổi số liệu trên biểu đồ.</p></div></div>
+    <div class="ai-controls"><label class="ai-metric">Phạm vi chỉ số<select data-field="aiMetricCode">${select([{value:'all',label:'Tất cả chỉ số · Tổng quan'},{value:'total',label:'Tổng số'},{value:'error',label:'Báo sai/Lỗi'},{value:'error_rate',label:'% báo sai'}], state.aiMetricCode)}</select></label><label class="ai-metric">Nhóm dữ liệu<select data-field="aiGroupBy">${select([{value:'day',label:'Theo ngày'},{value:'week',label:'Theo tuần'},{value:'month',label:'Theo tháng'}], state.aiGroupBy)}</select></label><button class="primary ai-generate" data-action="generate-ai-insight" aria-disabled="${disabled}" aria-describedby="ai-availability-note${scopeBlocked ? ' ai-scope-note' : ''}" ${hardDisabled ? 'disabled' : ''}>${actionLabel}</button></div>
     ${statusCopy}${scopeCopy}${error}
     <p id="ai-status-message" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
     <div class="ai-output" aria-busy="${aiLoading}">${result}</div>
@@ -987,7 +1281,7 @@ function reconcileComparison(host: HTMLDivElement): void {
       : statePanel('Chưa đủ nội dung để so sánh', candidates.length < 2 ? 'Không đủ nội dung có dữ liệu cho chỉ số và khoảng thời gian hiện tại. Hãy đổi bộ lọc.' : 'Chọn từ 2 đến 3 nội dung có cùng đơn vị đo.');
     return;
   }
-  const markup = `<article class="chart-card" data-chart-key="comparison"><div class="card-top"><h3>So sánh ${esc(state.comparisonMetric)}</h3><span class="pill">Cùng đơn vị</span></div><div class="plot" data-plot="comparison" aria-label="Biểu đồ so sánh ${esc(state.comparisonMetric)}"></div></article>`;
+  const markup = `<article class="chart-card" data-chart-key="comparison"><div class="card-top"><h3>So sánh ${escMetric(state.comparisonMetric)}</h3><span class="pill">Cùng đơn vị</span></div><div class="plot" data-plot="comparison" aria-label="Biểu đồ so sánh ${escMetric(state.comparisonMetric)}"></div></article>`;
   let grid = host.querySelector<HTMLDivElement>(':scope > .chart-grid');
   if (!grid) { host.innerHTML = '<div class="chart-grid one"></div>'; grid = host.querySelector<HTMLDivElement>(':scope > .chart-grid')!; }
   let card = grid.querySelector<HTMLElement>(':scope > [data-chart-key="comparison"]');
@@ -1036,7 +1330,7 @@ function renderTab(): void {
     const host = analyticsHost(
       body,
       state.tab,
-      `<p class="section-desc">Biểu đồ Tổng số, Báo sai/Lỗi và % báo sai theo ${state.scope === 'children' ? getChildrenScopeLabel(currentEntity()?.entity_level).toLowerCase() : getCurrentScopeLabel(currentEntity()?.entity_level).toLowerCase()}.</p>`,
+      `<p class="section-desc">Biểu đồ Tổng số ghi nhận, Tổng báo sai (lỗi) và Tỷ lệ báo sai theo ${state.scope === 'children' ? getChildrenScopeLabel(currentEntity()?.entity_level).toLowerCase() : getCurrentScopeLabel(currentEntity()?.entity_level).toLowerCase()}.</p>`,
       renderAIInsights(),
     );
     reconcileChartCollection(host, workspace?.overview || [], 'overview');
@@ -1215,7 +1509,7 @@ function renderContextualComparison(): void {
   } else if (context && !anchorEligible) {
     resultMarkup = `<div class="contextual-empty"><strong>${esc(terminology.anchorLabel)} chưa thể so sánh</strong><p>${esc(comparisonReason(context.anchorReason, anchor.entity_level))} ${session.lens === 'statistics' ? 'Hãy đổi cách tính hoặc kiểm tra dữ liệu nguồn.' : 'Hãy chọn chỉ số khác hoặc kiểm tra dữ liệu nguồn.'}</p></div>`;
   } else if (response?.comparison) {
-    resultMarkup = `<div class="contextual-results"><div class="contextual-chart-frame"><div class="contextual-plot" data-plot="contextual-comparison" role="img" aria-label="${session.lens === 'statistics' ? 'Biểu đồ so sánh thống kê' : `Biểu đồ so sánh ${esc(session.metric)}`}"></div>${busy ? '<div class="contextual-loading">Đang cập nhật kết quả…</div>' : ''}</div></div>`;
+    resultMarkup = `<div class="contextual-results"><div class="contextual-chart-frame"><div class="contextual-plot" data-plot="contextual-comparison" role="img" aria-label="${session.lens === 'statistics' ? 'Biểu đồ so sánh thống kê' : `Biểu đồ so sánh ${escMetric(session.metric)}`}"></div>${busy ? '<div class="contextual-loading">Đang cập nhật kết quả…</div>' : ''}</div></div>`;
   } else if (busy) {
     resultMarkup = `<div class="contextual-empty" aria-busy="true"><strong>Đang kiểm tra ${esc(terminology.candidatePlural)} có thể so sánh…</strong><p>Kết quả từ yêu cầu cũ sẽ không ghi đè kết quả mới hơn.</p></div>`;
   } else {
@@ -1237,7 +1531,7 @@ function renderContextualComparison(): void {
           <div class="contextual-candidates">${candidateMarkup || `<p class="contextual-no-sibling">${esc(terminology.noCandidateMessage)}</p>`}</div>${removedText}
         </aside>
         <section class="contextual-main" aria-live="polite">
-          <div class="contextual-basis"><div><span class="contextual-eyebrow">Cơ sở so sánh</span><strong>${session.lens === 'statistics' ? 'Chọn một cách tính' : 'Chỉ số được chọn sẵn'}</strong><small>${session.lens === 'statistics' ? 'Áp dụng cho cả Tổng số và Báo sai/Lỗi; không cần chọn lại chỉ số.' : 'Đổi chỉ số khi cần; các nội dung còn phù hợp sẽ được giữ lại.'}</small></div><div class="contextual-basis-fields ${session.lens}">${session.lens === 'statistics' ? `<label>Cách tính<select id="contextual-calculation" data-context-field="calculation" ${controlsDisabled ? 'disabled' : ''}>${select([{ value: 'sum', label: 'Tổng trong kỳ' }, { value: 'average_per_day', label: 'Trung bình mỗi ngày' }], session.calculation)}</select></label>` : `<label>Chỉ số<select id="contextual-metric" data-context-field="metric" ${controlsDisabled ? 'disabled' : ''}>${select(['Tổng số','Báo sai/Lỗi','% báo sai'].map(value => ({ value, label:value })), session.metric || 'Báo sai/Lỗi')}</select></label>`}</div></div>
+          <div class="contextual-basis"><div><span class="contextual-eyebrow">Cơ sở so sánh</span><strong>${session.lens === 'statistics' ? 'Chọn một cách tính' : 'Chỉ số được chọn sẵn'}</strong><small>${session.lens === 'statistics' ? 'Áp dụng cho cả Tổng số ghi nhận và Tổng báo sai (lỗi); không cần chọn lại chỉ số.' : 'Đổi chỉ số khi cần; các nội dung còn phù hợp sẽ được giữ lại.'}</small></div><div class="contextual-basis-fields ${session.lens}">${session.lens === 'statistics' ? `<label>Cách tính<select id="contextual-calculation" data-context-field="calculation" ${controlsDisabled ? 'disabled' : ''}>${select([{ value: 'sum', label: 'Tổng trong kỳ' }, { value: 'average_per_day', label: 'Trung bình mỗi ngày' }], session.calculation)}</select></label>` : `<label>Chỉ số<select id="contextual-metric" data-context-field="metric" ${controlsDisabled ? 'disabled' : ''}>${select(['Tổng số','Báo sai/Lỗi','% báo sai'].map(value => ({ value, label:value })), session.metric || 'Báo sai/Lỗi')}</select></label>`}</div></div>
           ${resultMarkup}
         </section>
         <div class="contextual-investigation-host" aria-label="Bằng chứng của điểm đang chọn"></div>
@@ -1387,7 +1681,7 @@ function importModeGuidance(mode: typeof importMode): { title: string; body: str
 function validationIssues(value: Preview): string {
   const visible = showAllIssues ? value.issues : value.issues.slice(0, 8);
   if (!visible.length) return `<p class="issue-empty">${value.errorCount + value.warningCount ? 'Có lỗi hoặc cảnh báo, nhưng máy chủ chưa trả chi tiết trong phần xem trước.' : 'Không có lỗi hoặc cảnh báo.'}</p>`;
-  const rows = visible.map(issue => `<div class="issue-row"><span class="issue-severity ${issue.severity.toLowerCase()}">${esc(validationLabel(issue.severity.toLowerCase()))}</span><div><p>${esc(issue.message)}</p></div></div>`).join('');
+  const rows = visible.map(issue => `<div class="issue-row"><span class="issue-severity ${issue.severity.toLowerCase()}">${esc(validationLabel(issue.severity.toLowerCase()))}</span><div><p>${escMetric(issue.message)}</p></div></div>`).join('');
   const hidden = value.issues.length - visible.length;
   return `${rows}${hidden > 0 ? `<button class="text-action" data-action="toggle-issues">Xem thêm ${fmt(hidden)} mục kiểm tra</button>` : showAllIssues && value.issues.length > 8 ? '<button class="text-action" data-action="toggle-issues">Thu gọn danh sách</button>' : ''}`;
 }
@@ -1613,6 +1907,9 @@ function openAIInsightEvidence(evidenceId: string): void {
   if (!evidence || aiLocallyStale && aiAnalysis?.scope.project !== state.project) return;
   const exact = evidence.target.kind === 'exact' ? evidence.target : null;
   const aggregate = evidence.target.kind === 'aggregate' ? evidence.target : null;
+  const evidenceMetric = aiAnalysis?.metrics?.find(metric => (
+    metric.evidence.some(item => item.evidenceId === evidenceId)
+  ));
   const selection: InvestigationSelection = {
     kind: evidence.target.kind === 'exact' ? 'exact-observation' : 'aggregate',
     aggregateRef: aggregate?.aggregateRef || null,
@@ -1620,7 +1917,7 @@ function openAIInsightEvidence(evidenceId: string): void {
     lineageRef: exact?.lineageRef || null,
     origin: {
       plotKey: 'ai-insight', tab: 'overview', entityRef: aiAnalysis?.scope.entityRef || '',
-      seriesName: aiAnalysis?.scope.metricDisplayName || 'Nhận định tự động',
+      seriesName: evidenceMetric?.metricDisplayName || aiAnalysis?.scope.metricDisplayName || 'Nhận định tự động',
       observedDate: evidence.observedDate, displayedValue: 'Dữ kiện phân tích', curveNumber: 0, pointNumber: 0,
     },
   };

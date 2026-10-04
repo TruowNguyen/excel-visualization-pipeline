@@ -5,7 +5,7 @@
 - Contract canonical: [README.md](README.md)
 - Product baseline: `SCP-102`, `PRD-F102`, `UC-10`
 - Development provider: **9Router**, OpenAI-compatible API
-- Development model mặc định: `ag/gemini-3.7-flash-high`
+- Development model mặc định: `ag/gemini-3.7-flash-low` (ưu tiên độ trễ cho luồng diễn giải facts)
 
 Tài liệu này là hồ sơ triển khai của các module contract canonical. Nó không sở hữu namespace yêu cầu `AI-*` độc lập.
 
@@ -21,13 +21,15 @@ Development gateway được dự án chọn là 9Router. Server-side adapter d�
 
 - `GEMINI_API_KEY`;
 - `GEMINI_API_BASE_URL`, mặc định `https://9router.com/v1`;
-- `GEMINI_MODEL`, mặc định `ag/gemini-3.7-flash-high`.
+- `GEMINI_MODEL`, mặc định `ag/gemini-3.7-flash-low`.
+- `EVP_AI_TIMEOUT_SECONDS=12`, `EVP_AI_MAX_RETRIES=0` cho request tương tác.
+- `EVP_AI_MAX_OUTPUT_TOKENS=700` để giới hạn thời gian sinh narrative.
 
 Credential phải chỉ nằm phía server. Model availability phải được kiểm tra theo account đang cấu hình; adapter không được âm thầm đổi sang model khác. Việc gửi CX data thật vẫn bị tắt cho tới khi `AI-DEC-006` duyệt allowed field, privacy, deployment region, retention và logging.
 
 ## Request runtime Phase 1
 
-`POST /api/projects/{project}/ai/trend-summary` nhận một metric và một grain cho mỗi lần phân tích:
+`POST /api/projects/{project}/ai/trend-summary` nhận một metric hoặc selection code `all` và một grain cho mỗi lần phân tích. `all` tạo overview của ba metric trong một provider call:
 
 ```json
 {
@@ -46,7 +48,7 @@ Backend resolve project, entity, metric, date và scope theo cùng rule với wo
 
 ```json
 {
-  "schemaVersion": "ai-trend-v2",
+  "schemaVersion": "ai-trend-v3",
   "status": "ready",
   "window": {"start": "2026-09-01", "end": "2026-09-30", "groupBy": "week", "comparisonBasis": "period_over_period_and_first_last"},
   "series": [
@@ -54,7 +56,7 @@ Backend resolve project, entity, metric, date và scope theo cùng rule với wo
     {"periodLabel": "07/09–13/09/2026", "value": 6.7, "change": {"absolute": -1.5, "absoluteDisplay": "-1.5 pp", "relativePercent": -18.29, "direction": "decreasing"}, "evidenceId": "ev-period-001"}
   ],
   "facts": [{"factId": "fact-trend-pattern", "kind": "trend_pattern", "value": "consistently_decreasing"}],
-  "provider": {"name": "9router", "model": "ag/gemini-3.7-flash-high", "promptVersion": "trend-summary-v2"},
+  "provider": {"name": "9router", "model": "ag/gemini-3.7-flash-low", "promptVersion": "trend-summary-v6", "latencyMs": 5200, "attemptCount": 1},
   "dataAsOf": {"snapshotId": "analysis-snapshot-opaque", "committedImportRef": "import-ref-opaque"},
   "narrative": {"mode": "ai", "summary": {"text": "...", "factIds": ["fact-trend-pattern"]}}
 }

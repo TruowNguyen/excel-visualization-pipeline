@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from pathlib import Path
 import sys
 from urllib.parse import quote
@@ -32,8 +33,12 @@ class RecordingAdapter:
         self.provider_name = delegate.provider_name
         self.model = delegate.model
         self.last_content: str | None = None
+        self.input_bytes = 0
+        self.prompt_chars = 0
 
     def generate(self, *, system_prompt: str, payload: dict):
+        self.input_bytes = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        self.prompt_chars = len(system_prompt)
         result = self.delegate.generate(system_prompt=system_prompt, payload=payload)
         self.last_content = result.content
         return result
@@ -49,6 +54,11 @@ def unsupported_numeric_mentions(content: str | None, snapshot: dict) -> list[di
         generated = json.loads(OutputValidator._strip_fence(content))
     except json.JSONDecodeError:
         return []
+    if generated.get("schemaVersion") == "ai-narrative-v4":
+        validated = OutputValidator().validate(content, snapshot)
+        numeric_codes = {"unsupported_numeric_mention", "unsupported_date_mention", "numeric_period_mismatch", "numeric_role_mismatch"}
+        return [{"candidateId": result["candidateId"], "errors": [code for code in result["errors"] if code in numeric_codes]}
+                for result in validated.claim_results if numeric_codes.intersection(result["errors"])]
     facts = {item["factId"]: item for item in snapshot.get("facts", [])}
     blocks = [generated.get("summary"), *generated.get("insights", [])]
     unsupported: list[dict] = []
@@ -110,22 +120,25 @@ def main() -> int:
     for entity in entities_response.json().get("entities", []):
         request = {
             "entityRef": entity["entity_id"],
-            "metricCode": "total",
+            "metricCode": "all",
             "start": workspace["window"]["start"],
             "end": workspace["window"]["end"],
             "groupBy": "day",
             "scope": "node",
         }
+        started = time.monotonic()
         response = client.post(f"/api/projects/{project_path}/ai/trend-summary", json=request)
+        request_ms = round((time.monotonic() - started) * 1000)
         if response.status_code != 200:
             print(f"FAIL: trend-summary HTTP {response.status_code}.")
             return 1
         candidate = response.json()
-        if len(candidate.get("series", [])) >= 2:
+        metric_results = candidate.get("metrics", [])
+        if len(metric_results) == 3 and all(len(item.get("series", [])) >= 2 for item in metric_results):
             body = candidate
             break
     if body is None:
-        print("FAIL: không tìm thấy entity có ít nhất hai kỳ Tổng số trong window smoke.")
+        print("FAIL: không tìm thấy entity có ít nhất hai kỳ hợp lệ cho cả ba metric trong window smoke.")
         return 1
     safe_evidence_kinds = sorted({item["target"]["kind"] for item in body.get("evidence", [])})
     safe_result = {
@@ -134,6 +147,11 @@ def main() -> int:
         "provider": body.get("provider", {}).get("name"),
         "configuredModel": status.get("model"),
         "responseModel": body.get("provider", {}).get("model"),
+        "providerLatencyMs": body.get("provider", {}).get("latencyMs"),
+        "providerAttempts": body.get("provider", {}).get("attemptCount"),
+        "requestLatencyMs": request_ms,
+        "providerInputBytes": recording_adapter.input_bytes,
+        "promptChars": recording_adapter.prompt_chars,
         "promptVersion": body.get("provider", {}).get("promptVersion"),
         "schemaVersion": body.get("schemaVersion"),
         "status": body.get("status"),
@@ -141,7 +159,11 @@ def main() -> int:
         "validationErrors": body.get("validation", {}).get("errors", []),
         "narrativeMode": body.get("narrative", {}).get("mode"),
         "groupBy": body.get("window", {}).get("groupBy"),
-        "periodCount": len(body.get("series", [])),
+        "metricCount": len(body.get("metrics", [])),
+        "periodCounts": {
+            item["metricCode"]: len(item.get("series", []))
+            for item in body.get("metrics", [])
+        },
         "evidenceKinds": safe_evidence_kinds,
         "privacyMode": status.get("privacyMode"),
     }
@@ -152,11 +174,12 @@ def main() -> int:
     print(json.dumps(safe_result, ensure_ascii=False, sort_keys=True))
     passed = (
         body.get("status") == "ready"
-        and body.get("validation", {}).get("status") == "accepted"
+        and body.get("validation", {}).get("status") in {"accepted", "partial"}
         and body.get("narrative", {}).get("mode") == "ai"
-        and len(body.get("series", [])) >= 2
+        and len(body.get("metrics", [])) == 3
+        and all(len(item.get("series", [])) >= 2 for item in body.get("metrics", []))
     )
-    print("PASS: live normalized-data AI slice." if passed else "FAIL: live slice chưa đạt ready/accepted/ai.")
+    print("PASS: live normalized-data AI slice." if passed else "FAIL: live slice chưa đạt ready/accepted-or-partial/ai.")
     return 0 if passed else 1
 
 

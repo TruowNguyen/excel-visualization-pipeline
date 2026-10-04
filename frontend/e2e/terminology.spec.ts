@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { installApiHarness } from './fixtures';
+import { presentationFigure } from '../src/chart';
+import type { Figure } from '../src/types';
 import {
   getChildrenScopeLabel,
   getComparisonTerminology,
@@ -8,7 +10,78 @@ import {
   getEntityDisplayName,
   getEntityLevelLabel,
   normalizeSectionDisplayLabel,
+  getMetricDisplayLabel,
+  formatMetricText,
+  metricPresentation,
 } from '../src/terminology';
+
+test('uses the three public metric labels without mutating keys, numbers or provenance', () => {
+  expect(['Tổng số', 'Báo sai/Lỗi', '% báo sai', '%báo sai'].map(getMetricDisplayLabel)).toEqual([
+    'Tổng số ghi nhận', 'Tổng báo sai (lỗi)', 'Tỷ lệ báo sai', 'Tỷ lệ báo sai',
+  ]);
+  expect(getMetricDisplayLabel('Chỉ số khác')).toBe('Chỉ số khác');
+  const copy = 'Tổng số ghi nhận · Tổng báo sai (lỗi) · Tỷ lệ báo sai';
+  expect(formatMetricText(copy)).toBe(copy);
+  const figure: Figure = {
+    data: [{ type: 'bar', name: 'Tổng · Báo sai/Lỗi', x: ['2026-09-16'], y: [3],
+      ids: ['obs_1'], meta: { statisticsMetric: 'Báo sai/Lỗi', lineage: {
+        contractVersion: 1, kind: 'exact-observation', selectable: true, lineageRefs: ['lin_1'],
+      } }, customdata: [['3', 'Báo sai/Lỗi', 'ticket']],
+      hovertemplate: 'Tổng số/Cảnh báo: %{y}<br>%báo sai<extra></extra>',
+    }], layout: { yaxis: { title: { text: 'Tổng số' } }, yaxis2: { title: '% báo sai' } },
+  };
+  const original = structuredClone(figure);
+  const display = presentationFigure(figure);
+  expect(display.data[0].name).toBe('Tổng · Tổng báo sai (lỗi)');
+  expect(display.data[0].hovertemplate).toBe('Tổng số ghi nhận: %{y}<br>Tỷ lệ báo sai<extra></extra>');
+  expect(display.data[0].customdata).toEqual([['3', 'Tổng báo sai (lỗi)', 'ticket']]);
+  expect(display.layout.yaxis).toEqual({ title: { text: 'Tổng số ghi nhận' } });
+  expect(display.layout.yaxis2).toEqual({ title: 'Tỷ lệ báo sai' });
+  expect(display.data[0].y).toEqual(original.data[0].y);
+  expect(display.data[0].ids).toEqual(original.data[0].ids);
+  expect(display.data[0].meta).toEqual(original.data[0].meta);
+  expect(figure).toEqual(original);
+
+  const analysis = { metricCode: 'error', metricDisplayName: 'Báo sai/Lỗi',
+    narrative: { text: 'Tổng số tăng; % báo sai giảm.' },
+    entityLabel: 'Tổng số', evidenceId: 'ev_1', rawValue: 'Báo sai/Lỗi',
+  };
+  const formatted = metricPresentation(analysis);
+  expect(formatted.metricDisplayName).toBe('Tổng báo sai (lỗi)');
+  expect(formatted.narrative.text).toBe('Tổng số ghi nhận tăng; Tỷ lệ báo sai giảm.');
+  expect(formatted.entityLabel).toBe(analysis.entityLabel);
+  expect(formatted.evidenceId).toBe(analysis.evidenceId);
+  expect(formatted.rawValue).toBe(analysis.rawValue);
+  expect(analysis.metricDisplayName).toBe('Báo sai/Lỗi');
+});
+
+test('shows public labels in AI and comparison while sending canonical API metric keys', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('excel_visualization_pipeline.workspace.v1', JSON.stringify({
+      project: 'VSO', entity: 'root', scope: 'children', tab: 'statistics',
+      statisticsGroup: 'week', statisticsMode: 'both', statisticsRange: 'recent', statisticsCount: 8,
+    }));
+  });
+  const harness = await installApiHarness(page);
+  await page.goto('/');
+  await expect(page.locator('[data-plot="statistics-child-a"] .legend')).toContainText('Tổng số ghi nhận');
+  await expect(page.locator('[data-plot="statistics-child-a"] .legend')).toContainText('Tổng báo sai (lỗi)');
+  await page.locator('#compare-action-child-a').click();
+  const metric = page.locator('#contextual-metric');
+  await expect(metric.locator('option')).toHaveText(['Tổng số ghi nhận', 'Tổng báo sai (lỗi)', 'Tỷ lệ báo sai']);
+  await metric.selectOption({ label: 'Tỷ lệ báo sai' });
+  await page.locator('[data-context-compare="child-b"]').check();
+  await expect(page.locator('[data-plot="contextual-comparison"]')).toHaveClass(/js-plotly-plot/);
+  await expect(metric).toHaveValue('% báo sai');
+  const request = harness.calls.filter(call => call.search.includes('comparison_anchor=child-a')).at(-1);
+  expect(new URLSearchParams(request?.search).get('comparison_metric')).toBe('% báo sai');
+  await page.getByRole('button', { name: 'Xong' }).click();
+  await page.locator('[data-tab="overview"]').click();
+  const aiSelect = page.locator('[data-field="aiMetricCode"]');
+  await expect(aiSelect.locator('option[value="total"]')).toHaveText('Tổng số ghi nhận');
+  await expect(aiSelect.locator('option[value="error"]')).toHaveText('Tổng báo sai (lỗi)');
+  await expect(aiSelect.locator('option[value="error_rate"]')).toHaveText('Tỷ lệ báo sai');
+});
 
 test('maps every entity level to the locked CX terminology', () => {
   expect(getEntityLevelLabel('project')).toBe('Dự án');

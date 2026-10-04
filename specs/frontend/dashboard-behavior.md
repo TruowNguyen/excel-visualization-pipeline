@@ -1,7 +1,21 @@
 # Dashboard behavior
 
+AI narrative v4: preserve engine overview/shared phases; show accepted AI prose in “Điều cần chú ý” with its own label and anchors from accepted candidate IDs. Partial rejection keeps survivors; failure copy distinguishes malformed output, source grounding, numbers/dates and semantic verification. Source disclosure remains closed. See [runtime/evaluation](../ai-data/evidence/2026-10-02-semantic-validator-and-live-evaluation.md). Desktop scope unchanged.
+
 - Trạng thái: **As-built, có gap được ghi rõ**
 - Contract IDs: `DASH-*`
+
+## Nhãn ba chỉ số chính
+
+Nhãn dùng thống nhất trong bộ chọn, chú giải, tooltip, So sánh, phân tích AI và màn hình nguồn dữ liệu:
+
+| Khóa dữ liệu/API (giữ nguyên) | Nhãn hiển thị |
+|---|---|
+| `Tổng số` | Tổng số ghi nhận |
+| `Báo sai/Lỗi` | Tổng báo sai (lỗi) |
+| `% báo sai` | Tỷ lệ báo sai |
+
+Biến thể `%báo sai` cũng hiển thị là **Tỷ lệ báo sai**. Đây chỉ là thay đổi ngôn ngữ hiển thị, không đổi công thức, đơn vị, mã chỉ số AI hoặc tham số API. Các khóa cũ trong quy tắc tính bên dưới vẫn là định danh kỹ thuật, không phải nhãn dành cho người dùng.
 
 ## Khởi tạo và trạng thái
 
@@ -104,8 +118,18 @@ Gap same-key refresh được đóng ngày 2026-09-25. `frontend/e2e/workspace-f
 
 ## AI reporting status
 
+Short-window refinement: dưới bốn kỳ hợp lệ, không render chronology/extrema hoặc ba period disclosures lặp template. Dùng một bảng KPI × kỳ, nhãn `Kỳ 1 (07–13/09) → Kỳ 2 (14–16/09)`; năm/phạm vi đầy đủ trong receipt, khoảng khác năm ghi đầy đủ. Panel title “Phân tích KPI tự động”. Liên hệ ba KPI nằm trong synthesis cùng anchors và kiểm tra nguồn; không có bảng hệ số hoặc cảnh báo thiếu sáu kỳ. Không significance/quality/causal judgement. Các nguồn captured vẫn mở được; mobile infrastructure giữ nguyên.
+
+Grounded synthesis (02/10/2026) là desktop-first; không thêm tối ưu mobile. Giữ panel sau chart, compact controls và snapshot scope bất biến. Luồng mặc định: tối đa hai nhận định → anchors tối thiểu → limitation đã gom → kiểm tra theo insight → chi tiết thu gọn. Chỉ `insufficient_data` đưa limitation lên trước summary. Độ phủ theo từng metric, không dùng max period count khẳng định cả ba đầy đủ. Direction trung tính; rate delta là điểm phần trăm. Source check mở captured logical evidence, không tìm theo giá trị/ngày. Responsive CSS cũ không là cam kết mobile support mới.
+
 Dashboard đã có AI Trend Summary Phase 1 trong Overview. Khu vực **Phân tích xu hướng bằng AI** MUST nằm sau KPI và biểu đồ chính để dashboard tiếp tục là nguồn định lượng ưu tiên; panel không được làm thu hẹp chart thành sidebar trên desktop. Nội dung tổng quan và xu hướng xuất hiện trước, còn bảng từng kỳ, bằng chứng, chất lượng dữ liệu và metadata kỹ thuật được mở rộng khi cần.
+
+Kết quả chính MUST được tổ chức thành một luồng đọc “Tổng quan phân tích” → “Câu chuyện dữ liệu”, không trình bày các con số như những card rời để người dùng tự ghép nghĩa. “Câu chuyện dữ liệu” dùng trực tiếp period-level facts để kết nối peak/lowest, mức tăng/giảm lớn nhất, chuỗi tăng/giảm liên tiếp, plateau cuối chuỗi và bối cảnh lịch sử thành câu hoàn chỉnh. Cùng một transition MUST không xuất hiện đồng thời như cả “lớn nhất” và “gần nhất”. Bảng từng kỳ và metadata là progressive disclosure, không cạnh tranh với câu chuyện chính.
 
 UI MUST luôn giữ entry point hiện diện. Với `scope=children`, CTA phân tích bị khóa, lý do và thao tác chuyển về `scope=node` phải hiển thị rõ thay vì làm biến mất tính năng. Với kết quả hợp lệ, UI MUST hiển thị biên nhận phạm vi gồm entity, exact date range, metric và grain; biên nhận vẫn giữ nguyên khi kết quả stale.
 
 UI MUST gắn nhãn nội dung AI, chỉ gọi model sau thao tác chủ động của người dùng, giữ dashboard gốc hoạt động khi provider lỗi, phân biệt stale/unavailable và cho mở typed exact/aggregate evidence theo `AI-TR-050`–`AI-TR-052`, `AI-CON-011` và `AI-CON-033`; xem [AI/Data v2](../ai-data/README.md). Thay filter không tự gọi model và không được trình bày kết quả cũ như thể thuộc selection mới. Live region chỉ thông báo trạng thái ngắn; nội dung kết quả dài nằm ngoài live region và focus MUST quay về CTA sau khi request hoàn tất hoặc lỗi.
+
+AI Insight ưu tiên whole-window synthesis; không dùng endpoint change đại diện chuỗi dao động. Toàn bộ giai đoạn, extrema, cả lần tăng/giảm lớn nhất, turning points và lịch sử nằm trong “Xem chi tiết diễn biến”, mặc định đóng, dữ liệu không bị cắt. Đầu–cuối ở “Thông tin bổ sung: so sánh đầu–cuối”, mặc định đóng. Numerical anchors giữ đúng ngày/đơn vị và source routing. Giữ captured scope và desktop-first; không bổ sung tối ưu mobile.
+
+Analytical reading refinement: nội dung mở sẵn gồm “Tổng quan trong thời gian đã chọn” → “Các chỉ số thay đổi như thế nào?” (hai kỳ: “So sánh hai kỳ”) → “Điều cần chú ý” khi có nhận định riêng. Giai đoạn hiển thị chung các KPI và giải thích liên hệ có căn cứ. Trạng thái giữ nguyên suốt thời gian của metric phụ chỉ nêu một lần. Căn cứ, kiểm tra nguồn, bảng KPI và lịch sử nằm trong một mục mặc định đóng “Xem số liệu và nguồn”; cảnh báo missing vẫn cạnh kết quả. Trên bốn giai đoạn, phần tiếp theo được mở theo yêu cầu, không bỏ dữ liệu. Không bổ sung tối ưu mobile.
