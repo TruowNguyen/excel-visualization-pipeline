@@ -1,5 +1,13 @@
 # Use cases
 
+## AI context expansion — 04/10/2026
+
+- Open AI Insight for one chart issue without changing the dashboard node/scope.
+- Analyze Statistics using its exact periods, sum/average/day basis and source denominator.
+- Choose one/multiple direct children or all children to inspect aligned differences without inventing group totals or causality.
+
+These flows are implemented with Engine fallback and bounded LLM generation; generalized narrative quality/cache are not asserted complete. [As-built and evaluation](../ai-data/10-context-insight-as-built.md).
+
 - Phiên bản: 1.0
 - Trạng thái: **As-built + planned cases**
 
@@ -89,14 +97,16 @@ Luồng chính:
 2. API parse lại và kiểm tra hash/quality gate.
 3. Storage kiểm tra duplicate/replay và mở transaction.
 4. Project/entity/observation/revision/presence được upsert.
-5. Run commit và UI tải lại bootstrap/workspace/history trong cùng trang. Outcome `committed` force-fetch workspace nên same-request-key optimization không giữ payload cũ.
+5. Run commit; UI hiển thị biên nhận ngay trong Nhập Excel rồi tải lại bootstrap/workspace/history độc lập trong cùng trang. Outcome `committed` force-fetch workspace nên same-request-key optimization không giữ payload cũ.
+6. **Xem lần nhập này** mở vùng Lịch sử nhập gần đây bên dưới, tìm/focus đúng `attempt_id`; mở hoặc làm mới vùng phụ không reset tệp/preview. **Nhập tệp khác** chủ động bắt đầu phiên mới.
 
 Luồng thay thế:
 
 - Hash đổi: trả `409`, yêu cầu preview lại.
 - Duplicate: trả outcome xác định, không tạo business data trùng.
 - Validation/storage lỗi: không có partial current state.
-- Network không rõ kết quả: kiểm tra lịch sử trước khi retry.
+- GET tải lại lỗi sau committed: giữ biên nhận, chỉ thử GET lại; không POST lại.
+- Network không rõ kết quả POST: khóa ghi, mở lịch sử để kiểm tra thủ công; không retry tự động hoặc mở khóa chỉ vì danh sách 100 dòng không có kết quả.
 
 ## UC-03 — Phân tích dashboard
 
@@ -230,3 +240,7 @@ UC-11 không thuộc acceptance hiện tại. Nếu mentor đưa vào scope, c�
 | UC-09 | `product/scope-and-status.md` | Chưa pass |
 | UC-10 | `ai-data/01-ai-trend-analysis.md`, `ai-data/04-ai-data-and-output-contracts.md` | `AI-ACC-TR-*`, `AI-ACC-CON-*`, chưa pass |
 | UC-11 | `product/scope-and-status.md` | Chưa vào gate |
+
+# Bổ sung UC-OV-KPI — Đọc nhanh diễn biến nguồn ghi nhận
+
+Nhân sự CX chọn project/khoảng trên Tổng quan hoặc kỳ/cách tính trên Thống kê, đọc số vấn đề toàn dự án và đỉnh/đáy/thay đổi của Tổng số ghi nhận. Thống kê dùng tổng hoặc trung bình/ngày hiện có; khi biểu đồ có cả hai, thẻ dùng tổng với nhãn rõ. Nếu không có tổng project, sử dụng nguồn theo dõi riêng đã được duyệt; tên/phạm vi/lựa chọn nằm trong Cách đọc các chỉ số, mặc định đóng, không đổi node chart. Dữ liệu thiếu và kỳ chưa đầy đủ được giải thích, không giả 0 hay tổng trùng. Contract: [Overview summary](../frontend/overview-summary-metrics.md).

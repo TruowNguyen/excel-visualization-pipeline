@@ -9,6 +9,7 @@ async function openApp(page: Page) {
 async function clickRealBar(page: Page, plotKey: string, trace = 0, point = 0) {
   const bar: Locator = page.locator(`[data-plot="${plotKey}"] .barlayer .trace`).nth(trace).locator('.point path').nth(point);
   await expect(bar).toBeVisible();
+  await bar.scrollIntoViewIfNeeded();
   const box = await bar.boundingBox();
   if (!box) throw new Error(`Plotly bar ${plotKey}/${trace}/${point} has no browser bounding box`);
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);

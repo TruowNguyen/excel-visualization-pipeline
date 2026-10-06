@@ -1,9 +1,9 @@
 # Phạm vi và trạng thái sản phẩm
 
 - Trạng thái tài liệu: **As-built + scope control**
-- Cập nhật: 2026-09-25
+- Cập nhật: 2026-10-05
 - Sản phẩm: **Automated CX Report**
-- Repository: **Excel Visualization Pipeline**
+- Tên dự án: **Automated CX Report** (namespace Python `excel_visualization_pipeline` giữ nguyên để tương thích)
 
 ## Mục tiêu hiện tại
 
@@ -21,17 +21,18 @@ Chuyển workbook `.xlsx` bán cấu trúc thành dữ liệu chuẩn hóa có v
 | SCP-006 | Dashboard cho 6 project baseline | As-built |
 | SCP-007 | Tổng quan, thống kê, so sánh, audit và export CSV | As-built |
 | SCP-008 | Truy vết từ điểm biểu đồ về workbook/sheet/cell | As-built |
+| SCP-102 | AI Insight theo ngữ cảnh Tổng quan/Thống kê và vấn đề trong nhóm | As-built nội bộ; feature/privacy gate vẫn áp dụng |
+| AI-SCP-003 | Báo cáo bản nháp năm phần, snapshot/revision và PDF/DOCX | As-built v1; không có official approval |
 
 ## Phạm vi đã nêu nhưng chưa triển khai
 
 | ID | Năng lực | Trạng thái | Điều kiện để bắt đầu |
 |---|---|---|---|
 | SCP-101 | Import/cập nhật tự động theo lịch hằng ngày | Accepted, not built | Chốt nguồn nhận file, lịch chạy, retry và owner vận hành |
-| SCP-102 | AI tóm tắt xu hướng tăng/giảm | Accepted, not built | 9Router/model/output draft đã có; còn chốt privacy, retention, cost, evaluation và phê duyệt triển khai |
 
 Import hiện tại chỉ được kích hoạt từ dashboard hoặc CLI. Nút **Làm mới dữ liệu** chỉ đọc lại dữ liệu đã commit; nó không tìm hoặc import workbook mới.
 
-`SCP-102` được quản trị bởi [AI/Data v2](../ai-data/README.md), với trend contract tại [01-ai-trend-analysis.md](../ai-data/01-ai-trend-analysis.md). Việc có `.env.example`, base URL và model mặc định không làm tính năng chuyển thành `As-built`; repository hiện chưa có AI endpoint, adapter hay UI báo cáo AI. Comparison và template-driven report vẫn là proposal, chưa tự động trở thành product scope đã duyệt.
+`SCP-102` được quản trị bởi [AI/Data](../ai-data/README.md), với trend contract tại [01-ai-trend-analysis.md](../ai-data/01-ai-trend-analysis.md). [Context Insight](../ai-data/10-context-insight-as-built.md) và [Report draft v1](../ai-data/12-report-workspace-as-built.md) đã có runtime và kiểm thử LLM thật. Đây không phải production approval: authentication, authenticated reviewer, retention và sinh/gửi theo lịch vẫn chưa triển khai; AI comparative narrative vẫn là proposal.
 
 ## Hạng mục chờ mentor quyết định
 

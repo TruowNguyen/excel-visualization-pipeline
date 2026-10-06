@@ -1,4 +1,4 @@
-# Automated Excel Visualization Pipeline
+# Automated CX Report
 
 Pipeline Python chuyển báo cáo Excel bán cấu trúc thành dữ liệu long format có khả năng truy vết, kiểm tra chất lượng và dashboard tương tác. Giao diện chính hiện dùng TypeScript; FastAPI cung cấp dữ liệu từ SQLite và tái sử dụng logic biểu đồ Python. Streamlit cũ vẫn được giữ để đối chiếu trong giai đoạn chuyển tiếp.
 
@@ -8,6 +8,8 @@ Excel → Entity/Date/Metric Parser → Normalized Data → Validation
 ```
 
 ## Trạng thái
+
+Tên dự án và sản phẩm thống nhất là **Automated CX Report**; tên package phát hành là `automated-cx-report`. Namespace Python `excel_visualization_pipeline`, đường dẫn workspace và khóa lưu trạng thái hiện có được giữ để tương thích, không phải tên sản phẩm.
 
 Dự án đã hoàn thành phạm vi MVP và đang được sử dụng cho demo nội bộ.
 
@@ -116,7 +118,9 @@ cd ..
 python -m uvicorn app.api:app --host 127.0.0.1 --port 8000
 ```
 
-Truy cập `http://127.0.0.1:8000`. Giao diện chính gồm thanh bên dự án/thời gian/phân cấp và các tab Tổng quan, Thống kê, Nhập Excel, Lịch sử nhập. So sánh được mở từ biểu đồ node con trong Thống kê; đối chiếu dữ liệu được mở từ Điều tra điểm. Dữ liệu bộ lọc lưu trong `sessionStorage` của tab; không nằm trên URL.
+Truy cập `http://127.0.0.1:8000`. Giao diện chính gồm thanh bên dự án/thời gian/phân cấp và các tab Tổng quan, Thống kê, Báo cáo, Nhập Excel. Lịch sử nhập nằm trong tab Nhập Excel. So sánh được mở từ biểu đồ node con trong Thống kê; đối chiếu dữ liệu được mở từ Điều tra điểm. Dữ liệu bộ lọc lưu trong `sessionStorage` của tab; không nằm trên URL.
+
+Tab **Báo cáo**: chọn phạm vi → **Chuẩn bị bản nháp** (lưu số liệu, chưa gọi AI) → tạo diễn giải AI tùy chọn → chọn điểm đề xuất/sửa lời diễn giải → lưu phiên bản → kiểm tra → xuất **PDF hoặc DOCX**. Báo cáo giữ snapshot riêng, không đổi theo filter dashboard. File luôn mang nhãn DRAFT, không phải phê duyệt chính thức. [Hướng dẫn và giới hạn](specs/ai-data/12-report-workspace-as-built.md).
 
 ### Bật AI Insights Phase 1
 

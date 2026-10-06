@@ -1,8 +1,22 @@
-# Đặc tả AI/Data — Báo cáo CX tự động
+# Đặc tả AI/Data — Automated CX Report
+
+## Tab Báo cáo đã triển khai — 05/10/2026
+
+[As-built và hướng dẫn](12-report-workspace-as-built.md): bản nháp năm phần, snapshot/revision durable, diễn giải có kiểm chứng, chọn/bỏ điểm đề xuất và xuất **PDF/DOCX** theo exact revision. Người dùng đã xác nhận hai định dạng và quyền chọn điểm. Template `cx-period-report` 1.0 là bản draft; mẫu cuối và authenticated approval vẫn chưa có. [Kế hoạch gốc](11-report-workspace-plan.md), [đánh giá LLM thật và kiểm chứng export](evidence/2026-10-05-reports-review.md). Không thay prompt/context policy hiện có.
+
+## Mở rộng theo ngữ cảnh — 04/10/2026
+
+Mốc mới nhất: `context-insight-v5`, `grounded-synthesis-v5`, `semantic-grounding-v9`. Thống kê có fact liên hệ Tổng số/Số lỗi cùng kỳ; Tổng quan chuyển đủ comparisonBasis; phần mở đầu nêu khác biệt giữa tổng và trung bình/ngày khi chúng đổi chiều khác nhau. Gom hạn chế dữ liệu và tránh lặp so sánh hai kỳ. Không thay công thức KPI, không tính correlation hoặc suy diễn nguyên nhân nghiệp vụ. [Đánh giá triển khai và API thật](evidence/2026-10-04-linked-insight-review.md). Các mốc v4/v3/v2 bên dưới là lịch sử.
+
+Đồng nhất template mới nhất: `context-insight-v4.md` / policy context-insight-v4. Thống kê gom theo vấn đề, tách Trung bình/ngày và Tổng trong kỳ bên trong; Tổng quan và Thống kê dùng chung renderer nhãn giai đoạn/đoạn văn. Không đổi phép tính KPI, schema v1 hoặc validator. [Chạy lại API thật và đánh giá template](evidence/2026-10-04-template-scope-review.md). Các mốc v3/v2 bên dưới là lịch sử.
+
+Cập nhật mới nhất: prompt `context-insight-v3.md` bổ sung số đầu/sau và chênh lệch đã tính sẵn vào các nhịp đáng chú ý. Provider candidates có `quantitativeEvidence`, không tự tính mức thay đổi của giai đoạn dài. [Đánh giá định lượng trên API thật](evidence/2026-10-04-context-quantified-review.md). Đoạn dưới mô tả mốc v2 trước cập nhật này.
+
+Đã triển khai phân tích riêng từ biểu đồ, AI trong Thống kê và tập vấn đề selected/all con trực tiếp. Contract context-v1 giữ nguyên; prompt hiện là context-insight-v2, semantic policy dùng chung v8; registry legacy v15/v11 giữ nguyên. [As-built và giới hạn](10-context-insight-as-built.md), [đánh giá API thật trước/sau cải thiện](evidence/2026-10-04-context-quality-review.md). Chưa có cache mới hoặc nghiệm thu chất lượng narrative production tổng quát. Các phần có ngày cũ bên dưới là lịch sử, không ghi đè trạng thái này.
 
 ## Freeze và kế hoạch mở rộng — 04/10/2026
 
-Baseline hiện tại đã đóng băng tại commit `daa3974`, tag `freeze-2026-10-04-ai-insights-v15`, đã push lên origin/dev. [Biên bản freeze](evidence/2026-10-04-freeze.md) ghi kiểm thử và giới hạn. [Kế hoạch mở rộng AI Insight](09-insight-expansion-plan.md) đề xuất từng vấn đề, Thống kê và phân tích các vấn đề đã chọn/tất cả trong nhóm. Đây là kế hoạch chờ duyệt triển khai, không phải capability đã có; giữ nguyên baseline và desktop-first.
+Baseline đã đóng băng tại commit `daa3974`, tag `freeze-2026-10-04-ai-insights-v15`, đã push lên origin/dev. [Biên bản freeze](evidence/2026-10-04-freeze.md) ghi kiểm thử và giới hạn. [Kế hoạch mở rộng](09-insight-expansion-plan.md) sau đó đã được người dùng duyệt triển khai; mốc freeze vẫn giữ nguyên.
 
 ## Kiểm tra mọi bộ lọc và dữ liệu committed — 02/10/2026
 
@@ -43,11 +57,11 @@ Runtime mới nhất: `grounded-synthesis-v4`, registry `trend-summary-v11` / `m
 |---|---|---|
 | Tóm tắt xu hướng bằng AI | **Đã triển khai Phase 1; privacy gate hiện tại đã duyệt, synthetic/live smoke pass** | `SCP-102`, `PRD-F102`, `UC-10`; bằng chứng tại [08-phase-1-runbook-and-evidence.md](08-phase-1-runbook-and-evidence.md) |
 | Phân tích so sánh bằng AI | **Đề xuất, chờ phê duyệt** | `AI-SCP-002`; mở rộng từ workspace so sánh deterministic hiện có |
-| Báo cáo AI theo mẫu | **Đề xuất, chờ phê duyệt** | `AI-SCP-003`; phụ thuộc quyết định về template, lưu trữ, reviewer và export |
+| Báo cáo AI theo mẫu | **Bản nháp v1 đã triển khai; formal approval chưa có** | `AI-SCP-003`; năm phần, SQLite revisions, PDF/DOCX; template cuối/reviewer/retention vẫn cần quyết định |
 | Sinh/gửi báo cáo theo lịch | **Cần quyết định** | `AI-SCP-101`; tách biệt với scheduled import và sinh bản nháp |
 | Phân tích nguyên nhân từ issue/ticket | **Cần quyết định** | `AI-SCP-102`; cần nguồn dữ liệu có owner riêng |
 
-Yêu cầu ở trạng thái **Đề xuất** chỉ là đầu vào thiết kế, chưa phải cam kết phạm vi. Hiện chỉ có AI Trend Summary là as-built. Comparison, report draft, approval/export và scheduling chưa được triển khai.
+Yêu cầu ở trạng thái **Đề xuất** chỉ là đầu vào thiết kế, chưa phải cam kết phạm vi. AI Insight theo ngữ cảnh và report draft/export nêu ở các mốc mới nhất phía trên đã as-built. AI comparative narrative, formal approval và scheduling chưa triển khai.
 
 ## Chủ sở hữu contract canonical
 

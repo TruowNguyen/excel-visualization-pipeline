@@ -1,6 +1,6 @@
 # 09 — Kế hoạch mở rộng AI Insight
 
-Ngày: 04/10/2026. Trạng thái: **Kế hoạch để duyệt; chưa triển khai**.
+Ngày: 04/10/2026. Trạng thái: **Đã duyệt; các luồng chức năng đã triển khai, nghiệm thu chất lượng còn giới hạn**. [As-built, quyết định endpoint/budget và phần chưa hoàn thành](10-context-insight-as-built.md); [kiểm thử](evidence/2026-10-04-context-insight-evaluation.md). Các nội dung phía dưới giữ thiết kế/exit gates gốc, không tự coi mọi gate đã đạt.
 
 Baseline đã freeze và push: commit `daa397462059c55524370598acba2142915a1ea4`, tag `freeze-2026-10-04-ai-insights-v15` trên origin/dev. [Biên bản freeze](evidence/2026-10-04-freeze.md). Kế hoạch này được lập sau mốc freeze, không thay đổi tag hoặc runtime trong mốc đó.
 
@@ -94,7 +94,7 @@ Mỗi slice đi hết Backend → AI → Validation → Frontend → Testing r�
 | 3 — Tập vấn đề | selected/all, snapshot membership, cross-issue facts, composer; hỗ trợ cả Tổng quan và Thống kê | Engine xét đủ scope; không cộng sai/trùng; selected không bị diễn giải thành toàn nhóm; detail đủ coverage |
 | 4 — Nghiệm thu cuối | Toàn suite, ma trận dữ liệu, performance và LLM API thật; đọc đánh giá output | Evidence lưu rõ cấu hình/phạm vi/raw-vs-validated; đạt tiêu chí ở mục 7; cập nhật docs trước bàn giao |
 
-Không tự triển khai slice nào từ kế hoạch này. Sau duyệt, bắt đầu slice 0/1 và bàn giao từng slice; không đợi làm xong tất cả mới phát hiện sai contract.
+Người dùng đã duyệt triển khai ngày 04/10. Các luồng được kiểm tra theo slice; các khoảng trống cache/composer/semantic coverage được ghi trong as-built, không tự nâng thành hoàn tất production.
 
 ## 7. Ma trận test và tiêu chí nghiệm thu
 

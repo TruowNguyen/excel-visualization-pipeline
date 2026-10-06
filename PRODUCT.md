@@ -12,7 +12,7 @@ Người dùng chính là nhân sự CX nội bộ. Họ làm việc với các 
 
 ## Product Purpose
 
-Excel Visualization Pipeline chuyển workbook `.xlsx` bán cấu trúc thành dữ liệu chuẩn hóa có lịch sử và dashboard tương tác. MVP giúp người dùng nội bộ:
+Automated CX Report chuyển workbook `.xlsx` bán cấu trúc thành dữ liệu chuẩn hóa có lịch sử và dashboard tương tác. MVP giúp người dùng nội bộ:
 
 - kiểm tra dữ liệu trước khi đưa vào kho lưu trữ;
 - theo dõi KPI theo project, entity và thời gian;
@@ -44,8 +44,10 @@ Phạm vi MVP đã xác nhận:
 - validation với error quality gate và warning có thể truy vết;
 - import idempotent theo artifact/config/contract, hỗ trợ `full_snapshot` và `incremental`;
 - lưu current state, append-only revision history, source artifact và import audit trong SQLite;
-- dashboard có các tab Tổng quan, Thống kê, Nhập Excel và Lịch sử nhập; so sánh được mở theo ngữ cảnh từ biểu đồ Thống kê, còn đối chiếu dữ liệu được mở từ Điều tra điểm;
+- dashboard có các tab Tổng quan, Thống kê, Báo cáo và Nhập Excel; lịch sử nhập là vùng phụ mở/thu gọn trong Nhập Excel, không còn tab riêng; so sánh được mở theo ngữ cảnh từ biểu đồ Thống kê, còn đối chiếu dữ liệu được mở từ Điều tra điểm;
 - export normalized CSV.
+- Báo cáo bản nháp theo năm phần, dữ liệu snapshot riêng, AI có kiểm chứng tùy chọn, chọn/bỏ điểm đề xuất trên biểu đồ, lưu revision và xuất PDF/DOCX. “Đã kiểm tra” chỉ là xác nhận local; file luôn DRAFT. Không tự gửi hoặc phê duyệt chính thức. Xem [as-built](specs/ai-data/12-report-workspace-as-built.md).
+- Tổng quan và Thống kê có bốn thẻ nghiệp vụ theo khoảng/kỳ đang chọn: vấn đề có dữ liệu toàn dự án, ghi nhận cao nhất/thấp nhất và thay đổi lớn nhất. Ba thẻ diễn biến dùng Tổng số ghi nhận của nguồn project hoặc nguồn theo dõi riêng được duyệt; Thống kê theo tổng hoặc trung bình/ngày hiện có. Tên/phạm vi nguồn và lựa chọn nằm trong mục thu gọn Cách đọc các chỉ số; không cộng mọi node thành tổng dự án. Xem [contract](specs/frontend/overview-summary-metrics.md).
 
 Giới hạn hiện tại:
 
@@ -59,7 +61,7 @@ Giới hạn hiện tại:
 
 ## Brand Commitments
 
-- Tên sản phẩm hiện dùng trong giao diện là **Automated CX Report**; tên kỹ thuật của repository là **Excel Visualization Pipeline**.
+- Tên dự án và sản phẩm thống nhất là **Automated CX Report**; package phát hành là `automated-cx-report`. Namespace Python `excel_visualization_pipeline` và khóa lưu trạng thái giữ nguyên để tương thích, không dùng làm tên hiển thị.
 - Ngôn ngữ sản phẩm hiện tại là tiếng Việt, có thể giữ thuật ngữ kỹ thuật quen thuộc như Project, Entity, Metric, Audit và Import khi chúng làm rõ mô hình dữ liệu.
 - Nội dung giao diện phải thể hiện đúng trạng thái nội bộ/MVP, không đưa ra tuyên bố về bảo mật, quy mô production hoặc khả năng triển khai chưa được chứng minh.
 

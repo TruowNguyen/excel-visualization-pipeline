@@ -591,3 +591,39 @@ def latest_committed_version(
 def latest_committed_run_id(db_path: str | Path, source_key: str | None = None) -> int | None:
     version = latest_committed_version(db_path, source_key)
     return version.run_id if version is not None else None
+
+
+def load_current_snapshot(db_path: str | Path, source_key: str):
+    """Read version, hierarchy and observations from one SQLite read snapshot.
+
+    This is a current read, not a historical revision query. BEGIN is essential
+    in autocommit mode: a concurrent committed import must not split the views.
+    """
+    initialize_database(db_path)
+    with connect_database(db_path) as connection:
+        connection.execute("BEGIN")
+        row = connection.execute("""
+            SELECT r.run_id, refs.import_ref, r.committed_at
+            FROM import_runs r JOIN data_sources ds ON ds.source_id=r.source_id
+            JOIN import_run_public_refs refs ON refs.run_id=r.run_id
+            WHERE r.status='committed' AND ds.source_key=?
+            ORDER BY r.run_id DESC LIMIT 1
+        """, [source_key]).fetchone()
+        version = CommittedDataVersion(int(row[0]), str(row[1]), str(row[2])) if row else None
+        entities = pd.read_sql_query("""
+            SELECT e.* FROM v_current_entities e
+            JOIN data_sources ds ON ds.source_id=e.source_id WHERE ds.source_key=?
+            ORDER BY e.project_id,e.source_row,e.entity_depth,e.db_entity_id
+        """, connection, params=[source_key])
+        data = pd.read_sql_query("""
+            SELECT o.* FROM v_current_observations o
+            JOIN data_sources ds ON ds.source_id=o.source_id WHERE ds.source_key=?
+            ORDER BY o.project_id,o.entity_depth,o.entity_id,o.date,o.metric_code
+        """, connection, params=[source_key])
+    if not data.empty:
+        data["date"] = pd.to_datetime(data["date"])
+        data["raw_value"] = [
+            _restore_raw_value(value, kind)
+            for value, kind in zip(data["raw_value"], data["raw_value_type"])
+        ]
+    return version, _add_compatibility_columns(data, entities), entities

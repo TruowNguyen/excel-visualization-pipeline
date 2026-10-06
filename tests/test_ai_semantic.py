@@ -22,6 +22,44 @@ def validate(value, body):
     return OutputValidator().validate(json.dumps(body, ensure_ascii=False), value)
 
 
+def test_grounded_ratio_arithmetic_connector_is_not_business_causality():
+    value = snapshot([43, 32], [214, 209])
+    kind = 'errors_fall_faster'
+    text = 'Từ 01/09/2026 đến 02/09/2026, Số lỗi giảm từ 43 xuống 32 và Tổng số giảm từ 214 xuống 209. Tỷ lệ báo sai giảm từ 20.09% xuống 15.31% do số lỗi giảm nhanh hơn Tổng số.'
+    result = validate(value, output(value, kind, text))
+    assert result.valid, result.errors
+    qualified = text[:-1] + ' trong phép tính tỷ lệ.'
+    assert validate(value, output(value, kind, qualified)).valid
+    for wrong in ('Tỷ lệ báo sai giảm do Tổng số tăng.', 'Số lỗi giảm do nhân sự làm việc tốt hơn.', 'Tổng số giảm do số lỗi giảm.'):
+        assert not validate(value, output(value, kind, wrong)).valid
+
+
+def test_previous_metric_date_does_not_bind_next_metric_start_value():
+    value = snapshot([43, 32, 22, 22], [214, 209, 657, 420])
+    text = 'Từ 01/09/2026 đến 03/09/2026, số lỗi giảm từ 43 xuống 22. Tổng số đạt mức cao nhất 657 vào 03/09/2026, và tỷ lệ báo sai giảm từ 20.09% xuống 3.35%.'
+    result = validate(value, output(value, 'phase_description', text))
+    assert result.valid, result.errors
+    wrong = 'Từ 01/09/2026 đến 03/09/2026, Tổng số đạt mức cao nhất 657 vào 02/09/2026, và tỷ lệ báo sai giảm từ 20.09% xuống 3.35%.'
+    assert not validate(value, output(value, 'phase_description', wrong)).valid
+
+
+def test_transition_range_introduced_by_den_sang_keeps_value_dates_separate():
+    value = snapshot([12, 11, 19, 17])
+    text = 'Số lỗi giảm rồi tăng. Đến 02/09/2026 sang 03/09/2026, số lỗi tăng từ 11 lên 19, chênh lệch 8.'
+    checked = validate(value, output(value, 'window_overview', text))
+    assert checked.valid, checked.errors
+    wrong = 'Số lỗi ghi nhận 11 vào 03/09/2026.'
+    assert not validate(value, output(value, 'window_overview', wrong)).valid
+
+
+def test_peak_date_does_not_bind_subsequent_intermediate_value():
+    value = snapshot([43, 32, 22, 22], [214, 209, 657, 420])
+    text = 'Từ 01/09/2026 đến 03/09/2026, sau khi đạt mức cao nhất 43 vào 01/09/2026, số lỗi giảm liên tiếp qua 32 xuống 22.'
+    checked = validate(value, output(value, 'phase_description', text))
+    assert checked.valid, checked.errors
+    assert not validate(value, output(value, 'phase_description', text.replace('43 vào 01/09', '43 vào 02/09'))).valid
+
+
 @pytest.mark.parametrize("text", [
     "Sau khi đạt mức cao nhất, Báo sai/Lỗi đảo chiều và giảm trong các kỳ tiếp theo.",
     "Báo sai/Lỗi đạt mức cao nhất 43 vào 06/09/2026 rồi giảm. Các kỳ cuối giữ nguyên.",
@@ -211,7 +249,7 @@ def test_wording_is_not_a_factual_rejection(text):
     assert receipt["status"] == "accepted"
     assert receipt["errors"] == []
     assert result.value["claims"][0]["text"] == text
-    assert result.value["validationPolicy"] == "semantic-grounding-v6"
+    assert result.value["validationPolicy"] == "semantic-grounding-v9"
     if "hạ nhiệt" in text:
         assert "relation_not_expressed" in receipt["warnings"]
     if "mạnh" in text:

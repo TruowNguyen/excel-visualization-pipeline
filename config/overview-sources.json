@@ -1,0 +1,8 @@
+{
+  "policyVersion": "overview-total-v1",
+  "projects": {
+    "ANVF": {"default": "ang-ky-bus-7caf4ac97934", "sources": ["ang-ky-bus-7caf4ac97934", "iem-danh-xe-bus-dd043ca0eb56", "iem-danh-xe-ghep-1f291e557a9b"]},
+    "VSO": {"default": "1-1-chat-luong-canh-bao-ghi-nhan-tren-he-thong-ba6898fb1d78", "sources": ["1-1-chat-luong-canh-bao-ghi-nhan-tren-he-thong-ba6898fb1d78", "1-2-test-thuc-ia-d284464b209b"]},
+    "V-Pet": {"default": "canh-bao-vi-pham-f62756dca4eb", "sources": ["canh-bao-vi-pham-f62756dca4eb"]}
+  }
+}

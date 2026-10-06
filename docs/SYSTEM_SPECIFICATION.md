@@ -1,10 +1,10 @@
-# Đặc tả hệ thống Excel Visualization Pipeline
+# Đặc tả hệ thống Automated CX Report
 
 ## 1. Thông tin tài liệu
 
 | Thuộc tính | Giá trị |
 |---|---|
-| Hệ thống | Excel Visualization Pipeline |
+| Hệ thống | Automated CX Report |
 | Phiên bản package | `0.1.0` |
 | Trạng thái | MVP đã tích hợp SQLite và đang chuyển giao diện sang TypeScript/FastAPI |
 | Ngôn ngữ | Python 3.11+; TypeScript frontend |

@@ -156,18 +156,20 @@ test('request AI lỗi có thể retry có chủ đích', async ({ page }) => {
   expect(harness.calls.filter(call => call.pathname.endsWith('/ai/trend-summary'))).toHaveLength(2);
 });
 
-test('phạm vi chưa hỗ trợ vẫn giữ khu vực phân tích và đưa người dùng về Đối tượng đã chọn', async ({ page }) => {
+test('phạm vi nội dung con cho chọn tất cả hoặc từng vấn đề, không tự gọi model', async ({ page }) => {
   await installApiHarness(page);
   await page.goto('/');
 
   await page.getByLabel('Mức hiển thị').selectOption('children');
   const panel = page.locator('.ai-panel');
   await expect(panel).toBeVisible();
-  await expect(panel.getByText('Mức hiển thị này chưa hỗ trợ phân tích tự động.')).toBeVisible();
-  await expect(panel.getByRole('button', { name: 'Phân tích khoảng đang xem' })).toBeDisabled();
-  await panel.getByRole('button', { name: 'Dùng nội dung đang chọn' }).click();
-  await expect(page.getByLabel('Mức hiển thị')).toHaveValue('node');
-  await expect(panel.getByRole('button', { name: 'Phân tích khoảng đang xem' })).toBeEnabled();
+  await expect(panel.getByLabel('Phạm vi vấn đề')).toHaveValue('all');
+  await expect(panel.getByRole('button', { name: 'Phân tích phạm vi đang xem' })).toBeEnabled();
+  await panel.getByLabel('Phạm vi vấn đề').selectOption('selected');
+  await expect(panel.getByRole('button', { name: 'Phân tích phạm vi đang xem' })).toBeDisabled();
+  await panel.getByLabel('Camera 360 lỗi kết nối', { exact: true }).check();
+  await expect(panel.getByRole('button', { name: 'Phân tích phạm vi đang xem' })).toBeEnabled();
+  await expect(page.getByLabel('Mức hiển thị')).toHaveValue('children');
 });
 
 test('trạng thái đọc màn hình ngắn và focus quay lại CTA sau khi phân tích', async ({ page }) => {

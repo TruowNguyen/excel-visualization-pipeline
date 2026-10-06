@@ -12,9 +12,9 @@ from typing import Any
 
 from .reading import plain_text, reading_report
 from .semantic import semantic_spec
-from .report import attach_report, report_output
+from .report import attach_report, report_output, quantitative_evidence
 
-POLICY = "grounded-synthesis-v4"
+POLICY = "grounded-synthesis-v5"
 MIN_TREND_PERIODS = 4
 def metrics_of(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     return snapshot.get("metrics") or [{
@@ -148,6 +148,45 @@ def build_synthesis(snapshot: dict[str, Any]) -> dict[str, Any]:
     # Cross-metric claims use shared, full natural periods and the SAME eligible
     # numerator/denominator contributors, never independent endpoint direction.
     by_code = {m["metricCode"]: m for m in metrics}
+    if set(by_code) == {"total", "error"}:
+        # Two-metric Statistics has no rate. Join observed adjacent periods,
+        # without deriving a ratio, comparing units or bridging missing periods.
+        maps = {code: {p['periodStart']: p for p in metric['series']} for code, metric in by_code.items()}
+        shared = sorted(set(maps['total']) & set(maps['error']))
+        pairs = []
+        for start_a, start_b in zip(shared, shared[1:]):
+            rows = {code: [mapping[start_a], mapping[start_b]] for code, mapping in maps.items()}
+            if any(date.fromisoformat(a['periodEnd']) + timedelta(days=1) != date.fromisoformat(b['periodStart'])
+                   or a['periodEnd'] != rows['total'][0]['periodEnd'] or b['periodEnd'] != rows['total'][1]['periodEnd']
+                   for a, b in rows.values()):
+                continue
+            directions = {code: (b['value'] > a['value']) - (b['value'] < a['value']) for code, (a, b) in rows.items()}
+            if set(directions.values()) == {0}:
+                continue
+            pairs.append((rows, directions))
+        # One representative per signature plus the latest observation; bounded.
+        latest = pairs[-1:]  # Empty inputs remain empty.
+        contrast = next((pair for pair in reversed(pairs[:-1]) if len(set(pair[1].values())) > 1), None)
+        selected_pairs = [*([contrast] if contrast else []), *latest]
+        for rows, directions in selected_pairs:
+            a, b = rows['total']
+            observations = []
+            numeric = []
+            for code in ('total', 'error'):
+                left, right = rows[code]
+                word = {1: 'tăng', -1: 'giảm', 0: 'giữ nguyên'}[directions[code]]
+                observations.append(f"{by_code[code]['metricDisplayName']} {word} từ {left['displayValue']} đến {right['displayValue']}")
+                numeric.extend(quantitative_evidence([by_code[code]], {code: rows[code]}))
+            interpretation = ('Hai chỉ số không thay đổi giống nhau; không dùng một chỉ số để đại diện cho cả hai.'
+                              if len(set(directions.values())) > 1 else 'Hai chỉ số thay đổi cùng chiều trong hai kỳ này; đây không phải kết luận về tác động giữa các chỉ số.')
+            text = f"Từ {a['periodLabel']} đến {b['periodLabel']}, " + '; '.join(observations) + '. ' + interpretation
+            refs = [p['factId'] for points in rows.values() for p in points] + [ref for row in numeric for ref in row['factIds']]
+            add('metric_pair_movement', ['total', 'error'], refs,
+                [anchor(by_code[code], p) for code in ('total', 'error') for p in rows[code]],
+                text, [re.escape(text)], 90, len(shared) > 2)
+            candidates[-1].update(allowedDirections={code: [direction] for code, direction in directions.items()},
+                quantitativeEvidence=numeric, relationshipDescription={'observation': '. '.join(observations),
+                    'interpretation': interpretation, 'comparisonContext': 'giữa hai kỳ'})
     if set(by_code) == {"total", "error", "error_rate"}:
         maps = {code: {p["periodStart"]: p for p in m["series"]} for code, m in by_code.items()}
         blocks: list[list[dict[str, dict[str, Any]]]] = []

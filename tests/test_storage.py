@@ -26,7 +26,7 @@ def test_initializes_schema_idempotently(storage_workspace):
 
     report = verify_database(database)
     assert report["is_valid"] is True
-    assert report["migration_count"] == 6
+    assert report["migration_count"] == 8
     assert report["latest_committed_run_id"] is None
 
 

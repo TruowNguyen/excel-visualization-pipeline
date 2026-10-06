@@ -1,8 +1,10 @@
 # 03 — Đặc tả báo cáo tự động theo template
 
-**Phiên bản đặc tả:** 2.0.0. **Trạng thái:** Đề xuất / CHƯA TRIỂN KHAI; owner phải duyệt report template thực tế đầu tiên của mentor và output format. **IDs:** `AI-RPT-*`.
+**Phiên bản đặc tả:** 2.0.0, bổ sung as-built 05/10/2026. **Trạng thái:** bản nháp v1 đã triển khai; official approval và template cuối chưa triển khai. **IDs:** `AI-RPT-*`.
 
 ## 1. Mục tiêu và ranh giới sản phẩm
+
+Triển khai ngày 05/10/2026 theo [kế hoạch tab Báo cáo](11-report-workspace-plan.md): người dùng xác nhận PDF/DOCX và chọn/bỏ điểm đề xuất. Năm phần được cài trong template draft `cx-period-report` 1.0, cùng snapshot/revision durable, chỉnh lời diễn giải có kiểm chứng và export DRAFT. [As-built](12-report-workspace-as-built.md) sở hữu hành vi runtime. Schema ứng viên ở các mục bên dưới vẫn là proposal, không phải phần Comparison/Follow-up đã tồn tại trong bản đầu. Formal approval vẫn bị chặn bởi authenticated reviewer; local “đã kiểm tra bản nháp” không thay thế approval.
 
 Sinh **report draft có thể review**, không phải official report tự động. Hệ thống ghép deterministic KPI fact, chart và AI narrative đã duyệt vào template ổn định, có version. Human reviewer có thể chỉnh commentary và phê duyệt rõ ràng một version cụ thể trước khi export/phân phối chính thức.
 

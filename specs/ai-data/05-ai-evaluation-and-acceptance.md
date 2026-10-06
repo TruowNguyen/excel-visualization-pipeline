@@ -1,5 +1,9 @@
 # 05 — Đặc tả đánh giá và nghiệm thu AI
 
+## Context expansion — 04/10/2026
+
+Mở rộng hồi quy cho membership/nguồn/cách tính, thống kê bốn nhóm kỳ, chuỗi qua năm và plateau không được gọi tăng liên tục. Script `scripts/evaluate_ai_context.py` gọi endpoint ứng dụng, mặc định offline; `--live` dùng provider thật và giữ raw response để đối chiếu với survivors. Kiểm tra series canonical và lấy mẫu aggregate provenance, không tuyên bố mọi ô Excel/contributor đã được audit. [Bằng chứng và đánh giá chất lượng](evidence/2026-10-04-context-insight-evaluation.md); accepted không tự động là nghiệm thu CX hoặc semantic tổng quát.
+
 ## Semantic validation v4 và prompt v13/v9
 
 Regression bổ sung cho Engine displayValue, sai unit/ngày dù số hợp lệ, range header, date qua ranh giới câu, chủ ngữ tỷ lệ rút gọn và chủ ngữ ghép. Selection guidance ưu tiên linked KPI relation; peak_offset vẫn là candidate hợp lệ, không bị ép loại chỉ vì không được chọn mặc định. Lần kiểm thử cuối phải gọi provider thật trên dữ liệu committed sau các kiểm thử offline. [Bằng chứng và giới hạn](evidence/2026-10-02-validator-v4-and-prompt-evaluation.md).

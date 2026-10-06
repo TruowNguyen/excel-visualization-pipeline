@@ -1,5 +1,7 @@
 # API contract v1
 
+Latest additive AI contract (04/10/2026): `POST /api/projects/{project}/ai/context-insight`, ai-context-request-v1 → ai-context-v1; node/selected/all direct-child membership, canonical Statistics periods/calculations, typed evidence and stale receipts. Semantic policy is v7; legacy trend-summary envelopes remain compatible. [Request/response and limits](../ai-data/10-context-insight-as-built.md). Validator/version statements in earlier dated updates below are historical.
+
 Current validator policy is `semantic-grounding-v4` (prompt registry trend-summary-v13 / metric-overview-v9). Numeric validation accepts only engine-authored value/displayValue representations with existing KPI/unit/date/source binding. Sentence-local subjects and range-versus-point dates replace cross-sentence nearest-token guesses. Warnings remain additive and non-blocking. [Current implementation and live evaluation](../ai-data/evidence/2026-10-02-validator-v4-and-prompt-evaluation.md); the v3 note below is historical.
 
 AI generation v4 update: public ai-trend-v3/ai-overview-v2 envelopes unchanged. Narrative v4 adds verified claims and validationPolicy; validation may be `partial` with additive categories/claimResults. Partial narratives remain status=ready and contain only surviving claims. Structural/provider/no-survivor failures retain existing fallback statuses. Current `semantic-grounding-v3` adds `validation.warnings` and `claimResults[].warnings` (arrays of diagnostic codes). Warnings alone do not reject a claim or change accepted to partial. See [current data-first validation policy](../ai-data/evidence/2026-10-02-data-first-validator.md) and [previous v2 evidence](../ai-data/evidence/2026-10-02-semantic-validator-and-live-evaluation.md).
@@ -205,3 +207,35 @@ Synthesis policy v3 giữ `minimumTrendPeriods=4`, không đổi response/narrat
 Thêm field tương thích ngược được phép trong v1. Xóa/đổi nghĩa field, đổi status code hoặc đổi quy tắc filter MUST cập nhật spec, frontend, test API và tăng contract version khi client cũ không còn an toàn.
 
 AI synthesis policy v4 adds `reading` with version `analytical-reading-v1`, nullable overview, shared phases and distinct takeaways. Every item retains its period/relation fact IDs; phase/takeaway source IDs use existing captured evidence. The additive field is pinned within synthesis checksum. Existing response/narrative schemas, one-call provider budget, KPI rules and safety gates remain unchanged. Clients without reading support may continue rendering the validated narrative; new clients use its deterministic reading structure and identify that copy as “Tổng hợp từ số liệu”.
+
+# Bổ sung API — Tổng quan theo nguồn (05/10/2026)
+
+GET workspace nhận optional `overview_source` trên overview/statistics/all; trả `overviewSummary` trên overview/all và `statisticsSummary` trên statistics/all (field ngoài view trả null). Statistics dùng danh sách kỳ/cách tính hiện có; summary thêm `calculation`/`requestedMode`, window null khi không có kỳ phù hợp. Khóa ba metric gốc và các response chart/Comparison hiện có không đổi. Summary dùng chung public `workspace.dataVersion`, không tạo run hoặc historical query mới. Source không hợp lệ trả 422, đọc version bị thay đổi liên tiếp tối đa ba lần trả 503 có thể thử lại.
+
+Contract đầy đủ về sourceChoices, status, period coverage, extrema/change và cache identity: [Overview summary](../frontend/overview-summary-metrics.md#3-api-và-version). Đây là field additive; frontend không fallback metadata khi thiếu field.
+
+## Tab Báo cáo — as-built 05/10/2026
+
+Các route dưới dùng prefix `/api/projects/{project}/reports`; không thay API Insight cũ. Project/source ownership được kiểm tra, nhưng chưa có authentication.
+
+| Method / suffix | Request | Response / tác dụng |
+|---|---|---|
+| `POST /preview` | `context`, `title`, `requestId` | Document deterministic, không lưu và không gọi AI |
+| `POST /` | Như preview | Lưu captured v1; idempotent cùng requestId/payload |
+| `GET /` | — | `{items}`: 100 bản cập nhật gần nhất của project/source |
+| `GET /{reportId}` | — | Latest document + versions/local review/freshness |
+| `GET /{reportId}/revisions/{revision}` | — | Exact immutable document |
+| `POST /{reportId}/revisions` | `baseRevision`, `requestId`, optional `title`, `userNotes`, `selectedFindingIds`, `narrativeEdits` | Kiểm chứng lời sửa rồi lưu revision mới; không đổi số liệu |
+| `POST /{reportId}/regenerate` | `baseRevision`, `requestId` | Diễn giải snapshot đã lưu bằng existing LLM/validator; revision mới, giữ manual edits |
+| `POST /{reportId}/revisions/{revision}/check` | — | Local check chỉ cho latest; publicationStatus luôn draft |
+| `POST /{reportId}/revisions/{revision}/exports` | `{format:"pdf"}` hoặc `{format:"docx"}` | Actual bytes, attachment; ghi exact revision và content hash |
+
+`context` dùng `ai-context-request-v1`: `view`, `parentEntityRef`, `selection`, `entityRefs`, `metricCode`, grain/window/calculation/range/partial fields như context Insight. Tổng quan không nhận quarter; Thống kê không nhận error_rate. `expectedImportRef` tùy chọn phải khớp committed snapshot; không có thì backend tự chụp đúng version.
+
+`requestId` 8–100 ký tự `[a-zA-Z0-9_-]`, create/title 1–200 ký tự không được chỉ là whitespace. Notes tối đa 5.000 ký tự. Selection tối đa 5 finding IDs thuộc báo cáo; tối đa 24 narrative edit entries, mỗi entry 1–5.000 ký tự. Root request từ chối field ngoài allowlist; không nhận đường dẫn xuất, facts/chart/source overrides hay arbitrary anchors.
+
+Public document `cx-report-v1` có template `cx-period-report` 1.0; context/window/dataAsOf; kpis/charts/blocks/executiveSummary/findings/selectedFindingIds; limitations/evidence/facts; manualEdits/userNotes; generation/review/freshness/versions. `_bundle` nội bộ không expose. Summary có dependencies và có thể source mixed khi ghép AI với Engine.
+
+Lỗi: `409 REPORT_CONFLICT` cho stale revision/idempotency payload mismatch/import thay đổi trong capture; `404 REPORT_NOT_FOUND` cho report/revision không thuộc project/source; `422 REPORT_INVALID` cho lựa chọn/lời sửa chưa đối chiếu được hoặc export/font invalid. Context preparation còn dùng `422 AI_CONTEXT_INVALID`. AI disabled trả `409 AI_FEATURE_DISABLED` khi regenerate, nhưng deterministic capture/export vẫn hoạt động.
+
+Export trả `application/pdf` hoặc DOCX MIME; `Content-Disposition`, `X-Report-Revision`, `X-Content-SHA256`, `Cache-Control: no-store`. File đầu tiên của revision/format được lưu; lần sau trả nguyên byte, không render theo filters/review mới. Chỉnh sau đó tạo revision mới. File luôn DRAFT; không có approved/send/publish/delete endpoint.

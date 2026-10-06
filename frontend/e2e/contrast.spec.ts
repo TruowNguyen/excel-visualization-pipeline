@@ -85,10 +85,20 @@ for (const viewport of [
     await expectAa(page.locator('[data-plot="overview-root"] .xtick text').first(), 'chart axis label');
     await expectAa(page.locator('[data-plot="overview-root"] .legendtext').first(), 'chart legend');
     await expectAa(page.locator('.tab.active'), 'selected tab');
+    await expectAa(page.locator('.environment'), 'internal environment label');
+    await expectAa(page.locator('.avatar'), 'CX marker');
+    await page.locator('[data-tab="statistics"]').click();
+    await expect(page.locator('[data-plot="statistics-root"]')).toHaveClass(/js-plotly-plot/);
+    for (const field of ['statisticsGroup', 'statisticsMode', 'statisticsRange', 'statisticsCount', 'includeIncomplete']) {
+      await expectAa(page.locator(`.control-bar label:has([data-field="${field}"])`), `statistics ${field} label`);
+    }
+    await page.locator('[data-tab="overview"]').click();
+    await expect(page.locator('[data-plot="overview-root"]')).toHaveClass(/js-plotly-plot/);
 
     await clickRealBar(page, 'overview-root');
     await expect(page.getByRole('heading', { name: /Tổng số ghi nhận 14/ })).toBeVisible();
     await expectAa(page.locator('.validation-line > span').last(), 'validation secondary text');
+    await expectAa(page.locator('.validation-badge'), 'validation status');
     await expectAa(page.locator('.entity-path'), 'entity path');
     await expectAa(page.locator('.entity-path span').first(), 'entity path separator');
     await expectAa(page.locator('.provenance-grid dt').first(), 'drawer metadata label');
@@ -99,7 +109,8 @@ for (const viewport of [
     await expectAa(page.locator('.pager span'), 'Audit pager');
     await expectAa(page.locator('.pager button:disabled').first(), 'disabled pager action');
 
-    await page.getByRole('button', { name: /Lịch sử nhập/ }).click();
+    await page.locator('[data-tab="import"]').click();
+    await page.locator('#open-import-history').click();
     await expectAa(page.locator('th').first(), 'History table header');
     await expectAa(page.locator('td').first(), 'History table cell');
 

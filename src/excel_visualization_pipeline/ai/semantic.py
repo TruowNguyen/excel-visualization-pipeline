@@ -11,14 +11,14 @@ from decimal import Decimal, InvalidOperation
 import re
 from typing import Any
 
-POLICY = "semantic-grounding-v6"
+POLICY = "semantic-grounding-v9"
 DATE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4}|\d{1,2}/\d{4}|\d{1,2}/\d{1,2})\b")
 PERIOD_TOKEN = r"(?:" + DATE.pattern.replace(r"\b", "") + r"\s*[–—]\s*" + DATE.pattern.replace(r"\b", "") + r"|" + DATE.pattern.replace(r"\b", "") + r")"
-SCOPE_RANGE = re.compile(r"từ\s+(?:(?:ngày|kỳ|tuần|tháng)\s+)?(?P<start>" + PERIOD_TOKEN + r")\s+(?:đến|sang|tới)\s+(?:(?:ngày|kỳ|tuần|tháng)\s+)?(?P<end>" + PERIOD_TOKEN + r")")
+SCOPE_RANGE = re.compile(r"(?:từ|đến)\s+(?:(?:ngày|kỳ|tuần|tháng|quý)\s+)?(?P<start>" + PERIOD_TOKEN + r")\s+(?:đến|sang|tới)\s+(?:(?:ngày|kỳ|tuần|tháng|quý)\s+)?(?P<end>" + PERIOD_TOKEN + r")")
 COVERAGE = re.compile(r"\b\d+/\d+\s+kỳ\b")
 NUMBER = re.compile(r"(?<![\w])[-+]?\d+(?:[.,]\d+)*(?!\w)")
 LIMITATION = re.compile(r"^(?:chưa đủ|không đủ|chưa có|không có) (?:dữ liệu|căn cứ|thông tin|số kỳ)(?: .*)? (?:để |cho |về )?(?:đánh giá|kết luận|xác định)(?: về)? (?:chất lượng|nguyên nhân|xu hướng|mức độ bất thường)[.!]?$", re.I)
-ALIASES = {"total": ["tổng số", "lượng ghi nhận"], "error": ["báo sai/lỗi", "số báo sai/lỗi", "số lỗi", "lỗi"],
+ALIASES = {"total": ["tổng số", "lượng ghi nhận", "trung bình số lượng"], "error": ["báo sai/lỗi", "số báo sai/lỗi", "số lỗi", "lỗi"],
            "error_rate": ["% báo sai", "tỷ lệ báo sai", "tỷ lệ", "tỷ trọng trên tổng số", "tỷ trọng lỗi", "tỷ trọng"]}
 SIGNATURES = {
     "count_rate_contrast": (1, 1, -1), "errors_down_volume_up": (1, -1, -1),
@@ -28,7 +28,7 @@ SIGNATURES = {
     "volume_up_same_share": (1, 1, 0), "volume_down_same_share": (-1, -1, 0),
     "errors_up_same_volume": (0, 1, 1), "errors_down_same_volume": (0, -1, -1),
 }
-REPORT_TYPES = {"window_overview", "phase_description", "window_extrema"}
+REPORT_TYPES = {"window_overview", "phase_description", "window_extrema", "metric_pair_movement"}
 CLAIM_TYPES = frozenset(SIGNATURES) | {"peak_retreat", "trough_recovery", "endpoint_masks", "sustained_increase", "sustained_decrease", "unchanged", "period_comparison", "short_sequence", "descriptive_only", "local_description", "peak_offset"} | REPORT_TYPES
 MOTION = re.compile(r"giữ nguyên|giữ (?:ở mức|tại|mức)|không đổi|không có (?:lần|nhịp) (?:tăng|giảm)|không (?:tăng|giảm)|đi ngang|tăng|giảm|đi lên|đi xuống|hồi phục", re.I)
 # Only incomplete wording checks are soft. Never downgrade contradictory
@@ -39,7 +39,8 @@ UNSUPPORTED_BUSINESS = re.compile(r"\b(doanh thu|lợi nhuận|chi phí|khách h
 
 def _denominator_explanation(sentence: str, candidate: dict[str, Any]) -> bool:
     """Allow a narrowly grounded ratio explanation, not business causality."""
-    if candidate["kind"] not in {"unchanged_errors_share_up", "unchanged_errors_share_down"}:
+    sentence = re.sub(r'\s+trong phép tính tỷ lệ[.!]?$', '', sentence)
+    if candidate["kind"] not in SIGNATURES or UNSUPPORTED_BUSINESS.search(sentence):
         return False
     # With the numerator held constant, the engine's aligned ratio relation
     # proves the denominator effect. Direction checks below still apply.
@@ -56,14 +57,21 @@ def _denominator_explanation(sentence: str, candidate: dict[str, Any]) -> bool:
         cause, effect = right, left
     else:
         cause, effect = left, right
-    if "total" not in cause or "error_rate" not in effect or "error_rate" in cause:
+    constant_restatement = (candidate['kind'] in {'unchanged_errors_share_up', 'unchanged_errors_share_down'}
+                            and marker.group() in {'khiến', 'dẫn đến'}
+                            and bool(re.search(r'cùng số lỗi chiếm (?:tỷ lệ|tỷ trọng) (?:cao|thấp) hơn', sentence[:marker.start()])))
+    if not constant_restatement and (not ({'total', 'error'} & cause) or "error_rate" not in effect or "error_rate" in cause):
         return False
     expected = dict(zip(("total", "error", "error_rate"), SIGNATURES[candidate["kind"]]))
     observed: dict[str, set[int]] = {}
     for motion in MOTION.finditer(sentence):
+        if re.search(r'không (?:có nghĩa|đồng nghĩa).*$', sentence[max(0, motion.start()-60):motion.start()]):
+            continue
         for code in _motion_subjects(sentence, motion.start(), candidate):
             observed.setdefault(code, set()).add(_direction(motion.group()))
-    return ({"total", "error_rate"} <= observed.keys()
+    relative_comparison = ({'total', 'error'} <= cause and bool(re.search(r'(?:tăng|giảm) (?:nhanh|chậm) hơn', sentence)))
+    required = {'error_rate'} if constant_restatement else {'error_rate', 'error'} if relative_comparison else {'error_rate', *cause}
+    return (required <= observed.keys()
             and all(values == {expected[code]} for code, values in observed.items()))
 
 
@@ -187,6 +195,9 @@ def validate_numbers_and_dates(text: str, candidate: dict[str, Any], snapshot: d
                 dates.setdefault(spelling, set()).add(raw)
         if re.fullmatch(r"\d{1,2}/\d{4}", str(ev.get("periodLabel", ""))):
             dates.setdefault(ev["periodLabel"], set()).add(ev["periodStart"])
+        named_period = re.search(r"(?:tuần|tháng|quý|q)\s*(\d{1,2}/\d{4})", str(ev.get("periodLabel", "")), re.I)
+        if named_period:
+            dates.setdefault(named_period.group(1), set()).add(ev["periodStart"])
     body = text.lower()
     for fraction in reversed(list(COVERAGE.finditer(body))):
         # Engine-authored coverage text is a fraction, never a calendar date.
@@ -243,12 +254,15 @@ def validate_numbers_and_dates(text: str, candidate: dict[str, Any], snapshot: d
                     and (wanted is None or f.get("unit") == wanted)
                     and (not period_count or f.get("kind") in {"period_count", "historical_period_count", "period_sequence_count"})]
         count_word = unit_tail.split()[0].strip(".,;:!?") if unit_tail else ""
-        group_word = {"day": "ngày", "week": "tuần", "month": "tháng"}[snapshot["window"]["groupBy"]]
+        group_word = {"day": "ngày", "week": "tuần", "month": "tháng", "quarter": "quý"}[snapshot["window"]["groupBy"]]
         anchored_count = len({a["evidenceId"] for a in candidate["anchors"] if a["metricCode"] == code})
         scope_count = period_count and count_word in {"kỳ", group_word} and value == anchored_count
         if not scope_count and not any(_matches_value(f, value) for f in eligible):
             errors.append("unsupported_numeric_mention")
         prefix = numerical_body[max(0, match.start() - 45):match.start()]
+        explicit_delta = bool(re.search(r"chênh lệch\s*$", prefix))
+        if explicit_delta and not any(f.get('kind') == 'period_change' and _matches_value(f, value) for f in eligible):
+            errors.append('numeric_role_mismatch')
         if re.search(r"(?:tăng|giảm)\s*$", prefix):
             change_kind = "period_relative_change" if wanted == "percent" else "period_change"
             if not any(f.get("kind") in {change_kind, "relative_change" if wanted == "percent" else "absolute_change"}
@@ -271,9 +285,10 @@ def validate_numbers_and_dates(text: str, candidate: dict[str, Any], snapshot: d
         if not cited_dates and previous_dates:
             previous_date = previous_dates[-1]
             between = body[previous_date.end():match.start()]
-            if len(between) < 90 and not NUMBER.search(between) and not re.search(r"rồi|sau đó|trước khi|xuống|lên|từ.*đến|\. |;", between):
+            if (_subject_at(body, previous_date.start(), candidate) == code
+                    and len(between) < 90 and not NUMBER.search(between) and not re.search(r"rồi|sau đó|trước khi|xuống|lên|đến|sang|tới|(?:tăng|giảm)\s+(?:liên tiếp|liên tục|qua)|\. |;", between)):
                 cited_dates = [previous_date.group()]
-        if len(cited_dates) == 1 and value is not None:
+        if len(cited_dates) == 1 and value is not None and not explicit_delta:
             raw = next(iter(dates.get(cited_dates[0], set())), None)
             points = [p for m in series if m["metricCode"] == code for p in m["series"] if p["factId"] in refs]
             if not any(_matches_value(p, value) and raw in {p["periodStart"], p["periodEnd"]} for p in points):
@@ -292,7 +307,7 @@ def validate_numbers_and_dates(text: str, candidate: dict[str, Any], snapshot: d
                         errors.append("direction_conflict")
         if not cited_dates and re.search(r"(?:giảm xuống|tăng lên|giữ nguyên ở)\s*$", prefix) and code:
             anchors = [a for a in candidate["anchors"] if a["metricCode"] == code]
-            if candidate["kind"] == "phase_description":
+            if candidate["kind"] in {"phase_description", "window_overview"}:
                 points = [p for m in metrics if m["metricCode"] == code for p in m["series"] if p["factId"] in {a["factId"] for a in anchors}]
                 direction = -1 if re.search(r"giảm xuống\s*$", prefix) else 1 if re.search(r"tăng lên\s*$", prefix) else 0
                 if not any(_matches_value(b, value) and ((b["value"] > a["value"]) - (b["value"] < a["value"])) == direction for a, b in zip(points, points[1:])):
@@ -363,6 +378,40 @@ def validate_semantics(text: str, candidate: dict[str, Any], snapshot: dict[str,
         if re.search(r"\b(mạnh|nhẹ|đáng kể)\b", sentence):
             errors.append("unquantified_magnitude")
     prose = ". ".join(analytical)
+    # A real endpoint pair does not prove monotonic movement through its interior.
+    # Bound this check to explicitly stated from/to movements; it is not general NLI.
+    for movement in re.finditer(r"(?:tăng|giảm)\s+(?:(?:liên tiếp|liên tục)\s+)?từ\s+(" + NUMBER.pattern + r")\s+(?:lên|xuống|đến)\s+(" + NUMBER.pattern + r")", prose):
+        code = _subject_at(prose, movement.start(), candidate)
+        rows = [p for m in metrics if m["metricCode"] == code for p in m.get("series", []) if p["factId"] in refs]
+        left, right = (_decimal(movement.group(i)) for i in (1, 2))
+        intervals = [(i, j) for i, a in enumerate(rows) for j, b in enumerate(rows) if i < j
+                     and _decimal(str(a["value"])) == left and _decimal(str(b["value"])) == right]
+        sign = 1 if movement.group().startswith("tăng") else -1
+        strict = bool(re.search(r'liên tiếp|liên tục', movement.group()))
+        if intervals and not any(all((rows[k + 1]["value"] - rows[k]["value"]) * sign > 0 if strict else (rows[k + 1]["value"] - rows[k]["value"]) * sign >= 0 for k in range(i, j)) for i, j in intervals):
+            errors.append("chronology_mismatch")
+    # A single whole-sequence continuous assertion cannot hide a plateau.
+    # Local multi-stage stories remain covered by their own operands above.
+    for movement in re.finditer(r'(tăng|giảm)\s+(?:liên tiếp|liên tục)', prose):
+        code = _subject_at(prose, movement.start(), candidate)
+        same_subject = [m for m in MOTION.finditer(prose) if _subject_at(prose, m.start(), candidate) == code]
+        if candidate['kind'] not in REPORT_TYPES or code is None or len(same_subject) != 1:
+            continue
+        if re.search(r'ở đầu|lúc đầu|ở cuối|trước khi|sau khi|sau đó|rồi', prose):
+            continue
+        anchor_ids = {a['factId'] for a in candidate['anchors']}
+        rows = [p for m in metrics if m['metricCode'] == code for p in m.get('series', []) if p['factId'] in anchor_ids]
+        # Dependency closure can include tied extrema outside the local stage.
+        # A dated local run must not inherit those extra periods.
+        sentence_start = _sentence_start(prose, movement.start())
+        stop = re.search(r'\.(?!\d)|;', prose[movement.end():])
+        sentence_end = movement.end() + stop.start() if stop else len(prose)
+        mentioned = {raw for match in DATE.finditer(prose[sentence_start:sentence_end]) for raw in dates.get(match.group(), set())}
+        if len(mentioned) >= 2:
+            rows = [p for p in rows if min(mentioned) <= p['periodStart'] <= max(mentioned)]
+        sign = 1 if movement.group(1) == 'tăng' else -1
+        if len(rows) > 1 and any((b['value'] - a['value']) * sign <= 0 for a, b in zip(rows, rows[1:])):
+            errors.append('chronology_mismatch')
     if not prose:
         return [*errors, "missing_supported_claim"]
     if not _subjects(prose, candidate):
@@ -391,16 +440,24 @@ def validate_semantics(text: str, candidate: dict[str, Any], snapshot: dict[str,
             if ending and re.fullmatch(r"\d{1,2}/\d{4}", spelling):
                 return {a["periodEnd"] for a in bounds if a["periodStart"] in resolved}
             return resolved
-        if not starts or boundary(range_mention.group("start"), False) != {min(starts)} or boundary(range_mention.group("end"), True) != {max(ends)}:
+        stated_start = boundary(range_mention.group("start"), False)
+        stated_end = boundary(range_mention.group("end"), True)
+        # A window overview may locate a sub-stage before describing the rest.
+        # A local phase must still name its exact captured boundaries.
+        valid_range = (bool(starts) and len(stated_start) == len(stated_end) == 1
+                       and min(starts) <= min(stated_start) <= max(stated_end) <= max(ends))
+        if candidate["scope"] == "contiguous_block":
+            valid_range = valid_range and stated_start == {min(starts)} and stated_end == {max(ends)}
+        if not valid_range:
             errors.append("period_scope_mismatch")
     kind = candidate["kind"]
     period_points = {p["periodStart"] for m in metrics for p in m["series"] if p["factId"] in refs}
     if kind in REPORT_TYPES:
         if len({a["periodStart"] for a in bounds}) < 4:
-            without_limit = re.sub(r"(?:chưa đủ để|chưa|không) (?:xác định )?xu hướng", "", prose)
+            without_limit = re.sub(r"(?:chưa đủ|không đủ)(?:\s+để)?\s+(?:(?:kết luận|xác lập|xác định)\s+)?xu hướng|(?:chưa|không)\s+(?:xác định\s+)?xu hướng", "", prose)
             if re.search(r"xu hướng|qua các kỳ", without_limit) or (not candidate.get("phaseExtrema") and re.search(r"cao nhất|thấp nhất|đỉnh|đáy", without_limit)):
                 errors.append("insufficient_trend_periods")
-        if kind == "phase_description":
+        if kind in {"phase_description", "metric_pair_movement"}:
             for motion in MOTION.finditer(prose):
                 if re.search(r"không (?:có nghĩa|đồng nghĩa).*$", prose[max(0, motion.start()-60):motion.start()]):
                     continue
@@ -408,6 +465,9 @@ def validate_semantics(text: str, candidate: dict[str, Any], snapshot: dict[str,
                 if not codes:
                     errors.append("ambiguous_metric_subject")
                 for code in codes:
+                    if (kind == 'metric_pair_movement' and motion.group() in {'không tăng', 'không giảm'}
+                            and candidate['allowedDirections'].get(code) == [0]):
+                        continue  # Constant facts prove either bounded negation.
                     if _direction(motion.group()) not in candidate["allowedDirections"].get(code, []):
                         errors.append("direction_conflict")
         if kind == "window_extrema":
@@ -506,6 +566,9 @@ def validate_semantics(text: str, candidate: dict[str, Any], snapshot: dict[str,
 
 
 def validate_text(text: str, candidate: dict[str, Any], snapshot: dict[str, Any], refs: list[str]) -> tuple[list[str], list[str]]:
+    # Q3/2026 is a canonical quarter label, not the number 2026. Normalize its
+    # spelling for parsing only; preserve the original model wording for display.
+    text = re.sub(r"\bQ([1-4])/(\d{4})\b", r"quý \1/\2", text, flags=re.I)
     numerical_errors, dates = validate_numbers_and_dates(text, candidate, snapshot, refs)
     semantic_errors = validate_semantics(text, candidate, snapshot, refs, dates)
     return (list(dict.fromkeys([*numerical_errors, *(code for code in semantic_errors if code not in WORDING_WARNINGS)])),

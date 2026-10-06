@@ -2,8 +2,47 @@
 from __future__ import annotations
 
 from typing import Any
+from datetime import date, timedelta
 
 SECTIONS = {"overview": 1, "phases": 8, "relationships": 4}
+
+
+def quantitative_evidence(metrics: list[dict], points: dict[str, list[dict]]) -> list[dict]:
+    """Two salient observed transitions, never endpoint arithmetic or gap bridging."""
+    choices = []
+    for metric in metrics:
+        rows = points.get(metric['metricCode'], [])
+        facts = {f['factId']: f for f in metric['facts']}
+        transitions = []
+        for left, right in zip(rows, rows[1:]):
+            change = right.get('change')
+            if not change or change['fromPeriodStart'] != left['periodStart']:
+                continue
+            if date.fromisoformat(left['periodEnd']) + timedelta(days=1) != date.fromisoformat(right['periodStart']):
+                continue
+            delta = next((facts[ref] for ref in change['factIds'] if ref in facts and facts[ref]['kind'] == 'period_change'), None)
+            if not delta or delta['value'] == 0:
+                continue
+            relative = next((facts[ref] for ref in change['factIds'] if ref in facts and facts[ref]['kind'] == 'period_relative_change'), None)
+            transitions.append({'metricCode': metric['metricCode'], 'metricDisplayName': metric['metricDisplayName'],
+                'fromLabel': left['periodLabel'], 'toLabel': right['periodLabel'],
+                'fromDisplay': left['displayValue'], 'toDisplay': right['displayValue'],
+                'absoluteDisplay': delta['displayValue'], 'unit': delta['unit'],
+                'relativeDisplay': relative['displayValue'] if relative else None,
+                'direction': 'tăng' if delta['value'] > 0 else 'giảm',
+                'factIds': [left['factId'], right['factId'], delta['factId'], *([relative['factId']] if relative else [])],
+                '_magnitude': abs(delta['value']), '_start': left['periodStart']})
+        if transitions:
+            # Prefer changing errors, then changing counts; do not rank different units.
+            for direction in ('tăng', 'giảm'):
+                matching = [row for row in transitions if row['direction'] == direction]
+                if matching:
+                    choices.append(max(matching, key=lambda row: row['_magnitude']))
+            break
+    for row in choices:
+        row.pop('_magnitude')
+    choices.sort(key=lambda row: row.pop('_start'))
+    return choices
 
 
 def attach_report(plan: dict[str, Any], metrics: list[dict[str, Any]]) -> None:
@@ -17,6 +56,14 @@ def attach_report(plan: dict[str, Any], metrics: list[dict[str, Any]]) -> None:
 
     def add(section: str, kind: str, codes: list[str], refs: list[str], text: str,
             points: dict[str, list[dict[str, Any]]], **metadata: Any) -> None:
+        numeric = quantitative_evidence(sorted(metrics, key=lambda m: m['metricCode'] != 'error'), points)
+        refs = [*refs, *(ref for row in numeric for ref in row['factIds'])]
+        if section == 'phases' and numeric:
+            row = numeric[0]
+            text += (f" Nhịp đáng chú ý từ {row['fromLabel']} đến {row['toLabel']}:"
+                     f" {row['metricDisplayName']} {row['direction']} từ {row['fromDisplay']}"
+                     f" {'lên' if row['direction'] == 'tăng' else 'xuống'} {row['toDisplay']},"
+                     f" chênh lệch {row['absoluteDisplay']}. Đây là thay đổi giữa hai kỳ này, không phải cả giai đoạn.")
         refs = list(dict.fromkeys(ref for ref in refs if ref in facts))
         if not refs:
             return
@@ -38,7 +85,7 @@ def attach_report(plan: dict[str, Any], metrics: list[dict[str, Any]]) -> None:
                                    "evidenceIds": evidence, "anchors": anchors,
                                    "scope": "contiguous_block" if section == "phases" else "selected_window",
                                    "priority": 0, "expressions": [], "fallbackText": text,
-                                   "allowedDirections": directions, **metadata})
+                                   "allowedDirections": directions, "quantitativeEvidence": numeric, **metadata})
         sections[section].append(cid)
 
     if focus and reading["overview"]:

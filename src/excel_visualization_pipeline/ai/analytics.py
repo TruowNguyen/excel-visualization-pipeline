@@ -107,6 +107,43 @@ class TrendStrategy:
     max_periods = 60
     history_period_limit = 12
 
+    def from_points(self, points: list[TrendPoint], *, metric_code: str, unit: str,
+                    group_by: str, start: date, end: date, expected_periods: int,
+                    aggregation_rule: str, label: str) -> TrendComputation:
+        """Describe canonical prepared statistics; never calculate chart values again."""
+        quality = {"status": "valid" if len(points) >= 2 else "insufficient_data",
+                   "validPeriodCount": len(points), "expectedPeriodCount": expected_periods,
+                   "groupBy": group_by, "limitations": []}
+        if len(points) < expected_periods:
+            quality["limitations"].append("Có kỳ thiếu dữ liệu hợp lệ; không coi kỳ thiếu là 0.")
+        if any(p.observed_day_count < p.expected_day_count for p in points):
+            quality["limitations"].append("Các kỳ có số ngày được ghi nhận khác nhau; không kết luận hoạt động giảm chỉ từ tổng của kỳ ngắn hơn.")
+        facts, series = self._series(points, metric_code, unit, quality)
+        # Prepared statistics values are the chart's canonical floats, including
+        # fractional averages. Preserve them exactly rather than serializing
+        # the generic trend layer's eight-decimal representation.
+        for point, item, fact in zip(points, series, [f for f in facts if f["kind"] == "period_value"]):
+            item["value"] = point.value
+            fact["value"] = point.value
+        facts.append(self._fact("fact-period-count", "period_count", float(len(points)), "period", [p.evidence_id for p in points]))
+        if len(points) >= 2:
+            first, last = points[0], points[-1]
+            delta = last.value - first.value
+            refs = [first.evidence_id, last.evidence_id]
+            facts.extend([self._fact("fact-previous", "previous", first.value, unit, refs[:1]),
+                          self._fact("fact-current", "current", last.value, unit, refs[1:]),
+                          self._fact("fact-delta", "absolute_change", delta, unit, refs),
+                          self._enum_fact("fact-direction", "direction", _direction(delta), refs)])
+            if first.value != 0:
+                facts.append(self._fact("fact-relative-change", "relative_change", delta / abs(first.value) * 100, "percent", refs))
+            facts.append(self._enum_fact("fact-trend-pattern", "trend_pattern", self._pattern([p["change"]["direction"] for p in series if p["change"]]), [p.evidence_id for p in points]))
+        analytics = self._period_analytics(points, series, facts, metric_code, unit, incomplete=len(points) < expected_periods)
+        history = self._historical_context([], points, facts, metric_code, unit)
+        return TrendComputation("ready" if len(points) >= 2 else "insufficient_data", metric_code,
+                                label, "count", unit, aggregation_rule, group_by, start, end,
+                                tuple(points), points[0] if len(points) >= 2 else None,
+                                points[-1] if points else None, tuple(facts), tuple(series), (), analytics, history, quality)
+
     def compute(
         self,
         data: pd.DataFrame,

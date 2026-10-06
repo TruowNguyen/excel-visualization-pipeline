@@ -1,5 +1,7 @@
 # 07 — Kế hoạch triển khai AI theo vertical slice
 
+Mở rộng context ngày 04/10 áp dụng [kế hoạch 09](09-insight-expansion-plan.md), [as-built 10](10-context-insight-as-built.md) và [đánh giá](evidence/2026-10-04-context-insight-evaluation.md). Không tự đánh dấu AI Comparison Phase 2 hoặc reporting/scheduling bên dưới đã hoàn tất.
+
 - Phiên bản kế hoạch: **1.0**
 - Áp dụng cho: **AI/Data specification 2.2.0**
 - Trạng thái: **Phase 1 đã triển khai; Phase 2–5 chưa bắt đầu**

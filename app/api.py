@@ -62,6 +62,13 @@ from excel_visualization_pipeline.visualization import (
     display_entity_label,
 )
 from excel_visualization_pipeline.ai import AIApplicationService, AnalysisSnapshotRepository
+from excel_visualization_pipeline.ai.context import context_summary, resolve_members, check_context_budget
+from excel_visualization_pipeline.overview_summary import build_overview_summary, build_statistics_summary
+from excel_visualization_pipeline.storage.repository import load_current_snapshot
+from excel_visualization_pipeline.reporting.composer import compose, public_document, revise, summary_blocks
+from excel_visualization_pipeline.reporting.repository import ReportRepository, ReportConflict, checksum, report_lock
+from excel_visualization_pipeline.reporting.export import render as render_report, RENDERER_VERSION, CONTENT_TYPES
+from excel_visualization_pipeline.ai.context import narrate_context
 
 SOURCE_KEY = os.environ.get("EVP_SOURCE_KEY", "cx_report_master")
 DB_PATH = Path(os.environ.get("EVP_DATABASE", str(ROOT / "data/local/analytics.sqlite3")))
@@ -90,6 +97,58 @@ class TrendSummaryRequest(BaseModel):
     end: date
     groupBy: str = Field(default="day", pattern="^(day|week|month)$")
     scope: str = Field(default="node", pattern="^node$")
+
+
+class ContextInsightRequest(BaseModel):
+    schemaVersion: str = Field(default="ai-context-request-v1", pattern="^ai-context-request-v1$")
+    view: str = Field(pattern="^(overview|statistics)$")
+    parentEntityRef: str = Field(min_length=1)
+    selection: str = Field(default="node", pattern="^(node|selected|all)$")
+    entityRefs: list[str] = Field(default_factory=list, max_length=500)
+    metricCode: str = Field(default="all", pattern="^(all|total|error|error_rate)$")
+    start: date | None = None
+    end: date | None = None
+    groupBy: str = Field(default="day", pattern="^(day|week|month|quarter)$")
+    calculation: str = Field(default="sum", pattern="^(sum|average_per_day|both)$")
+    rangeMode: str = Field(default="recent", pattern="^(recent|all|custom)$")
+    periodCount: int = Field(default=8, ge=1, le=3660)
+    periodFrom: date | None = None
+    periodTo: date | None = None
+    includeIncomplete: bool = True
+    expectedImportRef: str | None = None
+
+
+class ReportCreateRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    context: ContextInsightRequest
+    title: str = Field(default='Báo cáo diễn biến KPI', min_length=1, max_length=200)
+    requestId: str = Field(min_length=8, max_length=100, pattern='^[a-zA-Z0-9_-]+$')
+
+
+class ReportRevisionRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    baseRevision: int = Field(ge=1)
+    requestId: str = Field(min_length=8, max_length=100, pattern='^[a-zA-Z0-9_-]+$')
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    userNotes: str | None = Field(default=None, max_length=5000)
+    selectedFindingIds: list[str] | None = Field(default=None, max_length=5)
+    narrativeEdits: dict[str, str] = Field(default_factory=dict, max_length=24)
+
+
+class ReportRegenerateRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    baseRevision: int = Field(ge=1)
+    requestId: str = Field(min_length=8, max_length=100, pattern='^[a-zA-Z0-9_-]+$')
+
+
+class ReportExportRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    format: str = Field(pattern='^(pdf|docx)$')
+
+
+class ReportDeleteRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    baseRevision: int = Field(ge=1)
 
 
 def _ai_service() -> AIApplicationService:
@@ -141,17 +200,32 @@ _WORKSPACE_CACHE_LIMIT = 24
 
 @lru_cache(maxsize=4)
 def _load_source_snapshot(db_path: str, source_key: str, revision: int | None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    del revision  # The committed run is the cache key; readers still load from SQLite.
-    path = Path(db_path)
-    initialize_database(path)
-    return load_current_data(path, source_key), load_current_entities(path, source_key)
+    version, data, entities = load_current_snapshot(db_path, source_key)
+    if (version.run_id if version else None) != revision:
+        raise _SnapshotChanged()
+    return data, entities
+
+
+class _SnapshotChanged(Exception):
+    pass
+
+
+def _source_versioned():
+    for _ in range(3):
+        version = latest_committed_version(DB_PATH, SOURCE_KEY)
+        revision = version.run_id if version else None
+        try:
+            with _SOURCE_CACHE_LOCK:
+                data, entities = _load_source_snapshot(str(DB_PATH.resolve()), SOURCE_KEY, revision)
+            return version, data, entities
+        except _SnapshotChanged:
+            continue
+    raise HTTPException(503, "Dữ liệu đang được cập nhật. Vui lòng thử lại.")
 
 
 def _source() -> tuple[pd.DataFrame, pd.DataFrame]:
-    committed_version = latest_committed_version(DB_PATH, SOURCE_KEY)
-    revision = committed_version.run_id if committed_version is not None else None
-    with _SOURCE_CACHE_LOCK:
-        return _load_source_snapshot(str(DB_PATH.resolve()), SOURCE_KEY, revision)
+    _, data, entities = _source_versioned()
+    return data, entities
 
 
 def _project(project: str) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -624,6 +698,259 @@ def create_trend_summary(project: str, request: TrendSummaryRequest):
         ) from exc
 
 
+@app.post("/api/projects/{project}/ai/context-insight")
+def create_context_insight(project: str, request: ContextInsightRequest):
+    project_data, entities = _project(project)
+    if not _ai_service().config.enabled:
+        raise HTTPException(409, {"code": "AI_FEATURE_DISABLED", "message": 'Tính năng phân tích đang tắt trong cấu hình hệ thống.', "retryable": False})
+    return _build_context_bundle(project, request, project_data, entities, _ai_service())
+
+
+def _build_context_bundle(project: str, request: ContextInsightRequest, project_data: pd.DataFrame,
+                          entities: pd.DataFrame, service, *, generate_narrative: bool = True,
+                          retain_snapshots: bool = False, persist_analysis: bool = True):
+    """Shared scope/prepared-chart contract for Insight and pinned reports."""
+    try:
+        members = resolve_members(entities, request.parentEntityRef, request.selection, request.entityRefs)
+        context = request.model_dump(mode="json", exclude={"entityRefs"})
+        prepared = None
+        if request.view == "overview":
+            if not request.start or not request.end or request.start > request.end:
+                raise ValueError("Hãy chọn khoảng ngày hợp lệ.")
+            if request.groupBy == "quarter" or request.calculation != "sum":
+                raise ValueError("Tổng quan hỗ trợ ngày/tuần/tháng và cách tính hiện có, không nhận trung bình/ngày hoặc quý.")
+        else:
+            if request.metricCode == "error_rate":
+                raise ValueError("Thống kê không hiển thị % báo sai; AI không tự tạo chỉ số này.")
+            if request.rangeMode == "custom" and not (request.periodFrom or request.periodTo):
+                raise ValueError("Hãy chọn khoảng kỳ thống kê.")
+            if request.periodFrom and request.periodTo and request.periodFrom > request.periodTo:
+                raise ValueError("Kỳ bắt đầu phải trước kỳ kết thúc.")
+            periods, _, first, last = _statistics_period_window(
+                project_data, request.groupBy, request.includeIncomplete,
+                3660 if request.rangeMode == "all" else request.periodCount,
+                request.periodFrom if request.rangeMode == "custom" else None,
+                request.periodTo if request.rangeMode == "custom" else None,
+            )
+            # all means all: detect an unsupported history rather than clipping it.
+            if request.rangeMode == "all" and len(aggregation_period_ranges(sorted(pd.to_datetime(project_data.date).dt.date.unique()), request.groupBy)) > 3660:
+                raise ValueError("Lịch sử có hơn 3.660 kỳ, chưa hỗ trợ trong một lần phân tích; không cắt dữ liệu âm thầm.")
+            context["periods"] = [{"start": p.start.isoformat(), "end": p.end.isoformat(), "label": p.label, "complete": p.is_complete} for p in periods]
+            fallback_dates = pd.to_datetime(project_data.date)
+            context["start"] = (first or fallback_dates.min().date()).isoformat()
+            context["end"] = (last or fallback_dates.max().date()).isoformat()
+            check_context_budget(context, members)
+            prepared = {}
+            modes = {"sum": ["SUM"], "average_per_day": ["AVG/ngày"], "both": ["SUM", "AVG/ngày"]}[request.calculation]
+            period_keys = {pd.Timestamp(p.start) for p in periods}
+            for member in members:
+                rows = project_data[project_data.entity_id.eq(member)].copy()
+                if rows.empty or not first or not last:
+                    prepared[member] = (pd.DataFrame(), {})
+                    continue
+                frame = prepare_period_statistics(rows, first, last, request.groupBy, coverage_data=project_data)
+                if not frame.empty:
+                    frame = frame[frame.period_start.isin(period_keys) | frame.period_start.eq(pd.Timestamp(first))].copy()
+                figure = build_period_statistics_chart(rows, first, last, request.groupBy, modes,
+                    "AI statistics evidence", coverage_data=project_data, prepared_frame=frame)
+                attach_aggregate_lineage(DB_PATH, SOURCE_KEY, project, figure, rows, entities,
+                    kind="statistics", group_by=request.groupBy, start_date=first, end_date=last,
+                    coverage_data=project_data, prepared_summary=frame)
+                targets = {}
+                for trace in figure.data:
+                    name = str(trace.name or "")
+                    if " · " not in name:
+                        continue
+                    aggregation, metric = name.split(" · ", 1)
+                    calculation = "sum" if aggregation in {"SUM", "Tổng"} else "average_per_day"
+                    refs = (trace.meta or {}).get("lineage", {}).get("aggregateRefs", [])
+                    for label, ref in zip(trace.x, refs):
+                        if ref:
+                            targets[(calculation, metric, str(label))] = {"kind": "aggregate", "aggregateRef": ref}
+                prepared[member] = (frame, targets)
+        return context_summary(service, db_path=DB_PATH, source_key=SOURCE_KEY,
+            project=project, data=project_data, entities=entities, context=context, members=members, prepared=prepared,
+            generate_narrative=generate_narrative, retain_snapshots=retain_snapshots, persist_analysis=persist_analysis)
+    except PermissionError as exc:
+        raise HTTPException(409, {"code": "AI_FEATURE_DISABLED", "message": str(exc), "retryable": False}) from exc
+    except ValueError as exc:
+        raise HTTPException(422, {"code": "AI_CONTEXT_INVALID", "message": str(exc), "retryable": False}) from exc
+
+
+def _report_operation(operation):
+    try:
+        return operation()
+    except ReportConflict as exc:
+        raise HTTPException(409, {'code': 'REPORT_CONFLICT', 'message': str(exc), 'retryable': False}) from exc
+    except LookupError as exc:
+        raise HTTPException(404, {'code': 'REPORT_NOT_FOUND', 'message': str(exc), 'retryable': False}) from exc
+    except PermissionError as exc:
+        raise HTTPException(409, {'code': 'AI_FEATURE_DISABLED', 'message': str(exc), 'retryable': False}) from exc
+    except ValueError as exc:
+        raise HTTPException(422, {'code': 'REPORT_INVALID', 'message': str(exc), 'retryable': False}) from exc
+
+
+def _report_repository(project: str):
+    return ReportRepository(DB_PATH, SOURCE_KEY, project)
+
+
+def _report_public(repository, document):
+    current = latest_committed_version(DB_PATH, SOURCE_KEY)
+    value = public_document(document, repository.review(document['reportId'], document['revision']),
+                            current_import=current.import_ref if current else None)
+    value['versions'] = repository.versions(document['reportId'])
+    return value
+
+
+def _capture_report(project: str, request: ReportCreateRequest):
+    if not request.title.strip():
+        raise ValueError('Hãy nhập tên báo cáo.')
+    # Version, data and entities come from one SQLite read transaction.
+    version, data, entities = load_current_snapshot(DB_PATH, SOURCE_KEY)
+    if version is None:
+        raise ValueError('Chưa có dữ liệu đã nhập để tạo báo cáo.')
+    project_data = data[data.project_label.eq(project)].copy()
+    project_entities = entities[entities.project_label.eq(project)].copy()
+    if project_data.empty:
+        raise ValueError('Dự án không tồn tại hoặc chưa có dữ liệu.')
+    if request.context.expectedImportRef and request.context.expectedImportRef != version.import_ref:
+        raise ReportConflict('Dữ liệu đã thay đổi. Kiểm tra lại phạm vi trước khi tạo báo cáo.')
+    context = request.context.model_copy(update={'expectedImportRef': version.import_ref})
+    bundle = _build_context_bundle(project, context, project_data, project_entities, _ai_service(),
+                                   generate_narrative=False, retain_snapshots=True, persist_analysis=False)
+    current = latest_committed_version(DB_PATH, SOURCE_KEY)
+    if bundle['dataAsOf']['stale'] or not current or current.run_id != version.run_id:
+        raise ReportConflict('Dữ liệu thay đổi trong lúc chuẩn bị. Chưa lưu báo cáo; hãy thử lại.')
+    if not bundle['context']['analyzedEntityRefs']:
+        raise ValueError('Phạm vi chưa có số liệu hợp lệ. Hãy đổi vấn đề hoặc thời gian; chưa tạo nhận định.')
+    bundle['dataAsOf']['sourceCommittedAt'] = version.committed_at
+    return compose(bundle, request.title.strip())
+
+
+@app.post('/api/projects/{project}/reports/preview')
+def report_preview(project: str, request: ReportCreateRequest):
+    def operation():
+        document = _capture_report(project, request)
+        return public_document(document, {'status': 'not_saved', 'authority': 'local_check_only', 'publicationStatus': 'draft'},
+                               current_import=document['dataAsOf']['committedImportRef'])
+    return _report_operation(operation)
+
+
+@app.post('/api/projects/{project}/reports')
+def create_report(project: str, request: ReportCreateRequest):
+    def operation():
+        repository = _report_repository(project)
+        fingerprint = checksum(request.model_dump(mode='json', exclude={'requestId'}))
+        with report_lock(DB_PATH, f'create:{SOURCE_KEY}:{project}:{request.requestId}'):
+            document = repository.created(request.requestId, fingerprint)
+            if document is None:
+                document = repository.create(_capture_report(project, request), request.requestId, fingerprint)
+        return _report_public(repository, document)
+    return _report_operation(operation)
+
+
+@app.get('/api/projects/{project}/reports')
+def list_reports(project: str):
+    return _report_operation(lambda: {'items': _report_repository(project).items()})
+
+
+@app.get('/api/projects/{project}/reports/{report_id}')
+def get_report(project: str, report_id: str):
+    def operation():
+        repository = _report_repository(project)
+        return _report_public(repository, repository.get(report_id))
+    return _report_operation(operation)
+
+
+@app.delete('/api/projects/{project}/reports/{report_id}')
+def delete_report(project: str, report_id: str, request: ReportDeleteRequest):
+    def operation():
+        with report_lock(DB_PATH, report_id):
+            return _report_repository(project).delete(report_id, request.baseRevision)
+    return _report_operation(operation)
+
+
+@app.get('/api/projects/{project}/reports/{report_id}/revisions/{revision}')
+def get_report_revision(project: str, report_id: str, revision: int):
+    def operation():
+        repository = _report_repository(project)
+        return _report_public(repository, repository.get(report_id, revision))
+    return _report_operation(operation)
+
+
+@app.post('/api/projects/{project}/reports/{report_id}/revisions')
+def save_report_revision(project: str, report_id: str, request: ReportRevisionRequest):
+    def operation():
+        repository = _report_repository(project)
+        fingerprint = checksum(request.model_dump(exclude={'requestId'}))
+        with report_lock(DB_PATH, report_id):
+            document = repository.operation(report_id, request.requestId, fingerprint)
+            if document is None:
+                original = repository.require_latest(report_id, request.baseRevision)
+                if request.title is not None and not request.title.strip():
+                    raise ValueError('Tên báo cáo không được để trống.')
+                if any(not text.strip() or len(text) > 5000 for text in request.narrativeEdits.values()):
+                    raise ValueError('Mỗi diễn giải phải có nội dung và tối đa 5.000 ký tự.')
+                updated = revise(original, title=request.title, notes=request.userNotes,
+                                 selected=request.selectedFindingIds, edits=request.narrativeEdits, service=_ai_service())
+                document = repository.append(updated, request.baseRevision, request.requestId, fingerprint)
+        return _report_public(repository, document)
+    return _report_operation(operation)
+
+
+@app.post('/api/projects/{project}/reports/{report_id}/regenerate')
+def regenerate_report(project: str, report_id: str, request: ReportRegenerateRequest):
+    def operation():
+        repository = _report_repository(project)
+        fingerprint = checksum({'action': 'regenerate', 'baseRevision': request.baseRevision})
+        with report_lock(DB_PATH, report_id):
+            document = repository.operation(report_id, request.requestId, fingerprint)
+            if document is None:
+                original = repository.require_latest(report_id, request.baseRevision)
+                bundle = narrate_context(_ai_service(), original['_bundle'])
+                updated = compose(bundle, original['title'], prior=original)
+                # User-edited, validated paragraphs are never silently replaced.
+                manual = {b['blockId']: b for b in original['blocks'] if b['source'] == 'manual'}
+                for block in updated['blocks']:
+                    if block['blockId'] in manual:
+                        block.update(text=manual[block['blockId']]['text'], source='manual', validation='accepted')
+                for finding in updated['findings']:
+                    if finding.get('blockId') in manual:
+                        finding.update(text=manual[finding['blockId']]['text'], source='manual')
+                updated['executiveSummary'] = summary_blocks(updated['blocks'], updated['findings'])
+                document = repository.append(updated, request.baseRevision, request.requestId, fingerprint)
+        return _report_public(repository, document)
+    return _report_operation(operation)
+
+
+@app.post('/api/projects/{project}/reports/{report_id}/revisions/{revision}/check')
+def check_report(project: str, report_id: str, revision: int):
+    def operation():
+        repository = _report_repository(project)
+        repository.check(report_id, revision)
+        return _report_public(repository, repository.get(report_id, revision))
+    return _report_operation(operation)
+
+
+@app.post('/api/projects/{project}/reports/{report_id}/revisions/{revision}/exports')
+def export_report(project: str, report_id: str, revision: int, request: ReportExportRequest):
+    def operation():
+        repository = _report_repository(project)
+        with report_lock(DB_PATH, f'export:{report_id}:{revision}:{request.format}'):
+            document = repository.get(report_id, revision)
+            artifact = repository.exported(report_id, revision, request.format)
+            if artifact is None:
+                document['reviewAtExport'] = repository.review(report_id, revision)
+                content = render_report(document, request.format)
+                repository.store_export(document, request.format, content, RENDERER_VERSION)
+                artifact = repository.exported(report_id, revision, request.format)
+        content, receipt = artifact
+        return Response(content, media_type=CONTENT_TYPES[request.format], headers={
+            'Content-Disposition': f'attachment; filename="Automated-CX-Report-{report_id}-v{revision}.{request.format}"',
+            'X-Report-Revision': str(revision), 'X-Content-SHA256': receipt['content_hash'], 'Cache-Control': 'no-store'})
+    return _report_operation(operation)
+
+
 @app.get("/api/ai/analyses/{analysis_id}")
 def get_ai_analysis(analysis_id: str):
     analysis = _ai_service().get_analysis(
@@ -678,6 +1005,7 @@ def workspace(
     end: date | None = None,
     entity: str | None = None,
     scope: str = Query("node", pattern="^(node|children)$"),
+    overview_source: str | None = None,
     statistics_group: str = Query("week", pattern="^(day|week|month|quarter)$"),
     statistics_mode: str = Query("both", pattern="^(both|sum|average)$"),
     include_incomplete: bool = True,
@@ -704,6 +1032,8 @@ def workspace(
 
     committed_version = latest_committed_version(DB_PATH, SOURCE_KEY)
     revision = committed_version.run_id if committed_version is not None else None
+    overview_policy = json.loads((ROOT / "config/overview-sources.json").read_text(encoding="utf-8")) if view in {"all", "overview", "statistics"} else None
+    overview_policy_key = json.dumps(overview_policy, ensure_ascii=False, sort_keys=True)
     comparison_entity_key = tuple(sorted(set(
         value for value in comparison_entities.split(",") if value
     )))
@@ -713,7 +1043,7 @@ def workspace(
         include_incomplete, statistics_count, statistics_from, statistics_to,
         comparison_metric, comparison_entity_key, comparison_anchor, comparison_lens,
         comparison_calculation,
-        audit_offset, audit_limit,
+        audit_offset, audit_limit, overview_source, overview_policy_key,
     )
     with _WORKSPACE_CACHE_LOCK:
         cached = _WORKSPACE_CACHE.get(cache_key)
@@ -722,7 +1052,13 @@ def workspace(
             response.headers["Server-Timing"] = f"cache;desc=hit;dur={(perf_counter() - started) * 1000:.1f}"
             return cached
 
-    project_data, entities = _project(project)
+    committed_version, source_data, source_entities = _source_versioned()
+    revision = committed_version.run_id if committed_version else None
+    cache_key = cache_key[:2] + (revision,) + cache_key[3:]
+    project_data = source_data[source_data["project_label"].eq(project)].copy()
+    entities = source_entities[source_entities["project_label"].eq(project)].copy()
+    if project_data.empty:
+        raise HTTPException(404, "Dự án không tồn tại hoặc chưa có dữ liệu")
     checkpoint("source")
     entities = entities.sort_values(["source_row", "entity_depth"])
     entity_lookup = entities.set_index("entity_id")
@@ -985,6 +1321,8 @@ def workspace(
         "selectedEntity": entity,
         "scopeIds": scope_ids,
         "overview": overview,
+        "overviewSummary": None,
+        "statisticsSummary": None,
         "statistics": statistics,
         "statisticsPeriods": [{"start": p.start.isoformat(), "label": p.label,
                               "complete": p.is_complete} for p in periods],
@@ -1006,6 +1344,21 @@ def workspace(
         "audit": {"total": len(audit), "offset": audit_offset,
                   "rows": _records(audit.iloc[audit_offset:audit_offset + audit_limit])},
     }
+    if view in {"all", "overview"}:
+        try:
+            payload["overviewSummary"] = build_overview_summary(
+                project_data, entities, project, start_date, end_date, group_by or "day", overview_policy, overview_source,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    if view in {"all", "statistics"}:
+        try:
+            payload["statisticsSummary"] = build_statistics_summary(
+                project_data, entities, project, period_start, period_end, statistics_group,
+                periods, statistics_mode, overview_policy, overview_source,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
     with _WORKSPACE_CACHE_LOCK:
         _WORKSPACE_CACHE[cache_key] = payload
         _WORKSPACE_CACHE.move_to_end(cache_key)

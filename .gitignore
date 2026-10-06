@@ -55,3 +55,9 @@ Thumbs.db
 .codex/
 .impeccable/
 .browser-qa-profile/
+
+# Local integration-test databases and real-data evaluation payloads.
+tests/_storage_runtime/
+specs/ai-data/evidence/2026-10-04-*.json
+specs/ai-data/evidence/2026-10-05-*.json
+specs/ai-data/evidence/2026-10-06-*.json

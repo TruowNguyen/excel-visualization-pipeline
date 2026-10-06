@@ -17,6 +17,38 @@ def snapshot(errors, totals=None, **kwargs):
     return value
 
 
+@pytest.mark.parametrize('errors,totals', [([20, 15], [100, 200]), ([20, 20], [100, 200]), ([20, 30], [200, 100]), ([20, 30], [100, 200])])
+def test_two_metric_relation_keeps_independent_facts_and_rejects_wrong_direction(errors, totals):
+    value = snapshot(errors, totals)
+    value['metrics'] = [m for m in value['metrics'] if m['metricCode'] != 'error_rate']
+    value['facts'] = [f for m in value['metrics'] for f in m['facts']]
+    value['synthesis'] = build_synthesis(value)
+    value['facts'].extend(value['synthesis']['facts'])
+    pair = next(c for c in value['synthesis']['candidates'] if c['kind'] == 'metric_pair_movement')
+    assert pair['metricCodes'] == ['total', 'error']
+    assert all(row['metricCode'] != 'error_rate' for row in pair['quantitativeEvidence'])
+    body = {'schemaVersion': 'ai-narrative-v4', 'analysisId': value['analysisId'], 'status': 'ready',
+            'claims': [{'candidateId': pair['candidateId'], 'claimType': pair['kind'], 'text': pair['fallbackText'], 'factIds': pair['factIds']}]}
+    checked = OutputValidator().validate(json.dumps(body, ensure_ascii=False), value)
+    assert checked.valid, checked.errors
+    if errors[0] == errors[1]:
+        body['claims'][0]['text'] = 'Tổng số tăng. Số lỗi giữ nguyên ở mức 20. Lượng ghi nhận tăng nhưng lỗi không tăng cùng.'
+        checked = OutputValidator().validate(json.dumps(body, ensure_ascii=False), value)
+        assert checked.valid, checked.errors
+    body['claims'][0]['text'] = 'Tổng số giảm. Số lỗi giảm.'
+    assert not OutputValidator().validate(json.dumps(body, ensure_ascii=False), value).valid
+
+
+def test_two_metric_relation_never_bridges_missing_period():
+    value = snapshot([20, 25, 30], [100, 200, 300])
+    value['metrics'] = [m for m in value['metrics'] if m['metricCode'] != 'error_rate']
+    for m in value['metrics']:
+        m['series'] = [m['series'][0], m['series'][2]]
+        m['periodAnalytics']['temporalStructure']['stages'] = []
+    value['facts'] = [f for m in value['metrics'] for f in m['facts']]
+    assert not any(c['kind'] == 'metric_pair_movement' for c in build_synthesis(value)['candidates'])
+
+
 def model_value(value):
     plan = value["synthesis"]
     return {"schemaVersion": "ai-narrative-v3", "analysisId": value["analysisId"], "status": "ready",

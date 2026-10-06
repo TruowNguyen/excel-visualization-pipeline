@@ -1,4 +1,8 @@
 import './style.css';
+import { uiIcon } from './ui-icons';
+import { importHistoryContents } from './import-history';
+import { overviewSummaryMarkup, type OverviewSummary } from './overview-summary';
+import { renderInsightText, renderInsightPhase } from './insight-text';
 import { clearChartSelection, purgeChart, renderChart, selectChartPoint } from './chart';
 import { entityCardTitle, entityTrail } from './presentation';
 import {
@@ -11,9 +15,12 @@ import {
   getEntityLevelLabel,
   getMetricDisplayLabel,
   formatMetricText,
+  formatEntityText,
   metricPresentation,
 } from './terminology';
 import type { ChartPointSelection, Entity, Figure } from './types';
+import { contextInsightPanel, type ContextInsight } from './context-insight';
+import { ReportWorkspace, type ReportSeed, type ReportDocument, type ReportEvidence } from './report-workspace';
 import {
   beginWorkspaceTrace,
   finishWorkspaceTrace,
@@ -39,6 +46,8 @@ type ComparisonContext = {
   anchorEligible: boolean; anchorReason: string | null;
 };
 type Workspace = {
+  overviewSummary?: OverviewSummary | null;
+  statisticsSummary?: OverviewSummary | null;
   dataVersion: DataVersion;
   window: { start: string; end: string };
   selectedEntity: string;
@@ -170,7 +179,7 @@ type AIReportItem = {
   candidateId: string; text: string; factIds: string[]; source: 'ai' | 'deterministic';
   startLabel?: string; endLabel?: string; metricDisplayName?: string;
 };
-type Tab = 'overview' | 'statistics' | 'comparison' | 'audit' | 'import' | 'history';
+type Tab = 'overview' | 'statistics' | 'comparison' | 'audit' | 'import' | 'history' | 'report';
 type State = {
   project: string; mode: 'recent' | 'week' | 'month' | 'custom'; count: number;
   start: string; end: string; entity: string; scope: 'node' | 'children';
@@ -250,16 +259,18 @@ type AuditFocus =
 const STORAGE_KEY = 'excel_visualization_pipeline.workspace.v1';
 const CONTEXTUAL_LENS_KEY = 'excel_visualization_pipeline.contextual_lens.v1';
 const tabDefinitions: { key: Tab; icon: string; label: string }[] = [
-  { key: 'overview', icon: '◫', label: 'Tổng quan' },
-  { key: 'statistics', icon: '▥', label: 'Thống kê' },
-  { key: 'comparison', icon: '⇄', label: 'So sánh' },
-  { key: 'audit', icon: '▤', label: 'Đối chiếu dữ liệu' },
-  { key: 'import', icon: '↥', label: 'Nhập Excel' },
-  { key: 'history', icon: '◷', label: 'Lịch sử nhập' },
+  { key: 'overview', icon: 'overview', label: 'Tổng quan' },
+  { key: 'statistics', icon: 'statistics', label: 'Thống kê' },
+  { key: 'report', icon: 'report', label: 'Báo cáo' },
+  { key: 'comparison', icon: 'comparison', label: 'So sánh' },
+  { key: 'audit', icon: 'audit', label: 'Đối chiếu dữ liệu' },
+  { key: 'import', icon: 'import', label: 'Nhập Excel' },
+  { key: 'history', icon: 'history', label: 'Lịch sử nhập' },
 ];
-const visibleTabs = tabDefinitions.filter(tab => tab.key !== 'comparison' && tab.key !== 'audit');
+const visibleTabs = tabDefinitions.filter(tab => !['comparison', 'audit', 'history'].includes(tab.key));
+const DEFAULT_PROJECT = 'VSO';
 const defaults: State = {
-  project: '', mode: 'recent', count: 8, start: '', end: '', entity: '', scope: 'node',
+  project: DEFAULT_PROJECT, mode: 'recent', count: 8, start: '', end: '', entity: '', scope: 'node',
   statisticsGroup: 'week', statisticsMode: 'both', statisticsRange: 'recent', statisticsCount: 8,
   statisticsFrom: '', statisticsTo: '', includeIncomplete: true,
   comparisonMetric: 'Báo sai/Lỗi', comparisonEntities: [], auditOffset: 0, tab: 'overview',
@@ -268,19 +279,39 @@ const defaults: State = {
 };
 let state: State = { ...defaults };
 try { state = { ...defaults, ...JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}') }; } catch { /* Browser storage may be disabled. */ }
+// Open on VSO even if the previous visit selected another project. Do not carry
+// that project's entity/date filters into VSO; other viewing preferences survive.
+if (state.project !== DEFAULT_PROJECT) {
+  state.project = DEFAULT_PROJECT;
+  state.entity = ''; state.start = ''; state.end = '';
+  state.statisticsFrom = ''; state.statisticsTo = '';
+  state.comparisonEntities = []; state.auditOffset = 0;
+}
 // Hai workspace cũ chỉ còn là luồng nội bộ. Không khôi phục chúng như tab cấp cao
 // từ session trước; Đối chiếu vẫn được mở đúng ngữ cảnh qua bảng Điều tra.
 if (state.tab === 'comparison' || state.tab === 'audit') state.tab = 'statistics';
+const restoredHistoryTab = state.tab === 'history';
+if (restoredHistoryTab) state.tab = 'import';
 let projects: Project[] = [];
 let entities: Entity[] = [];
 let workspace: Workspace | null = null;
 let historyItems: Record<string, unknown>[] = [];
 let historyLoading = false;
+let historyOpen = restoredHistoryTab;
+let historyLoadedAt: string | null = null;
+let historySelectedAttempt: number | null = null;
+let historyFocusedAttempt: number | null = null;
+let historyRequest: AbortController | null = null;
 let selectedFile: File | null = null;
 let preview: Preview | null = null;
 let importMode: 'full_snapshot' | 'incremental' = 'incremental';
 let importPhase: 'idle' | 'previewing' | 'committing' = 'idle';
 let importError = '';
+let importUncertain = false;
+let importSession = 0;
+let importRefresh: 'idle' | 'loading' | 'ready' | 'error' | 'unavailable' = 'idle';
+let importPreviousVersion = 'none';
+let showCommittedValidation = false;
 let importResult: ImportResult | null = null;
 let fullSnapshotConfirmed = false;
 let showAllIssues = false;
@@ -311,9 +342,19 @@ let aiAnalysisError = '';
 let aiLoading = false;
 let aiLocallyStale = false;
 let aiRequest: AbortController | null = null;
+let contextInsight: ContextInsight | null = null;
+let contextInsightRequest: AbortController | null = null;
+let contextInsightLoading = false;
+let contextInsightStale = false;
+let contextInsightError = '';
+let contextInsightSelection = 'all';
+let contextInsightSelected: string[] = [];
+let contextInsightFocus = '';
 let contextualComparison: ContextualComparison | null = null;
 let contextualComparisonRequest: AbortController | null = null;
 let contextualFocusId = '';
+let reportAnalysisView: 'overview' | 'statistics' = 'overview';
+const reportWorkspace = new ReportWorkspace(api);
 const chartFingerprints = new Map<string, string>();
 let pendingChartRenders: Promise<void>[] = [];
 let renderingWorkspaceTrace: WorkspacePerformanceTrace | null = null;
@@ -333,6 +374,9 @@ function restorePendingFocus(): void {
   const id = pendingFocusId; pendingFocusId = '';
   requestAnimationFrame(() => document.getElementById(id)?.focus());
 }
+class ApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
 async function api<T>(path: string, init?: RequestInit, trace?: WorkspacePerformanceTrace): Promise<T> {
   if (trace) trace.requestDispatchedAt = performance.now();
   const response = await fetch(`/api${path}`, init);
@@ -344,7 +388,7 @@ async function api<T>(path: string, init?: RequestInit, trace?: WorkspacePerform
     const body = await response.json().catch(() => ({}));
     const detail = body.detail;
     const detailMessage = typeof detail === 'object' && detail && typeof detail.message === 'string' ? detail.message : null;
-    throw new Error(typeof detail === 'string' ? detail : detailMessage || `Máy chủ trả về lỗi ${response.status}`);
+    throw new ApiError(typeof detail === 'string' ? detail : detailMessage || `Máy chủ trả về lỗi ${response.status}`, response.status);
   }
   if (!trace) return response.json() as Promise<T>;
   const body = await response.text();
@@ -380,7 +424,7 @@ function displayHierarchyParts(parts: string[]): string[] {
 function renderShell(): void {
   app.innerHTML = `<div class="shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}">
     <aside class="sidebar">
-      <div class="brand"><div class="brand-mark">CX</div><div class="brand-copy"><strong>Báo cáo CX tự động</strong><span>Không gian phân tích</span></div><button class="sidebar-toggle" data-action="toggle-sidebar" aria-label="Thu gọn hoặc mở thanh bên" title="Thu gọn hoặc mở thanh bên">☰</button></div>
+      <div class="brand"><div class="brand-mark">CX</div><div class="brand-copy"><strong>Automated CX Report</strong><span>Không gian phân tích</span></div><button class="sidebar-toggle" data-action="toggle-sidebar" aria-label="Thu gọn hoặc mở thanh bên" title="Thu gọn hoặc mở thanh bên">${uiIcon('menu')}</button></div>
       <div class="side-scroll"><div id="side-filters"></div></div>
     <div class="side-bottom"><span class="status-dot"></span><span class="status-copy">Kho dữ liệu nội bộ</span> <small>v1.0 · Nội bộ</small></div>
     </aside>
@@ -396,6 +440,10 @@ function renderSidebar(): void {
   const project = currentProject();
   const selectedEntity = currentEntity();
   const selectedLevel = selectedEntity?.entity_level;
+  if (state.tab === 'report') {
+    root.innerHTML = `<div class="side-heading">Báo cáo</div><label class="field"><span>Dự án</span><select data-field="project">${select(projects.map(p => ({value:p.label,label:p.label})), state.project)}</select></label><div class="side-tip"><strong>Phạm vi riêng cho từng báo cáo</strong><p>Chọn vấn đề, nhóm và thời gian trong Thiết lập báo cáo. Bản đã lưu giữ nguyên dữ liệu tại thời điểm tạo.</p></div>`;
+    return;
+  }
   root.innerHTML = `<div class="side-heading">Bộ lọc báo cáo</div>
     <label class="field"><span>Dự án</span><select data-field="project">${select(projects.map(p => ({ value: p.label, label: p.label })), state.project)}</select></label>
     <div class="side-section"><div class="section-caption">Khoảng thời gian</div>
@@ -405,17 +453,17 @@ function renderSidebar(): void {
       ], state.mode)}</select></label>
       ${state.mode === 'week' || state.mode === 'month' ? `<label class="field"><span>Số ${state.mode === 'week' ? 'tuần' : 'tháng'} so sánh</span><input data-field="count" type="number" min="1" max="60" value="${state.count}"></label>` : ''}
       ${state.mode === 'custom' ? `<div class="date-pair"><label class="field"><span>Từ ngày</span><input data-field="start" type="date" min="${esc(project?.minDate)}" max="${esc(project?.maxDate)}" value="${esc(state.start)}"></label><label class="field"><span>Đến ngày</span><input data-field="end" type="date" min="${esc(project?.minDate)}" max="${esc(project?.maxDate)}" value="${esc(state.end)}"></label></div>` : ''}
-      ${workspace ? `<div class="range-note">◷ ${dateLabel(workspace.window.start)} — ${dateLabel(workspace.window.end)}</div>` : ''}
+      ${workspace ? `<div class="range-note">${uiIcon('history')} ${dateLabel(workspace.window.start)} — ${dateLabel(workspace.window.end)}</div>` : ''}
     </div>
     <div class="side-section">
       <label class="field"><span>Nội dung theo dõi</span><select data-field="entity">${select(entities.map(e => ({ value: e.entity_id, label: `${'　'.repeat(e.entity_depth)}${getEntityDisplayName(e)}${e.effective_unit ? ` · ${e.effective_unit}` : ''}` })), state.entity)}</select></label>
       <label class="field"><span>Mức hiển thị</span><select data-field="scope">${select([{ value: 'node', label: getCurrentScopeLabel(selectedLevel) }, { value: 'children', label: getChildrenScopeLabel(selectedLevel) }], state.scope)}</select></label>
     </div>
-    <div class="side-tip"><span>✦</span><strong>Bộ lọc được giữ khi tải lại trang</strong><p>Thiết lập chỉ lưu trong thẻ trình duyệt này, không xuất hiện trên đường dẫn.</p></div>`;
+    <div class="side-tip"><strong>Bộ lọc được giữ khi tải lại trang</strong><p>Thiết lập chỉ lưu trong thẻ trình duyệt này, không xuất hiện trên đường dẫn.</p></div>`;
   if (activeField) requestAnimationFrame(() => root.querySelector<HTMLElement>(`[data-field="${activeField}"]`)?.focus());
 }
 function header(title: string, subtitle: string): string {
-  return `<div class="page-head"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><div class="head-actions"><button class="ghost" data-action="refresh">↻ Làm mới dữ liệu</button>${state.project ? `<a class="primary" href="/api/projects/${encodeURIComponent(state.project)}/export.csv">↓ Tải dữ liệu (.csv)</a>` : ''}</div></div>`;
+  return `<div class="page-head"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><div class="head-actions"><button class="ghost" data-action="refresh">${uiIcon('refresh')} Làm mới dữ liệu</button>${state.project ? `<a class="ghost" href="/api/projects/${encodeURIComponent(state.project)}/export.csv">${uiIcon('download')} Tải dữ liệu (.csv)</a>` : ''}</div></div>`;
 }
 
 function selectionViewport(element: HTMLElement): SelectionOrigin['viewport'] {
@@ -453,11 +501,6 @@ function auditCell(column: string, value: string | number | null | undefined): s
   if (column === 'value_kind') return valueKinds[String(value)] || String(value);
   return String(value);
 }
-const historyHeaders: Record<string, string> = {
-  attempt_status: 'Kết quả', submitted_file_name: 'Tệp Excel', requested_mode: 'Chế độ',
-  input_record_count: 'Điểm dữ liệu trong tệp', inserted_count: 'Thêm mới', updated_count: 'Cập nhật',
-  unchanged_count: 'Giữ nguyên', started_at: 'Bắt đầu lúc',
-};
 const importStatuses: Record<string, string> = {
   committed: 'Đã ghi', duplicate: 'Đã có trước đó', rejected: 'Không đạt kiểm tra', failed: 'Thất bại',
 };
@@ -465,7 +508,7 @@ function historyCell(column: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
   if (column === 'attempt_status') return importStatuses[String(value)] || String(value);
   if (column === 'requested_mode') return value === 'full_snapshot' ? 'Bản chụp đầy đủ' : value === 'incremental' ? 'Dữ liệu bổ sung' : String(value);
-  if (column === 'started_at') {
+  if (['started_at', 'finished_at', 'committed_at'].includes(column)) {
     const date = new Date(String(value));
     return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('vi-VN');
   }
@@ -732,23 +775,30 @@ async function copyInvestigationValue(kind: 'cell' | 'value'): Promise<void> {
   renderInvestigation();
 }
 function renderMain(): void {
+  renderSidebar();
   const root = document.querySelector<HTMLDivElement>('#workspace')!;
+  const importFocus = state.tab === 'import' && !pendingFocusId && root.contains(document.activeElement)
+    ? (document.activeElement as HTMLElement).id : '';
+  root.toggleAttribute('data-import-workspace', state.tab === 'import');
+  root.toggleAttribute('data-report-workspace', state.tab === 'report');
   disposeCharts(root);
   const project = currentProject();
   const chosenTab = tabDefinitions.find(tab => tab.key === state.tab)!;
   const trail = entityTrail(entities, state.entity);
-  root.innerHTML = `<nav class="tabbar" aria-label="Tính năng của không gian phân tích">${visibleTabs.map(tab => `<button class="tab ${tab.key === state.tab ? 'active' : ''}" data-tab="${tab.key}" aria-current="${tab.key === state.tab ? 'page' : 'false'}"><span>${tab.icon}</span>${tab.label}</button>`).join('')}</nav>
+  root.innerHTML = `<nav class="tabbar" aria-label="Tính năng của không gian phân tích">${visibleTabs.map(tab => `<button class="tab ${tab.key === state.tab ? 'active' : ''}" data-tab="${tab.key}" aria-current="${tab.key === state.tab ? 'page' : 'false'}">${uiIcon(tab.icon)}${tab.label}</button>`).join('')}</nav>
     ${header(state.project || 'Không gian phân tích', project ? `${fmt(project.records)} điểm dữ liệu đã lưu · ${fmt(project.chartable)} điểm có thể hiển thị trên biểu đồ` : bootstrapError ? 'Chưa kết nối được kho dữ liệu.' : bootstrapLoaded ? 'Chưa có tệp Excel nào được nhập.' : 'Đang kiểm tra dữ liệu…')}
-    <div id="workspace-hierarchy">${hierarchyMarkup(trail)}</div>
+    <div id="workspace-hierarchy">${state.tab === 'report' ? '' : hierarchyMarkup(trail)}</div>
     <div id="workspace-message">${message ? `<div class="notice">${esc(message)}</div>` : ''}</div>
-    ${project ? `<div class="kpi-grid">
-      <div class="kpi"><div class="kpi-icon violet">◈</div><span>DỰ ÁN</span><strong>${esc(project.label)}</strong><small>Đang xem</small></div>
-      <div class="kpi"><div class="kpi-icon blue">◇</div><span>NỘI DUNG THEO DÕI</span><strong>${fmt(project.entities)}</strong><small>Gồm nhóm vấn đề, vấn đề và tình trạng</small></div>
-      <div class="kpi"><div class="kpi-icon teal">▣</div><span>ĐƠN VỊ ĐO</span><strong>${fmt(project.units)}</strong><small>${fmt(project.units)} loại trong dự án</small></div>
-      <div class="kpi"><div class="kpi-icon amber">▤</div><span>ĐIỂM DỮ LIỆU</span><strong>${fmt(project.records)}</strong><small>Đã lưu, gồm cả giá trị chưa hiển thị</small></div>
+    ${state.tab === 'report' ? '' : project && ['overview', 'statistics'].includes(state.tab) ? '<section id="overview-summary" class="overview-summary" aria-label="Chỉ số tổng quan"></section>' : project ? `<div class="kpi-grid">
+      <div class="kpi"><div class="kpi-icon">${uiIcon('overview')}</div><span>DỰ ÁN</span><strong>${esc(project.label)}</strong><small>Đang xem</small></div>
+      <div class="kpi"><div class="kpi-icon">${uiIcon('comparison')}</div><span>NỘI DUNG THEO DÕI</span><strong>${fmt(project.entities)}</strong><small>Gồm nhóm vấn đề, vấn đề và tình trạng</small></div>
+      <div class="kpi"><div class="kpi-icon">${uiIcon('statistics')}</div><span>ĐƠN VỊ ĐO</span><strong>${fmt(project.units)}</strong><small>${fmt(project.units)} loại trong dự án</small></div>
+      <div class="kpi"><div class="kpi-icon">${uiIcon('audit')}</div><span>ĐIỂM DỮ LIỆU</span><strong>${fmt(project.records)}</strong><small>Đã lưu, gồm cả giá trị chưa hiển thị</small></div>
     </div>` : ''}
-    <div class="content-card" aria-busy="${loading}"><div class="tab-content"><div class="section-title"><div><h2>${chosenTab.label}</h2></div><span id="workspace-loading" class="loading" ${loading ? '' : 'hidden'}>Đang cập nhật biểu đồ…</span></div><div id="workspace-request-status" class="workspace-request-status" role="status" aria-live="polite" aria-atomic="true"></div><div id="tab-body"></div></div></div>`;
+    <div class="content-card" aria-busy="${state.tab === 'import' ? importPhase !== 'idle' : loading}"><div class="tab-content"><div class="section-title"><div><h2>${chosenTab.label}</h2></div><span id="workspace-loading" class="loading" ${loading ? '' : 'hidden'}>Đang cập nhật biểu đồ…</span></div><div id="workspace-request-status" class="workspace-request-status" role="status" aria-live="polite" aria-atomic="true"></div><div id="tab-body"></div></div></div>`;
   renderTab();
+  updateOverviewSummary();
+  if (importFocus) document.getElementById(importFocus)?.focus({ preventScroll: true });
   updateWorkspaceRequestStatus();
 }
 
@@ -765,14 +815,44 @@ function updateWorkspaceChrome(): void {
     ? `${fmt(project.records)} điểm dữ liệu đã lưu · ${fmt(project.chartable)} điểm có thể hiển thị trên biểu đồ`
     : bootstrapError ? 'Chưa kết nối được kho dữ liệu.' : bootstrapLoaded ? 'Chưa có tệp Excel nào được nhập.' : 'Đang kiểm tra dữ liệu…';
   const hierarchy = document.querySelector<HTMLElement>('#workspace-hierarchy');
-  if (hierarchy) hierarchy.innerHTML = hierarchyMarkup();
+  if (hierarchy) hierarchy.innerHTML = state.tab === 'report' ? '' : hierarchyMarkup();
   const messageRoot = document.querySelector<HTMLElement>('#workspace-message');
   if (messageRoot) messageRoot.innerHTML = message ? `<div class="notice">${esc(message)}</div>` : '';
+  updateOverviewSummary();
+}
+
+let overviewSources: Record<string, string> = {};
+try {
+  const parsed = JSON.parse(sessionStorage.getItem('excel_visualization_pipeline.overview-sources.v1') || '{}');
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) overviewSources = Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === 'string')) as Record<string, string>;
+} catch { /* Ignore invalid stored preferences. */ }
+let lastSummaryContextKey = '';
+function summaryContextKey(): string {
+  return JSON.stringify(state.tab === 'statistics'
+    ? [state.project, 'statistics', state.entity, state.scope, state.statisticsGroup, state.statisticsMode, state.statisticsRange, state.statisticsCount, state.statisticsFrom, state.statisticsTo, state.includeIncomplete, overviewSources[state.project] || '']
+    : [state.project, 'overview', state.mode, state.count, state.start, state.end, overviewSources[state.project] || '']);
+}
+function updateOverviewSummary(): void {
+  const root = document.getElementById('overview-summary');
+  if (!root) return;
+  const summary = workspaceProject === state.project && workspaceView === state.tab
+    ? state.tab === 'statistics' ? workspace?.statisticsSummary : workspace?.overviewSummary : undefined;
+  const focused = document.activeElement?.hasAttribute('data-overview-source');
+  const methodOpen = root.querySelector<HTMLDetailsElement>('.overview-summary-method')?.open;
+  const markup = overviewSummaryMarkup(summary, loading, workspaceError, lastSummaryContextKey === summaryContextKey(), overviewSources[state.project], state.tab === 'statistics');
+  if (root.dataset.markup !== markup) {
+    root.innerHTML = markup; root.dataset.markup = markup;
+    const method = root.querySelector<HTMLDetailsElement>('.overview-summary-method');
+    if (method && methodOpen) method.open = true;
+  }
+  root.setAttribute('aria-busy', String(loading));
+  if (focused) root.querySelector<HTMLElement>('[data-overview-source]')?.focus({ preventScroll: true });
 }
 
 function updateWorkspaceRequestStatus(): void {
+  updateOverviewSummary();
   const card = document.querySelector<HTMLElement>('.content-card');
-  card?.setAttribute('aria-busy', String(loading));
+  card?.setAttribute('aria-busy', String(state.tab === 'import' ? importPhase !== 'idle' : loading));
   const indicator = document.querySelector<HTMLElement>('#workspace-loading');
   if (indicator) indicator.hidden = !loading;
   const status = document.querySelector<HTMLElement>('#workspace-request-status');
@@ -817,7 +897,8 @@ function chartCard(chart: Chart, section: string): string {
   const action = contextualAction
     ? `<button id="compare-action-${encodeURIComponent(chart.entityId)}" class="compare-action" data-action="open-contextual-comparison" data-entity-id="${esc(chart.entityId)}" aria-haspopup="dialog" ${siblingCount ? '' : 'disabled'} title="${esc(getComparisonButtonDescription(entity?.entity_level, siblingCount > 0))}">So sánh</button>`
     : '<span class="pill">Theo bộ lọc</span>';
-  return `<article class="chart-card" data-chart-key="${esc(plotKey)}"><div class="card-top"><div><h3>${esc(entityCardTitle(entity, chart.title))}</h3><span>${esc(metadata)}</span></div>${action}</div><div class="plot" data-plot="${esc(plotKey)}" aria-label="Biểu đồ ${esc(entityCardTitle(entity, chart.title))}"></div></article>`;
+  const insightAction = ['overview', 'statistics'].includes(section) ? `<button class="text-action" data-action="open-issue-insight" data-entity-id="${esc(chart.entityId)}">Phân tích</button>` : '';
+  return `<article class="chart-card" data-chart-key="${esc(plotKey)}"><div class="card-top"><div><h3>${esc(entityCardTitle(entity, chart.title))}</h3><span>${esc(metadata)}</span></div><div class="chart-context-actions">${insightAction}${action}</div></div><div class="plot" data-plot="${esc(plotKey)}" aria-label="Biểu đồ ${esc(entityCardTitle(entity, chart.title))}"></div></article>`;
 }
 function hasSiblingCharts(charts: Chart[]): boolean {
   return state.scope === 'children' && (workspace?.scopeIds.length || 0) > 1 && charts.length > 1;
@@ -979,7 +1060,7 @@ function aiDataStory(analysis: AIAnalysis): string {
 }
 
 function aiReadable(text: string): string {
-  return text.replaceAll('toàn khoảng', 'thời gian đã chọn').replaceAll('endpoint', 'đầu và cuối giai đoạn')
+  return formatEntityText(text, entities).replaceAll('toàn khoảng', 'thời gian đã chọn').replaceAll('endpoint', 'đầu và cuối giai đoạn')
     .replaceAll('tỷ trọng trên Tổng số ghi nhận', 'tỷ lệ báo sai').replaceAll('tỷ trọng trên Tổng số', 'tỷ lệ báo sai').replaceAll('tỷ trọng', 'tỷ lệ báo sai')
     .replaceAll('; ', '. ').split('. ').map(sentence => sentence.charAt(0).toUpperCase() + sentence.slice(1)).join('. ');
 }
@@ -987,14 +1068,14 @@ function aiReadable(text: string): string {
 function aiReadingStory(analysis: AIAnalysis): string {
   const reportPhases = analysis.narrative.report?.phases;
   if (reportPhases?.length) {
-    const rows = reportPhases.map(phase => `<li><h5>${esc(phase.startLabel || '')} → ${esc(phase.endLabel || '')}</h5><p>${esc(aiReadable(phase.text))}</p>${phase.source === 'deterministic' && analysis.narrative.mode === 'ai' ? '<small>Tổng hợp từ số liệu</small>' : ''}</li>`);
+    const rows = reportPhases.map(phase => renderInsightPhase({ ...phase, text: aiReadable(phase.text) }, analysis.narrative.mode === 'ai'));
     return `<section class="ai-reading-story"><h4>${aiShortWindow(analysis) ? 'So sánh các kỳ đã có' : 'Các chỉ số thay đổi như thế nào?'}</h4><ol class="ai-reading-phases">${rows.slice(0, 4).join('')}</ol>${rows.length > 4 ? `<details class="ai-more-phases"><summary>Xem các giai đoạn tiếp theo</summary><ol class="ai-reading-phases">${rows.slice(4).join('')}</ol></details>` : ''}${analysis.narrative.report?.omittedPhaseCount ? '<p>Còn các giai đoạn khác trong phần số liệu và nguồn.</p>' : ''}</section>`;
   }
   const phases = analysis.synthesis?.reading?.phases || [];
   if (!phases.length) return '';
   const rows = phases.map(phase => {
     const label = phase.startLabel === phase.endLabel ? phase.startLabel : `${phase.startLabel} → ${phase.endLabel}`;
-    return `<li><h5>${esc(label)}</h5><p>${esc(aiReadable(phase.text))}</p>${phase.explanation ? `<p class="ai-phase-meaning">${esc(aiReadable(phase.explanation))}</p>` : ''}</li>`;
+    return `<li><h5>${esc(label)}</h5><p>${renderInsightText(aiReadable(phase.text))}</p>${phase.explanation ? `<p class="ai-phase-meaning">${renderInsightText(aiReadable(phase.explanation))}</p>` : ''}</li>`;
   });
   const short = aiShortWindow(analysis);
   const title = short ? (phases.length === 1 && (analysis.metrics?.[0].series.length || analysis.series?.length) === 2 ? 'So sánh hai kỳ' : 'Diễn biến các kỳ đã có') : 'Các chỉ số thay đổi như thế nào?';
@@ -1004,7 +1085,7 @@ function aiReadingStory(analysis: AIAnalysis): string {
 function aiReportSection(analysis: AIAnalysis, section: 'relationships', title: string): string {
   const items = analysis.narrative.report?.[section] || [];
   if (!items.length) return '';
-  return `<section class="ai-report-${section}"><h4>${esc(title)}</h4><ul class="ai-reading-phases">${items.map(item => `<li>${item.metricDisplayName ? `<h5>${esc(item.metricDisplayName)}</h5>` : ''}<p>${esc(aiReadable(item.text))}</p>${item.source === 'deterministic' && analysis.narrative.mode === 'ai' ? '<small>Tổng hợp từ số liệu</small>' : ''}</li>`).join('')}</ul></section>`;
+  return `<section class="ai-report-${section}"><h4>${esc(title)}</h4><ul class="ai-reading-phases">${items.map(item => `<li>${item.metricDisplayName ? `<h5>${esc(item.metricDisplayName)}</h5>` : ''}<p>${renderInsightText(aiReadable(item.text))}</p>${item.source === 'deterministic' && analysis.narrative.mode === 'ai' ? '<small>Tổng hợp từ số liệu</small>' : ''}</li>`).join('')}</ul></section>`;
 }
 
 function aiAnalyticalDetails(analysis: AIAnalysis): string {
@@ -1018,9 +1099,9 @@ function aiAnalyticalDetails(analysis: AIAnalysis): string {
   const selected = new Set(analysis.narrative.summary.candidateIds || []);
   const hasChronology = !!analysis.periodAnalytics?.temporalStructure || !!analysis.metrics?.some(metric => metric.periodAnalytics.temporalStructure);
   const temporal = hasChronology ? [] : analysis.insightCandidates?.filter(item => item.layer === 'temporal' && !selected.has(item.candidateId)) || [];
-  const events = temporal.length ? `<section class="ai-story"><h4>Diễn biến cần chú ý</h4>${temporal.map(item => `<p>${esc(item.text)}</p><div class="ai-source-actions">${sourceButtons(item.evidenceIds)}</div>`).join('')}</section>` : '';
+  const events = temporal.length ? `<section class="ai-story"><h4>Diễn biến cần chú ý</h4>${temporal.map(item => `<p>${renderInsightText(item.text)}</p><div class="ai-source-actions">${sourceButtons(item.evidenceIds)}</div>`).join('')}</section>` : '';
   const checks = analysis.inspectionChecks || [];
-  const next = checks.length ? `<section class="ai-story"><h4>Đối chiếu nguồn</h4><ul>${checks.map(item => `<li><span>Đối chiếu nguồn</span><div><p>${esc(item.text)}</p><div class="ai-source-actions">${sourceButtons(item.evidenceIds)}</div></div></li>`).join('')}</ul></section>` : analysis.narrative.suggestedChecks.length ? `<section class="ai-story"><h4>Gợi ý kiểm tra</h4><ul>${analysis.narrative.suggestedChecks.map(text => `<li><p>${esc(text)}</p></li>`).join('')}</ul></section>` : '';
+  const next = checks.length ? `<section class="ai-story"><h4>Đối chiếu nguồn</h4><ul>${checks.map(item => `<li><span>Đối chiếu nguồn</span><div><p>${renderInsightText(item.text)}</p><div class="ai-source-actions">${sourceButtons(item.evidenceIds)}</div></div></li>`).join('')}</ul></section>` : analysis.narrative.suggestedChecks.length ? `<section class="ai-story"><h4>Gợi ý kiểm tra</h4><ul>${analysis.narrative.suggestedChecks.map(text => `<li><p>${renderInsightText(text)}</p></li>`).join('')}</ul></section>` : '';
   if (aiShortWindow(analysis)) return next;
   const basis = analysis.comparisonBasis;
   const relationship = analysis.insightCandidates?.find(item => item.layer === 'relational');
@@ -1080,6 +1161,19 @@ function announceAI(message: string): void {
 }
 
 function renderAIInsights(rawAnalysis = aiAnalysis): string {
+  if (state.tab === 'statistics' || state.scope === 'children' || contextInsightFocus) {
+    const childOptions = entities.filter(e => e.parent_entity_id === state.entity).map(e => ({ id: e.entity_id, label: getEntityDisplayName(e) }));
+    const focus = entities.find(e => e.entity_id === (contextInsightFocus || (state.scope === 'node' ? state.entity : '')));
+    const receipt = state.tab === 'statistics'
+      ? `${getEntityDisplayName(currentEntity()!)} · ${({'day':'Ngày','week':'Tuần','month':'Tháng','quarter':'Quý'})[state.statisticsGroup]} · ${({'both':'Tổng và trung bình/ngày','sum':'Tổng trong kỳ','average':'Trung bình/ngày'})[state.statisticsMode]} · ${state.statisticsRange === 'all' ? 'Toàn bộ lịch sử' : state.statisticsRange === 'custom' ? `${state.statisticsFrom || 'Đầu lịch sử'} → ${state.statisticsTo || 'Cuối lịch sử'}` : `${state.statisticsCount} kỳ gần nhất`} · ${state.includeIncomplete ? 'Có kỳ chưa đầy đủ' : 'Chỉ kỳ đầy đủ'}`
+      : `${workspace?.window.start || ''} → ${workspace?.window.end || ''} · ${({'day':'Theo ngày','week':'Theo tuần','month':'Theo tháng'})[state.aiGroupBy]} · ${({'all':'Ba chỉ số','total':'Tổng số','error':'Báo sai/Lỗi','error_rate':'% báo sai'})[state.aiMetricCode]}`;
+    const controls = state.tab === 'overview' ? `<label class="ai-metric">Phạm vi chỉ số<select data-field="aiMetricCode">${select([{value:'all',label:'Tất cả chỉ số'},{value:'total',label:'Tổng số'},{value:'error',label:'Báo sai/Lỗi'},{value:'error_rate',label:'% báo sai'}], state.aiMetricCode)}</select></label><label class="ai-metric">Nhóm dữ liệu<select data-field="aiGroupBy">${select([{value:'day',label:'Theo ngày'},{value:'week',label:'Theo tuần'},{value:'month',label:'Theo tháng'}], state.aiGroupBy)}</select></label>` : '';
+    const panel = contextInsightPanel({ children: childOptions, selection: contextInsightSelection, selected: contextInsightSelected,
+      focusedLabel: focus ? getEntityDisplayName(focus) : '', receipt, loading: contextInsightLoading,
+      available: Boolean(aiStatus?.enabled && aiStatus.configured), privateMode: !aiStatus?.externalAllowed,
+      error: contextInsightError, result: contextInsight, stale: contextInsightStale, metricControls: controls, entities });
+    return panel;
+  }
   const aiAnalysis = metricPresentation(rawAnalysis);
   const scopeBlocked = state.scope !== 'node';
   const statusUnavailable = aiStatus && !aiStatus.enabled;
@@ -1143,7 +1237,7 @@ function renderAIInsights(rawAnalysis = aiAnalysis): string {
           ? '<div class="ai-callout warning"><strong>Một số nhận định đã được lược bỏ.</strong><p>Các nhận định đã kiểm chứng và diễn biến từ số liệu vẫn được giữ lại.</p></div>'
         : '';
     const narrativeInsights = aiAnalysis.narrative.insights
-      .map(item => `<li>${esc(item.text)}</li>`)
+      .map(item => `<li>${renderInsightText(item.text)}</li>`)
       .join('');
     const storyContent = aiShortWindow(aiAnalysis) ? '' : aiDataStory(aiAnalysis);
     const story = storyContent ? `<details class="ai-details"><summary>Xem chi tiết diễn biến</summary>${storyContent}</details>` : '';
@@ -1167,14 +1261,14 @@ function renderAIInsights(rawAnalysis = aiAnalysis): string {
       ${aiAnalysis.status === 'insufficient_data' ? qualityAlert : ''}
       <section class="ai-executive" aria-labelledby="ai-executive-title">
         <div class="ai-section-heading"><h4 id="ai-executive-title">Tổng quan trong thời gian đã chọn</h4><span>${reportOverview ? reportOverview.source === 'ai' ? 'Diễn giải tự động' : 'Tổng hợp từ số liệu' : reading?.overview ? 'Tổng hợp từ số liệu' : aiAnalysis.narrative.mode === 'ai' ? 'Diễn giải tự động' : 'Tóm tắt từ số liệu'}</span></div>
-        <p>${esc(aiReadable(overviewText))}</p>
+        <p>${renderInsightText(aiReadable(overviewText))}</p>
         ${narrativeInsights ? `<ul class="ai-summary-points">${narrativeInsights}</ul>` : ''}
       </section>
       ${aiAnalysis.status !== 'insufficient_data' ? qualityAlert : ''}
 
       ${aiReadingStory(aiAnalysis)}
       ${aiReportSection(aiAnalysis, 'relationships', 'Các chỉ số liên quan với nhau như thế nào?')}
-      ${takeawayText ? `<section class="ai-takeaways"><div class="ai-section-heading"><h4>Điều cần chú ý</h4>${aiAnalysis.narrative.mode === 'ai' && aiAnalysis.narrative.schemaVersion === 'ai-narrative-v4' ? '<span>Diễn giải tự động đã kiểm chứng</span>' : ''}</div><p>${esc(aiReadable(takeawayText))}</p></section>` : ''}
+      ${takeawayText ? `<section class="ai-takeaways"><div class="ai-section-heading"><h4>Điều cần chú ý</h4>${aiAnalysis.narrative.mode === 'ai' && aiAnalysis.narrative.schemaVersion === 'ai-narrative-v4' ? '<span>Diễn giải tự động đã kiểm chứng</span>' : ''}</div><p>${renderInsightText(aiReadable(takeawayText))}</p></section>` : ''}
       <details class="ai-verification"><summary>Xem số liệu và nguồn</summary><div class="ai-verification-body">
       ${aiInsightEvidence(aiAnalysis)}
       ${aiAnalyticalDetails(aiAnalysis)}
@@ -1298,20 +1392,18 @@ function renderTab(): void {
   if (!body) return;
   delete body.dataset.workspaceScope;
   pendingChartRenders = [];
+  if (state.tab === 'import') { renderImport(body); return; }
   if (!bootstrapLoaded) { body.innerHTML = statePanel('Đang kiểm tra dữ liệu', 'Vui lòng chờ trong khi kết nối kho dữ liệu.'); return; }
   if (bootstrapError) {
-    if (state.tab === 'import' && importResult) {
-      renderImport(body);
-      body.insertAdjacentHTML('afterbegin', statePanel('Chưa tải lại được bảng điều khiển', 'Kết quả nhập bên dưới vẫn được giữ trong thẻ này. Kiểm tra kết nối rồi thử tải lại dữ liệu.', true));
-    } else body.innerHTML = statePanel('Không kết nối được kho dữ liệu', 'Máy chủ chưa phản hồi. Kiểm tra kết nối hoặc thử lại; chưa cần nhập lại tệp Excel.', true);
+    body.innerHTML = statePanel('Không kết nối được kho dữ liệu', 'Máy chủ chưa phản hồi. Kiểm tra kết nối hoặc thử lại; chưa cần nhập lại tệp Excel.', true);
     return;
   }
   if (!currentProject()) {
     body.innerHTML = statePanel('Chưa có dữ liệu đã nhập', 'Mở Nhập Excel để chọn tệp đầu tiên.');
-    if (state.tab === 'import') renderImport(body);
     if (state.tab === 'history') renderHistory(body);
     return;
   }
+  if (state.tab === 'report') { reportWorkspace.mount(body, reportSeed()); return; }
   const analyticalTab = ['overview', 'statistics', 'comparison', 'audit'].includes(state.tab);
   if (analyticalTab && workspaceView !== state.tab && !(state.tab === 'audit' && auditFocus)) {
     body.innerHTML = statePanel('Đang tải dữ liệu', 'Đang chuẩn bị dữ liệu cho khu vực vừa chọn.');
@@ -1330,7 +1422,7 @@ function renderTab(): void {
     const host = analyticsHost(
       body,
       state.tab,
-      `<p class="section-desc">Biểu đồ Tổng số ghi nhận, Tổng báo sai (lỗi) và Tỷ lệ báo sai theo ${state.scope === 'children' ? getChildrenScopeLabel(currentEntity()?.entity_level).toLowerCase() : getCurrentScopeLabel(currentEntity()?.entity_level).toLowerCase()}.</p>`,
+      `<div class="report-entry"><p class="section-desc">Biểu đồ Tổng số ghi nhận, Tổng báo sai (lỗi) và Tỷ lệ báo sai theo ${state.scope === 'children' ? getChildrenScopeLabel(currentEntity()?.entity_level).toLowerCase() : getCurrentScopeLabel(currentEntity()?.entity_level).toLowerCase()}.</p><button class="text-button" data-action="create-report-from-scope">Tạo báo cáo từ phạm vi này</button></div>`,
       renderAIInsights(),
     );
     reconcileChartCollection(host, workspace?.overview || [], 'overview');
@@ -1341,7 +1433,7 @@ function renderTab(): void {
       ${state.statisticsRange === 'recent' ? `<label>Số kỳ<input data-field="statisticsCount" type="number" min="1" max="60" value="${state.statisticsCount}"></label>` : ''}
       ${state.statisticsRange === 'custom' ? `<label>Từ kỳ<input data-field="statisticsFrom" type="date" value="${esc(state.statisticsFrom)}"></label><label>Đến kỳ<input data-field="statisticsTo" type="date" value="${esc(state.statisticsTo)}"></label>` : ''}
       <label class="check"><input data-field="includeIncomplete" type="checkbox" ${state.includeIncomplete ? 'checked' : ''}> Bao gồm kỳ chưa đầy đủ</label></div>
-      ${statisticsReceipt()}<p class="section-desc">Kết quả tổng và trung bình mỗi ngày được tính từ toàn bộ lịch sử của ${getCurrentScopeLabel(currentEntity()?.entity_level).toLowerCase()}, độc lập với khoảng ngày ở thanh bên. ${workspace?.statisticsPeriods.length || 0} kỳ đang hiển thị.</p>`);
+      ${statisticsReceipt()}<div class="report-entry"><p class="section-desc">Kết quả tổng và trung bình mỗi ngày được tính từ toàn bộ lịch sử của ${getCurrentScopeLabel(currentEntity()?.entity_level).toLowerCase()}, độc lập với khoảng ngày ở thanh bên. ${workspace?.statisticsPeriods.length || 0} kỳ đang hiển thị.</p><button class="text-button" data-action="create-report-from-scope">Tạo báo cáo từ phạm vi này</button></div>`, renderAIInsights());
     reconcileChartCollection(host, workspace?.statistics || [], 'statistics');
   } else if (state.tab === 'comparison') {
     const candidates = workspace?.comparisonCandidates || [];
@@ -1360,11 +1452,10 @@ function renderTab(): void {
     body.innerHTML = `${focusPanel}<p class="section-desc">Đối chiếu giá trị đã nhập với trang tính và ô Excel nguồn · ${fmt(audit?.total || 0)} điểm dữ liệu theo bộ lọc.</p>
       ${audit?.total ? `<div class="table-wrap"><table><thead><tr>${columns.map(col => `<th>${esc(auditHeaders[col])}</th>`).join('')}</tr></thead><tbody>${audit.rows.map(row => `<tr>${columns.map(col => `<td title="${esc(auditCell(col, row[col]))}">${esc(auditCell(col, row[col]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
       <div class="pager"><button data-action="audit-prev" ${!audit.offset ? 'disabled' : ''}>← Trước</button><span>${fmt(audit.offset + 1)}–${fmt(Math.min(audit.offset + audit.rows.length, audit.total))} / ${fmt(audit.total)}</span><button data-action="audit-next" ${audit.offset + audit.rows.length >= audit.total ? 'disabled' : ''}>Sau →</button></div>` : statePanel('Không có dòng đối chiếu theo bộ lọc', 'Hãy đổi nội dung theo dõi hoặc khoảng thời gian để xem dữ liệu nguồn.')}`;
-  } else if (state.tab === 'import') renderImport(body);
-  else renderHistory(body);
+  } else renderHistory(body);
   restorePendingFocus();
 }
-function empty(messageText: string): string { return `<div class="empty"><div class="empty-icon">▥</div><h3>${esc(messageText)}</h3><p>Thử đổi dự án, nội dung theo dõi hoặc khoảng thời gian trong thanh bên.</p></div>`; }
+function empty(messageText: string): string { return `<div class="empty"><div class="empty-icon">${uiIcon('statistics')}</div><h3>${esc(messageText)}</h3><p>Thử đổi dự án, nội dung theo dõi hoặc khoảng thời gian trong thanh bên.</p></div>`; }
 function draw(key: string, figure: Figure, entityRef: string, chartIdentity = key): void {
   const element = document.querySelector<HTMLElement>(`[data-plot="${key}"]`);
   if (!element) return;
@@ -1521,7 +1612,7 @@ function renderContextualComparison(): void {
   const versionLabel = session.sourceDataVersion?.committedImportRef || 'Chưa có phiên bản';
   root.innerHTML = `<dialog id="contextual-comparison-dialog" class="contextual-comparison-dialog" aria-labelledby="contextual-title">
     <div class="contextual-shell">
-      <header class="contextual-header"><div><span class="contextual-eyebrow">Thống kê · So sánh</span><h2 id="contextual-title">${esc(terminology.title)}</h2><p>${esc(terminology.description)}</p></div><button class="dialog-close" data-action="close-contextual-comparison" aria-label="Đóng so sánh">Đóng</button></header>
+      <header class="contextual-header"><div><h2 id="contextual-title">${esc(terminology.title)}</h2><p>${esc(terminology.description)}</p></div><button class="dialog-close" data-action="close-contextual-comparison" aria-label="Đóng so sánh">Đóng</button></header>
       <div class="contextual-status-slot">${statusMarkup}</div>
       <div class="contextual-lenses" role="tablist" aria-label="Cách xem so sánh"><button role="tab" aria-selected="${session.lens === 'metric'}" class="${session.lens === 'metric' ? 'active' : ''}" data-action="contextual-lens-metric">Chỉ số gốc</button><button role="tab" aria-selected="${session.lens === 'statistics'}" class="${session.lens === 'statistics' ? 'active' : ''}" data-action="contextual-lens-statistics">Thống kê</button></div>
       <div class="contextual-receipt"><span>Đang so sánh từ: <strong>${esc(getEntityDisplayName(anchor))}</strong></span><span>Theo ${esc(({ day: 'ngày', week: 'tuần', month: 'tháng', quarter: 'quý' })[state.statisticsGroup])}</span><span>${esc(contextualRangeLabel(context))}</span><span>${esc(contextualCalculationLabel(context))}</span></div>
@@ -1531,7 +1622,7 @@ function renderContextualComparison(): void {
           <div class="contextual-candidates">${candidateMarkup || `<p class="contextual-no-sibling">${esc(terminology.noCandidateMessage)}</p>`}</div>${removedText}
         </aside>
         <section class="contextual-main" aria-live="polite">
-          <div class="contextual-basis"><div><span class="contextual-eyebrow">Cơ sở so sánh</span><strong>${session.lens === 'statistics' ? 'Chọn một cách tính' : 'Chỉ số được chọn sẵn'}</strong><small>${session.lens === 'statistics' ? 'Áp dụng cho cả Tổng số ghi nhận và Tổng báo sai (lỗi); không cần chọn lại chỉ số.' : 'Đổi chỉ số khi cần; các nội dung còn phù hợp sẽ được giữ lại.'}</small></div><div class="contextual-basis-fields ${session.lens}">${session.lens === 'statistics' ? `<label>Cách tính<select id="contextual-calculation" data-context-field="calculation" ${controlsDisabled ? 'disabled' : ''}>${select([{ value: 'sum', label: 'Tổng trong kỳ' }, { value: 'average_per_day', label: 'Trung bình mỗi ngày' }], session.calculation)}</select></label>` : `<label>Chỉ số<select id="contextual-metric" data-context-field="metric" ${controlsDisabled ? 'disabled' : ''}>${select(['Tổng số','Báo sai/Lỗi','% báo sai'].map(value => ({ value, label:value })), session.metric || 'Báo sai/Lỗi')}</select></label>`}</div></div>
+          <div class="contextual-basis"><div><strong>${session.lens === 'statistics' ? 'Chọn một cách tính' : 'Chỉ số được chọn sẵn'}</strong><small>${session.lens === 'statistics' ? 'Áp dụng cho cả Tổng số ghi nhận và Tổng báo sai (lỗi); không cần chọn lại chỉ số.' : 'Đổi chỉ số khi cần; các nội dung còn phù hợp sẽ được giữ lại.'}</small></div><div class="contextual-basis-fields ${session.lens}">${session.lens === 'statistics' ? `<label>Cách tính<select id="contextual-calculation" data-context-field="calculation" ${controlsDisabled ? 'disabled' : ''}>${select([{ value: 'sum', label: 'Tổng trong kỳ' }, { value: 'average_per_day', label: 'Trung bình mỗi ngày' }], session.calculation)}</select></label>` : `<label>Chỉ số<select id="contextual-metric" data-context-field="metric" ${controlsDisabled ? 'disabled' : ''}>${select(['Tổng số','Báo sai/Lỗi','% báo sai'].map(value => ({ value, label:value })), session.metric || 'Báo sai/Lỗi')}</select></label>`}</div></div>
           ${resultMarkup}
         </section>
         <div class="contextual-investigation-host" aria-label="Bằng chứng của điểm đang chọn"></div>
@@ -1689,19 +1780,26 @@ function reportIsTruncated(value: Preview): boolean { return value.issues.length
 function reportDownloadLabel(value: Preview): string { return reportIsTruncated(value) ? 'Tải phần kết quả đã trả về' : 'Tải kết quả kiểm tra'; }
 function importOutcomeCard(result: ImportResult): string {
   const outcome = result.outcome;
-  const revisionId = outcome.run_id ?? outcome.duplicate_of_run_id;
   const isCommitted = outcome.status === 'committed';
   const title = isCommitted ? 'Đã nhập tệp Excel' : outcome.status === 'duplicate' ? 'Tệp Excel đã được nhập trước đó' : 'Lần nhập đã kết thúc';
+  const refreshCopy = importRefresh === 'ready' ? 'Biểu đồ đã được tải lại.'
+    : importRefresh === 'loading' ? 'Đang tải lại biểu đồ…'
+      : importRefresh === 'unavailable' ? 'Chưa có phạm vi biểu đồ hợp lệ để xác nhận cập nhật.'
+        : 'Biểu đồ chưa tải lại được. Kết quả ghi dữ liệu vẫn được giữ.';
   return `<section id="import-result" class="import-result ${isCommitted ? 'success' : 'neutral'}" role="status" aria-live="polite" aria-atomic="true" tabindex="-1">
-    <div class="result-heading"><div><span>Kết quả nhập dữ liệu</span><h3>${esc(title)}</h3><p>${isCommitted ? importPhase === 'committing' ? 'Dữ liệu đã được ghi. Đang tải lại biểu đồ và lịch sử nhập…' : bootstrapError || workspaceError ? 'Dữ liệu đã được ghi. Bảng điều khiển chưa tải lại được; thử làm mới khi kết nối ổn định.' : 'Dữ liệu đã được ghi vào kho nội bộ. Biểu đồ đã được tải lại.' : outcome.status === 'duplicate' ? 'Không ghi thêm dữ liệu trùng; bạn có thể xem lần nhập trước trong lịch sử.' : esc(outcome.message || 'Hãy xem lịch sử nhập để kiểm tra kết quả.')}</p></div><strong>${new Date(result.committedAt).toLocaleString('vi-VN')}</strong></div>
+    <div class="result-heading"><div><h3>${esc(title)}</h3><p>${isCommitted ? 'Dữ liệu đã được ghi vào kho nội bộ.' : outcome.status === 'duplicate' ? 'Không ghi thêm dữ liệu trùng và không tạo phiên dữ liệu mới.' : esc(outcome.message || 'Hãy xem lịch sử nhập để kiểm tra kết quả.')}</p></div><strong title="Thời điểm giao diện nhận kết quả">Nhận kết quả: ${new Date(result.committedAt).toLocaleString('vi-VN')}</strong></div>
     <dl class="outcome-grid">
       <div><dt>Thêm mới</dt><dd>${fmt(outcome.inserted_count)}</dd></div><div><dt>Cập nhật phiên bản</dt><dd>${fmt(outcome.updated_count)}</dd></div>
       <div><dt>Giữ nguyên</dt><dd>${fmt(outcome.unchanged_count)}</dd></div><div><dt>Khôi phục</dt><dd>${fmt(outcome.restored_count)}</dd></div>
       <div><dt>Không còn hiệu lực</dt><dd>${fmt(outcome.deleted_count)}</dd></div><div><dt>Đổi nguồn tham chiếu</dt><dd>${fmt(outcome.lineage_changed_count)}</dd></div>
     </dl>
     <div class="result-context"><span><strong>Tệp Excel:</strong> ${esc(result.fileName)}</span><span><strong>Dự án:</strong> ${esc(previewDestination(result.preview))}</span><span><strong>Phạm vi:</strong> ${esc(previewDateRange(result.preview))}</span><span><strong>Mã nhận diện tệp:</strong> <code title="${esc(result.preview.manifest.source_hash)}">${esc(shortHash(result.preview.manifest.source_hash))}</code></span></div>
+    <div class="import-refresh-status">${isCommitted ? `<p>${refreshCopy} ${importRefresh === 'error' || importRefresh === 'unavailable' ? '<button class="text-action" data-action="refresh-import-dashboard">Thử tải lại biểu đồ</button>' : ''}</p>` : ''}
+      <p id="import-history-refresh-text">${historyLoading ? 'Đang cập nhật lịch sử nhập…' : historyError ? 'Chưa cập nhật được lịch sử nhập. Bạn có thể mở lịch sử và thử tải lại.' : historyLoadedAt ? 'Lịch sử nhập đã được tải lại.' : 'Lịch sử nhập chưa được tải.'}</p>
+    </div>
     <div class="result-actions">
-      <button class="primary" data-action="view-revision" ${revisionId ? '' : 'disabled'}>Xem lịch sử nhập</button>
+      <button class="primary" data-action="view-import-chart">Xem biểu đồ</button>
+      <button class="ghost" data-action="view-revision">Xem lần nhập này</button>
       <button class="ghost" data-action="audit-import">Xem dữ liệu đối chiếu hiện hành</button>
       <button class="ghost" data-action="show-validation">Xem kết quả kiểm tra</button>
       <button class="ghost" data-action="download-validation">${reportDownloadLabel(result.preview)}</button>
@@ -1709,37 +1807,74 @@ function importOutcomeCard(result: ImportResult): string {
   </section>`;
 }
 function renderImport(body: HTMLDivElement): void {
+  const priorFocus = !pendingFocusId && body.contains(document.activeElement)
+    ? (document.activeElement as HTMLElement).id : '';
   const busy = importPhase !== 'idle';
   const guidance = importModeGuidance(importMode);
   const report = preview || importResult?.preview || null;
-  const commitDisabled = !preview?.valid || busy || (importMode === 'full_snapshot' && !fullSnapshotConfirmed);
-  body.innerHTML = `${importResult ? importOutcomeCard(importResult) : ''}
+  const commitDisabled = !preview?.valid || busy || importUncertain || (importMode === 'full_snapshot' && !fullSnapshotConfirmed);
+  body.innerHTML = `<div class="import-intro"><p>Kiểm tra tệp trước khi ghi vào kho dữ liệu. Dự án đích được xác định từ tệp, không theo bộ lọc báo cáo.</p><button id="open-import-history" class="text-action" data-action="open-history" aria-controls="import-history-body" aria-expanded="${historyOpen}">Xem lịch sử nhập</button></div>${importResult ? importOutcomeCard(importResult) : ''}
     <div id="import-live-status" class="import-live-status" role="status" aria-live="polite" aria-atomic="true">${importPhase === 'previewing' ? 'Đang đọc tệp Excel và kiểm tra dữ liệu…' : importPhase === 'committing' ? importResult ? 'Đã ghi dữ liệu. Đang tải lại biểu đồ và lịch sử nhập…' : 'Đang ghi dữ liệu và lưu phiên bản… Không đóng thẻ này.' : ''}</div>
-    ${importError ? `<div class="import-error" role="alert"><strong>${lastImportAction === 'preview' ? 'Không xem trước được tệp Excel.' : 'Chưa xác nhận được kết quả nhập.'}</strong><p>${esc(importError)}</p><p>${lastImportAction === 'preview' ? 'Kiểm tra tệp .xlsx rồi thử lại. Chưa có dữ liệu nào được ghi ở bước xem trước.' : 'Hãy xem Lịch sử nhập trước khi thử ghi lại, vì yêu cầu có thể đã được máy chủ xử lý.'}</p><button class="ghost" data-action="${lastImportAction === 'preview' ? 'retry-import' : 'check-import-history'}">${lastImportAction === 'preview' ? 'Thử xem trước lại' : 'Kiểm tra lịch sử nhập'}</button></div>` : ''}
-    <div class="import-layout"><div class="upload-card"><div class="upload-symbol" aria-hidden="true">↥</div><h3>Nhập tệp Excel</h3><p>Kiểm tra chất lượng trước khi ghi vào kho dữ liệu. Tệp .xlsx tối đa 50 MB.</p>
-      <input id="file-input" type="file" accept=".xlsx" ${busy ? 'disabled' : ''} aria-describedby="file-constraints"/><label class="upload-button" for="file-input">Chọn tệp Excel</label><p id="file-constraints" class="field-hint">Bước xem trước chỉ đọc tệp, chưa ghi dữ liệu.</p>
+    ${importError ? `<div class="import-error" role="alert"><strong id="import-error-heading" tabindex="-1">${lastImportAction === 'preview' ? 'Không xem trước được tệp Excel.' : importUncertain ? 'Chưa xác nhận được kết quả nhập.' : 'Chưa ghi được dữ liệu.'}</strong><p>${esc(importError)}</p><p>${lastImportAction === 'preview' ? 'Kiểm tra tệp .xlsx rồi thử lại. Chưa có dữ liệu nào được ghi ở bước xem trước.' : importUncertain ? 'Yêu cầu có thể đã được máy chủ xử lý. Kiểm tra lịch sử trước; không tự gửi lại hoặc kết luận theo tên tệp. Chưa tìm thấy trong 100 dòng không có nghĩa là chưa ghi.' : 'Kiểm tra lại tệp và kết quả xem trước trước khi xác nhận. Không có thao tác ghi lại tự động.'}</p><button class="ghost" data-action="${importUncertain ? 'check-import-history' : 'retry-import'}">${importUncertain ? 'Kiểm tra lịch sử nhập' : 'Thử xem trước lại'}</button></div>` : ''}
+    ${!importResult ? `<div class="import-layout"><div class="upload-card"><div class="upload-symbol" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></svg></div><h3>Nhập tệp Excel</h3><p>Kiểm tra chất lượng trước khi ghi vào kho dữ liệu. Tệp .xlsx tối đa 50 MB.</p>
+      <input id="file-input" type="file" accept=".xlsx" ${busy || importUncertain ? 'disabled' : ''} aria-describedby="file-constraints"/><label class="upload-button" for="file-input">Chọn tệp Excel</label><p id="file-constraints" class="field-hint">Bước xem trước chỉ đọc tệp, chưa ghi dữ liệu.</p>
       ${selectedFile ? `<div class="selected-file"><strong>${esc(selectedFile.name)}</strong><span>${fmt(Math.round(selectedFile.size / 1024))} KB</span></div>` : ''}
-      <label class="field import-mode"><span>Cách nhập dữ liệu</span><select id="import-mode" ${busy ? 'disabled' : ''}>${select([{value:'incremental',label:'Chỉ dữ liệu bổ sung'},{value:'full_snapshot',label:'Bản chụp đầy đủ'}], importMode)}</select></label>
+      <label class="field import-mode"><span>Cách nhập dữ liệu</span><select id="import-mode" ${busy || importUncertain ? 'disabled' : ''}>${select([{value:'incremental',label:'Chỉ dữ liệu bổ sung'},{value:'full_snapshot',label:'Bản chụp đầy đủ'}], importMode)}</select></label>
       <div class="mode-guidance ${importMode === 'full_snapshot' ? 'high-risk' : ''}"><strong>${esc(guidance.title)}</strong><p>${esc(guidance.body)}</p></div>
-      <button id="preview-action" class="primary wide" data-action="preview" ${selectedFile && !busy ? '' : 'disabled'}>${preview ? 'Kiểm tra lại tệp Excel' : 'Xem trước và kiểm tra'}</button></div>
+      <button id="preview-action" class="primary wide" data-action="preview" ${selectedFile && !busy && !importUncertain ? '' : 'disabled'}>${preview ? 'Kiểm tra lại tệp Excel' : 'Xem trước và kiểm tra'}</button></div>
       <div class="preview-card" aria-busy="${busy}"><h3 id="preview-result-heading" tabindex="-1">Kết quả xem trước</h3>${preview ? `<div class="preview-status ${preview.valid ? 'valid' : 'invalid'}" role="${preview.valid ? 'status' : 'alert'}">${preview.valid ? 'Đạt kiểm tra · có thể xác nhận nhập' : 'Không đạt kiểm tra · chưa ghi dữ liệu'}</div>
       <dl class="preview-identity"><div><dt>Dự án đích</dt><dd>${esc(previewDestination(preview))}</dd></div><div><dt>Tệp Excel</dt><dd>${esc(selectedFile?.name || preview.manifest.source_file)}</dd></div><div><dt>Phạm vi ngày</dt><dd>${esc(previewDateRange(preview))}</dd></div><div><dt>Mã nhận diện tệp</dt><dd><code title="${esc(preview.manifest.source_hash)}">${esc(shortHash(preview.manifest.source_hash))}</code></dd></div></dl>
       <div class="preview-metrics"><div><strong>${fmt(preview.manifest.record_count)}</strong><span>Điểm dữ liệu trong tệp</span></div><div><strong>${fmt(preview.manifest.date_count)}</strong><span>Ngày có dữ liệu</span></div><div><strong>${fmt(preview.errorCount)}</strong><span>Lỗi</span></div><div><strong>${fmt(preview.warningCount)}</strong><span>Cảnh báo</span></div></div>
-      <section class="impact-summary" aria-labelledby="impact-heading"><div class="subsection-heading"><h4 id="impact-heading">Tác động khi ghi</h4><span>Xác định sau khi xác nhận</span></div><dl><div><dt>Thêm mới</dt><dd>—</dd></div><div><dt>Cập nhật phiên bản</dt><dd>—</dd></div><div><dt>Giữ nguyên</dt><dd>—</dd></div><div><dt>Thay phiên bản</dt><dd>—</dd></div></dl><p>Hệ thống chưa tính được số thay đổi chính xác ở bước xem trước. Kết quả thực tế sẽ hiển thị sau khi nhập.</p></section>
-      <section class="revision-behavior"><h4>Cách lưu phiên bản</h4><p>${esc(guidance.body)}</p><p>Thay đổi giá trị được lưu thành phiên bản mới; tệp Excel nguồn và lịch sử nhập vẫn được giữ để đối chiếu.</p></section>
+      <p class="impact-note">Số thêm mới, cập nhật và giữ nguyên chỉ được xác định sau khi ghi; kết quả thực tế sẽ hiển thị sau khi nhập.</p>
+      <details class="revision-behavior"><summary>Cách lưu phiên bản</summary><p>${esc(guidance.body)}</p><p>Thay đổi giá trị được lưu thành phiên bản mới; tệp Excel nguồn và lịch sử nhập vẫn được giữ để đối chiếu.</p></details>
       <section class="validation-report" aria-labelledby="validation-heading"><div class="subsection-heading"><h4 id="validation-heading">Kết quả kiểm tra</h4><button class="text-action" data-action="download-validation">${reportDownloadLabel(preview)}</button></div><div class="issue-list">${validationIssues(preview)}</div>${reportIsTruncated(preview) ? `<p class="issue-limit">Chỉ hiển thị và tải được ${fmt(preview.issues.length)} / ${fmt(preview.errorCount + preview.warningCount)} mục kiểm tra; tổng lỗi và cảnh báo ở trên vẫn đầy đủ.</p>` : ''}</section>
-      ${importMode === 'full_snapshot' && preview.valid ? `<label class="snapshot-confirm"><input id="snapshot-confirm" type="checkbox" ${fullSnapshotConfirmed ? 'checked' : ''}><span><strong>Tôi xác nhận nhập bản chụp đầy đủ.</strong>Tôi hiểu giá trị trùng khóa có thể tạo phiên bản mới; giá trị vắng mặt trong tệp không bị tự động xóa theo chính sách hiện tại.</span></label>` : ''}
-      <button class="primary wide commit-button" data-action="commit" ${commitDisabled ? 'disabled' : ''}>${importMode === 'full_snapshot' ? 'Xác nhận nhập bản chụp' : 'Xác nhận nhập dữ liệu bổ sung'}</button>` : '<div class="preview-placeholder"><p>Chọn tệp Excel rồi xem trước dự án đích, phạm vi ngày, mã nhận diện tệp và kết quả kiểm tra.</p><strong>Chỉ ghi dữ liệu sau khi bạn xác nhận.</strong></div>'}</div></div>
-    ${importResult && showAllIssues && report ? `<section id="committed-validation" class="committed-validation" tabindex="-1"><div class="subsection-heading"><h3>Kết quả kiểm tra của tệp Excel vừa nhập</h3><button class="text-action" data-action="download-validation">${reportDownloadLabel(report)}</button></div><div class="issue-list">${validationIssues(report)}</div>${reportIsTruncated(report) ? `<p class="issue-limit">Chỉ có ${fmt(report.issues.length)} / ${fmt(report.errorCount + report.warningCount)} mục chi tiết trong bản xem trước này.</p>` : ''}</section>` : ''}`;
+      ${importMode === 'full_snapshot' && preview.valid ? `<label class="snapshot-confirm"><input id="snapshot-confirm" type="checkbox" ${fullSnapshotConfirmed ? 'checked' : ''} ${busy || importUncertain ? 'disabled' : ''}><span><strong>Tôi xác nhận nhập bản chụp đầy đủ.</strong>Tôi hiểu giá trị trùng khóa có thể tạo phiên bản mới; giá trị vắng mặt trong tệp không bị tự động xóa theo chính sách hiện tại.</span></label>` : ''}
+      <button class="primary wide commit-button" data-action="commit" ${commitDisabled ? 'disabled' : ''}>${importMode === 'full_snapshot' ? 'Xác nhận nhập bản chụp' : 'Xác nhận nhập dữ liệu bổ sung'}</button>` : '<div class="preview-placeholder"><p>Chọn tệp Excel rồi xem trước dự án đích, phạm vi ngày, mã nhận diện tệp và kết quả kiểm tra.</p><strong>Chỉ ghi dữ liệu sau khi bạn xác nhận.</strong></div>'}</div></div>` : `<div class="import-next"><p>Kết quả vừa nhập được giữ ở trên. Chỉ chọn tệp mới khi bạn muốn bắt đầu một lần nhập khác.</p><button class="ghost" data-action="new-import" ${importRefresh === 'loading' ? 'disabled' : ''}>Nhập tệp khác</button></div>`}
+    ${importResult && showCommittedValidation && report ? `<section id="committed-validation" class="committed-validation" tabindex="-1"><div class="subsection-heading"><h3>Kết quả kiểm tra của tệp Excel vừa nhập</h3><button class="text-action" data-action="download-validation">${reportDownloadLabel(report)}</button></div><div class="issue-list">${validationIssues(report)}</div>${reportIsTruncated(report) ? `<p class="issue-limit">Chỉ có ${fmt(report.issues.length)} / ${fmt(report.errorCount + report.warningCount)} mục chi tiết trong bản xem trước này.</p>` : ''}</section>` : ''}${historySectionMarkup()}`;
+  renderHistoryRegion();
+  if (priorFocus) document.getElementById(priorFocus)?.focus({ preventScroll: true });
   restorePendingFocus();
 }
+function historySectionMarkup(): string {
+  return `<section class="import-history" aria-label="Lịch sử nhập gần đây"><h3><button id="history-toggle" class="history-toggle" data-action="toggle-history" aria-expanded="${historyOpen}" aria-controls="import-history-body"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 5 7 7-7 7"/></svg>Lịch sử nhập gần đây</button></h3><p class="history-scope">Tối đa 100 lần nhập gần nhất của nguồn dữ liệu, không lọc theo dự án đang xem. Chỉ những lần thử ghi đã được lưu mới có trong lịch sử.</p><div id="import-history-body" ${historyOpen ? '' : 'hidden'}></div></section>`;
+}
+function renderHistoryRegion(): void {
+  const body = document.getElementById('import-history-body');
+  if (!body) return;
+  const priorFocus = body.contains(document.activeElement) ? (document.activeElement as HTMLElement).id : '';
+  body.hidden = !historyOpen;
+  document.getElementById('history-toggle')?.setAttribute('aria-expanded', String(historyOpen));
+  document.getElementById('open-import-history')?.setAttribute('aria-expanded', String(historyOpen));
+  if (historyOpen) body.innerHTML = importHistoryContents({
+    items: historyItems, loading: historyLoading, error: historyError, loadedAt: historyLoadedAt,
+    selectedAttempt: historySelectedAttempt, focusedAttempt: historyFocusedAttempt, formatCell: historyCell,
+  });
+  if (priorFocus && historyOpen) document.getElementById(priorFocus)?.focus({ preventScroll: true });
+  const receiptStatus = document.getElementById('import-history-refresh-text');
+  if (receiptStatus) receiptStatus.textContent = historyLoading ? 'Đang cập nhật lịch sử nhập…' : historyError
+    ? 'Chưa cập nhật được lịch sử nhập. Bạn có thể mở lịch sử và thử tải lại.'
+    : historyLoadedAt ? 'Lịch sử nhập đã được tải lại.' : 'Lịch sử nhập chưa được tải.';
+}
 function renderHistory(body: HTMLDivElement): void {
-  if (historyLoading) { body.innerHTML = statePanel('Đang tải lịch sử nhập', 'Đang lấy các lần nhập gần nhất từ kho dữ liệu.'); return; }
-  if (historyError) { body.innerHTML = statePanel('Không tải được lịch sử nhập', `${historyError} Dữ liệu đã nhập không bị thay đổi.`, true, 'retry-history'); return; }
-  const cols = ['started_at','submitted_file_name','attempt_status','requested_mode','input_record_count','inserted_count','updated_count','unchanged_count'];
-  const latestAttempt = importResult?.outcome.attempt_id;
-  body.innerHTML = `<p class="section-desc">Tối đa 100 lần nhập gần nhất, gồm lần đã ghi, trùng, không đạt kiểm tra và thất bại.</p>${historyItems.length ? `<div class="table-wrap"><table><thead><tr>${cols.map(col => `<th>${esc(historyHeaders[col])}</th>`).join('')}</tr></thead><tbody>${historyItems.map(item => { const current = Number(item.attempt_id) === latestAttempt; return `<tr ${current ? 'id="latest-import-row" class="current-import" tabindex="-1" aria-current="true"' : ''}>${cols.map(col => `<td title="${esc(historyCell(col, item[col]))}">${esc(historyCell(col, item[col]))}</td>`).join('')}</tr>`; }).join('')}</tbody></table></div>` : statePanel('Chưa có lần nhập nào', 'Sau khi kiểm tra và xác nhận tệp Excel đầu tiên, kết quả sẽ xuất hiện ở đây.')}`;
-  restorePendingFocus();
+  // Compatibility for old internal callers; no separate top-level history surface.
+  state.tab = 'import'; historyOpen = true; renderImport(body);
+}
+function openImportHistory(attemptId?: number, force = false): void {
+  historyOpen = true;
+  if (attemptId !== undefined) { historyFocusedAttempt = attemptId; historySelectedAttempt = attemptId; }
+  renderHistoryRegion();
+  const heading = document.getElementById('history-toggle');
+  heading?.focus(); heading?.scrollIntoView({ block: 'nearest' });
+  if (force || !historyLoadedAt) void refreshHistory().then(applied => {
+    if (applied && historyOpen && state.tab === 'import' && attemptId !== undefined) {
+      const row = document.getElementById(`history-row-${attemptId}`);
+      row?.focus(); row?.scrollIntoView({ block: 'nearest' });
+    }
+  });
+  else if (attemptId !== undefined) {
+    const row = document.getElementById(`history-row-${attemptId}`);
+    row?.focus(); row?.scrollIntoView({ block: 'nearest' });
+  }
 }
 function downloadValidationReport(): void {
   const value = preview || importResult?.preview;
@@ -1785,6 +1920,7 @@ async function loadWorkspace(debounceMs = 0, force = false): Promise<void> {
   });
   if (state.mode === 'custom' && state.start && state.end) { params.set('start', state.start); params.set('end', state.end); }
   if (state.entity) params.set('entity', state.entity);
+  if (['overview', 'statistics'].includes(requestedView) && overviewSources[state.project]) params.set('overview_source', overviewSources[state.project]);
   if (state.statisticsRange === 'custom') {
     if (state.statisticsFrom) params.set('statistics_from', state.statisticsFrom);
     if (state.statisticsTo) params.set('statistics_to', state.statisticsTo);
@@ -1800,6 +1936,7 @@ async function loadWorkspace(debounceMs = 0, force = false): Promise<void> {
     const result = await api<Workspace>(`/projects/${encodeURIComponent(state.project)}/workspace?${params}`, { signal: current.signal }, trace);
     if (current !== request) { void finishWorkspaceTrace(trace, 'aborted'); return; }
     workspace = result; workspaceProject = state.project; workspaceView = requestedView; state.entity = result.selectedEntity;
+    if (['overview', 'statistics'].includes(requestedView)) lastSummaryContextKey = summaryContextKey();
     if (requestedView === 'comparison' && !result.comparisonContext) {
       const candidateIds = new Set(result.comparisonCandidates.map(item => item.entity_id));
       const retained = state.comparisonEntities.filter(id => candidateIds.has(id)).slice(0, 3);
@@ -1819,6 +1956,9 @@ async function loadWorkspace(debounceMs = 0, force = false): Promise<void> {
       || aiAnalysis.window.start !== result.window.start
       || aiAnalysis.window.end !== result.window.end
     )) aiLocallyStale = true;
+    if (contextInsight && contextInsight.dataAsOf.committedImportRef !== result.dataVersion?.committedImportRef) {
+      invalidateAIAnalysis();
+    }
     displayedFilterLabel = workspaceFilterLabel(result); lastWorkspaceRequestKey = requestKey;
     workspaceError = ''; message = ''; save();
     renderSidebar(); updateWorkspaceChrome();
@@ -1845,7 +1985,10 @@ async function loadWorkspace(debounceMs = 0, force = false): Promise<void> {
   }
 }
 function invalidateAIAnalysis(clear = false): void {
-  aiRequest?.abort(); aiLoading = false; aiAnalysisError = '';
+  aiRequest?.abort(); aiRequest = null; aiLoading = false; aiAnalysisError = '';
+  contextInsightRequest?.abort(); contextInsightRequest = null; contextInsightLoading = false; contextInsightError = '';
+  if (clear) { contextInsight = null; contextInsightStale = false; contextInsightFocus = ''; contextInsightSelected = []; }
+  else if (contextInsight) contextInsightStale = true;
   if (clear) { aiAnalysis = null; aiLocallyStale = false; }
   else if (aiAnalysis) aiLocallyStale = true;
 }
@@ -1854,7 +1997,7 @@ async function loadAIStatus(): Promise<void> {
   aiStatusError = '';
   try { aiStatus = await api<AIStatus>('/ai/status'); }
   catch (error) { aiStatus = null; aiStatusError = (error as Error).message; }
-  if (state.tab === 'overview') renderTab();
+  if (state.tab === 'overview' || state.tab === 'statistics') renderTab();
 }
 
 async function refreshAIAnalysisFreshness(): Promise<void> {
@@ -1866,6 +2009,84 @@ async function refreshAIAnalysisFreshness(): Promise<void> {
     aiLocallyStale = refreshed.status === 'stale' || refreshed.dataAsOf.stale;
     if (state.tab === 'overview') renderTab();
   } catch { /* A transient freshness check must not break the dashboard. */ }
+}
+
+function reportSeed(): ReportSeed {
+  const project = currentProject();
+  const statistics = reportAnalysisView === 'statistics';
+  const first = workspaceProject === state.project ? workspace?.window.start : null;
+  const last = workspaceProject === state.project ? workspace?.window.end : null;
+  return { project: state.project, entities, minDate: project?.minDate || '', maxDate: project?.maxDate || '',
+    canGenerate: !!(aiStatus?.enabled && aiStatus.configured && aiStatus.externalAllowed), onEvidence: openReportEvidence,
+    context: { view: statistics ? 'statistics' : 'overview', parentEntityRef: state.entity || entities[0]?.entity_id || '',
+      selection: state.scope === 'children' ? 'all' : 'node', entityRefs: [], metricCode: 'all',
+      start: first || project?.minDate || '', end: last || project?.maxDate || '',
+      groupBy: statistics ? state.statisticsGroup : (state.mode === 'week' || state.mode === 'month' ? state.mode : 'day'),
+      calculation: statistics ? ({sum:'sum',average:'average_per_day',both:'both'})[state.statisticsMode] : 'sum',
+      rangeMode: state.statisticsRange, periodCount: state.statisticsCount,
+      periodFrom: state.statisticsFrom || null, periodTo: state.statisticsTo || null,
+      includeIncomplete: state.includeIncomplete, expectedImportRef: null } };
+}
+
+function openReportEvidence(document: ReportDocument, evidence: ReportEvidence, entityRef: string): void {
+  const selection: InvestigationSelection = { kind: evidence.target.kind === 'exact' ? 'exact-observation' : 'aggregate',
+    aggregateRef: evidence.target.aggregateRef || null, observationRef: evidence.target.observationRef || null,
+    lineageRef: evidence.target.lineageRef || null,
+    origin: { plotKey: 'report-snapshot', tab: 'report', entityRef, seriesName: 'Báo cáo · dữ liệu đã chụp',
+      observedDate: evidence.observedDate, displayedValue: 'Số liệu hỗ trợ báo cáo', curveNumber: -1, pointNumber: -1 } };
+  if (document.context.project !== state.project) return;
+  aggregateParent = null; revisionHistory = null; importDetail = null;
+  void loadProvenance(selection);
+}
+
+async function generateContextInsight(): Promise<void> {
+  if (!workspace || !aiStatus?.enabled || !aiStatus.configured || contextInsightLoading) return;
+  contextInsightRequest?.abort();
+  const current = new AbortController(); contextInsightRequest = current;
+  const node = contextInsightFocus || (state.scope === 'node' ? state.entity : '');
+  const selection = node ? 'node' : contextInsightSelection;
+  const statistics = state.tab === 'statistics';
+  contextInsightLoading = true; contextInsightError = ''; renderTab();
+  try {
+    const result = await api<ContextInsight>(`/projects/${encodeURIComponent(state.project)}/ai/context-insight`, {
+      method: 'POST', signal: current.signal, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schemaVersion: 'ai-context-request-v1', view: statistics ? 'statistics' : 'overview',
+        parentEntityRef: node || state.entity, selection, entityRefs: selection === 'selected' ? contextInsightSelected : [],
+        metricCode: statistics ? 'all' : state.aiMetricCode, start: workspace.window.start, end: workspace.window.end,
+        groupBy: statistics ? state.statisticsGroup : state.aiGroupBy,
+        calculation: statistics ? ({sum:'sum',average:'average_per_day',both:'both'})[state.statisticsMode] : 'sum',
+        rangeMode: state.statisticsRange, periodCount: state.statisticsCount,
+        periodFrom: state.statisticsRange === 'custom' && state.statisticsFrom ? state.statisticsFrom : null,
+        periodTo: state.statisticsRange === 'custom' && state.statisticsTo ? state.statisticsTo : null,
+        includeIncomplete: state.includeIncomplete, expectedImportRef: workspace.dataVersion?.committedImportRef || null }),
+    });
+    if (contextInsightRequest !== current) return;
+    contextInsight = result; contextInsightStale = false;
+  } catch (error) {
+    if (current.signal.aborted || contextInsightRequest !== current) return;
+    contextInsightError = `Chưa tạo được phân tích. ${(error as Error).message} Kiểm tra phạm vi và thử lại.`;
+  } finally {
+    if (contextInsightRequest === current) {
+      contextInsightLoading = false; contextInsightRequest = null; renderTab();
+      requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('[data-action="generate-context-insight"]')?.focus());
+    }
+  }
+}
+
+function openContextInsightEvidence(evidenceId: string): void {
+  const evidence = contextInsight?.evidence.find(e => e.evidenceId === evidenceId);
+  if (!evidence || !contextInsight) return;
+  const issue = contextInsight.report.issues.find(i => i.metrics.some(m => m.series.some(p => p.evidenceId === evidenceId)));
+  const selection: InvestigationSelection = {
+    kind: evidence.target.kind === 'exact' ? 'exact-observation' : 'aggregate',
+    aggregateRef: evidence.target.aggregateRef || null, observationRef: evidence.target.observationRef || null,
+    lineageRef: evidence.target.lineageRef || null,
+    origin: { plotKey: 'ai-insight', tab: contextInsight.context.view as Tab, entityRef: issue?.entityRef || '',
+      seriesName: issue?.entityLabel || 'Phân tích', observedDate: evidence.observedDate,
+      displayedValue: 'Số liệu hỗ trợ phân tích', curveNumber: 0, pointNumber: 0 },
+  };
+  aggregateParent = null; revisionHistory = null; importDetail = null;
+  void loadProvenance(selection);
 }
 
 async function generateAIInsight(): Promise<void> {
@@ -1941,21 +2162,41 @@ async function refreshProject(forceWorkspace = false): Promise<void> {
     if (workspace) updateWorkspaceRequestStatus(); else renderMain();
   }
 }
-async function refreshHistory(): Promise<void> {
-  historyError = ''; historyLoading = true; if (state.tab === 'history') renderTab();
-  try { historyItems = (await api<{items: Record<string, unknown>[]}>('/imports')).items; }
-  catch (error) { historyError = (error as Error).message; }
-  historyLoading = false; if (state.tab === 'history') renderTab();
+async function refreshHistory(): Promise<boolean> {
+  historyRequest?.abort();
+  const current = new AbortController(); historyRequest = current;
+  historyError = ''; historyLoading = true; renderHistoryRegion();
+  try {
+    const result = await api<{items: Record<string, unknown>[]}>('/imports', { signal: current.signal });
+    if (current !== historyRequest) return false;
+    historyItems = result.items; historyLoadedAt = new Date().toISOString();
+  } catch (error) {
+    if (current !== historyRequest) return false;
+    historyError = (error as Error).message;
+  }
+  historyLoading = false; historyRequest = null; renderHistoryRegion();
+  return true;
 }
+
+app.addEventListener('input', event => {
+  const target = event.target as HTMLInputElement;
+  if (!target.hasAttribute('data-context-insight-search')) return;
+  const query = target.value.toLocaleLowerCase('vi');
+  app.querySelectorAll<HTMLElement>('[data-context-issue-label]').forEach(label => {
+    label.hidden = !(label.dataset.contextIssueLabel || '').includes(query);
+  });
+});
 app.addEventListener('change', event => {
   const interactionAt = performance.now();
   const target = event.target as HTMLInputElement | HTMLSelectElement;
   if (target.id === 'file-input' && target instanceof HTMLInputElement) {
+    if (importPhase !== 'idle' || importUncertain) return;
+    importSession += 1; importRefresh = 'idle'; showCommittedValidation = false;
     selectedFile = target.files?.[0] || null; preview = null; importResult = null; importError = '';
     fullSnapshotConfirmed = false; showAllIssues = false; pendingFocusId = selectedFile ? 'preview-action' : 'file-input'; renderTab(); return;
   }
-  if (target.id === 'import-mode') { importMode = target.value as typeof importMode; fullSnapshotConfirmed = false; pendingFocusId = 'import-mode'; renderTab(); return; }
-  if (target.id === 'snapshot-confirm' && target instanceof HTMLInputElement) { fullSnapshotConfirmed = target.checked; pendingFocusId = 'snapshot-confirm'; renderTab(); return; }
+  if (target.id === 'import-mode') { if (importPhase !== 'idle' || importUncertain) return; importMode = target.value as typeof importMode; fullSnapshotConfirmed = false; pendingFocusId = 'import-mode'; renderTab(); return; }
+  if (target.id === 'snapshot-confirm' && target instanceof HTMLInputElement) { if (importPhase !== 'idle' || importUncertain) return; fullSnapshotConfirmed = target.checked; pendingFocusId = 'snapshot-confirm'; renderTab(); return; }
   if (target.dataset.contextField === 'metric' && contextualComparison) {
     closeContextualInvestigation();
     contextualComparison.metric = target.value || null;
@@ -1992,16 +2233,33 @@ app.addEventListener('change', event => {
     void loadWorkspace(120); return;
   }
   const field = target.dataset.field as keyof State | undefined;
+  if (target.hasAttribute('data-overview-source')) {
+    overviewSources[state.project] = target.value;
+    sessionStorage.setItem('excel_visualization_pipeline.overview-sources.v1', JSON.stringify(overviewSources));
+    void loadWorkspace(); return;
+  }
+  if (target.dataset.contextInsightIssue) {
+    const id = target.dataset.contextInsightIssue;
+    contextInsightSelected = target instanceof HTMLInputElement && target.checked
+      ? [...new Set([...contextInsightSelected, id])] : contextInsightSelected.filter(x => x !== id);
+    invalidateAIAnalysis(); renderTab(); return;
+  }
+  if (target.hasAttribute('data-context-insight-selection')) {
+    contextInsightSelection = target.value; contextInsightFocus = '';
+    invalidateAIAnalysis(); renderTab(); return;
+  }
   if (!field) return;
+  if (field === 'project' && state.tab === 'report' && !reportWorkspace.prepareToLeave()) { target.value = state.project; return; }
   if (contextualComparison) closeContextualComparison();
   const value: string | number | boolean = target instanceof HTMLInputElement && target.type === 'checkbox' ? target.checked : target.type === 'number' ? Number(target.value) : target.value;
   (state as unknown as Record<string, string | number | boolean>)[field] = value;
   if (field === 'aiMetricCode' || field === 'aiGroupBy') {
     invalidateAIAnalysis(); save(); renderTab(); return;
   }
-  if (['project', 'mode', 'count', 'start', 'end', 'entity', 'scope'].includes(field)) {
+  if (['project', 'mode', 'count', 'start', 'end', 'entity', 'scope', 'statisticsGroup', 'statisticsMode', 'statisticsRange', 'statisticsCount', 'statisticsFrom', 'statisticsTo', 'includeIncomplete'].includes(field)) {
     invalidateAIAnalysis(field === 'project');
   }
+  if (field === 'entity' || field === 'scope') { contextInsightFocus = ''; contextInsightSelected = []; }
   if (field === 'project') {
     closeContextualComparison();
     state.entity = ''; state.comparisonEntities = []; state.start = ''; state.end = '';
@@ -2018,6 +2276,11 @@ app.addEventListener('change', event => {
 app.addEventListener('click', event => {
   const element = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-action]');
   if (!element) return;
+  if (element.dataset.action === 'reset-overview-source') {
+    delete overviewSources[state.project];
+    sessionStorage.setItem('excel_visualization_pipeline.overview-sources.v1', JSON.stringify(overviewSources));
+    void loadWorkspace(0, true); return;
+  }
   if (element.dataset.action === 'toggle-sidebar') {
     sidebarCollapsed = !sidebarCollapsed;
     app.querySelector('.shell')?.classList.toggle('sidebar-collapsed', sidebarCollapsed);
@@ -2026,13 +2289,37 @@ app.addEventListener('click', event => {
     return;
   }
   if (element.dataset.tab) {
+    const nextTab = element.dataset.tab as Tab;
+    if (state.tab === 'report' && nextTab !== 'report' && !reportWorkspace.prepareToLeave()) return;
+    if (state.tab === 'report' && nextTab !== 'report') reportWorkspace.leave();
+    if (nextTab === 'report' && (state.tab === 'overview' || state.tab === 'statistics')) reportAnalysisView = state.tab;
     closeContextualComparison();
-    state.tab = element.dataset.tab as Tab; save(); renderMain();
-    if (state.tab === 'history') void refreshHistory();
+    invalidateAIAnalysis(); contextInsightFocus = '';
+    const next = element.dataset.tab as Tab;
+    state.tab = next === 'history' ? 'import' : next;
+    if (state.tab === 'import') {
+      historyOpen = next === 'history';
+      investigationRequest?.abort(); investigation = { status: 'closed' }; renderInvestigation();
+    }
+    save(); renderMain();
+    if (next === 'history') openImportHistory();
     else if (['overview', 'statistics', 'comparison', 'audit'].includes(state.tab) && workspaceView !== state.tab) void loadWorkspace();
     return;
   }
   const action = element.dataset.action;
+  if (action === 'create-report-from-scope') {
+    reportAnalysisView = state.tab === 'statistics' ? 'statistics' : 'overview';
+    reportWorkspace.seedFromDashboard(reportSeed());
+    closeContextualComparison(); state.tab = 'report'; save(); renderMain(); return;
+  }
+  if (action === 'open-issue-insight' && element.dataset.entityId) {
+    invalidateAIAnalysis(true); contextInsightFocus = element.dataset.entityId; renderTab();
+    requestAnimationFrame(() => { document.getElementById('ai-insights')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); document.querySelector<HTMLButtonElement>('[data-action="generate-context-insight"]')?.focus(); });
+    return;
+  }
+  if (action === 'clear-context-insight-focus') { invalidateAIAnalysis(true); renderTab(); return; }
+  if (action === 'generate-context-insight') { void generateContextInsight(); return; }
+  if (action === 'open-context-insight-evidence' && element.dataset.evidenceId) { openContextInsightEvidence(element.dataset.evidenceId); return; }
   if (action === 'open-contextual-comparison' && element.dataset.entityId) {
     openContextualComparison(element.dataset.entityId, element.id); return;
   }
@@ -2085,7 +2372,29 @@ app.addEventListener('click', event => {
   }
   if (action === 'show-revisions') { void loadRevisions(); return; }
   if (action === 'show-import' && element.dataset.importRef) { void loadImport(element.dataset.importRef); return; }
-  if (action === 'check-import-history') { state.tab = 'history'; save(); renderMain(); void refreshHistory(); return; }
+  if (action === 'open-history' || action === 'check-import-history') { openImportHistory(undefined, action === 'check-import-history'); return; }
+  if (action === 'toggle-history') {
+    if (!historyOpen) openImportHistory();
+    else { historyOpen = false; document.getElementById('history-toggle')?.focus(); renderHistoryRegion(); }
+    return;
+  }
+  if (action === 'history-detail') {
+    const id = Number(element.dataset.attemptId);
+    historySelectedAttempt = historySelectedAttempt === id ? null : id;
+    renderHistoryRegion(); document.getElementById(`history-detail-${id}`)?.focus({ preventScroll: true }); return;
+  }
+  if (action === 'new-import') {
+    if (importPhase !== 'idle' || importRefresh === 'loading' || importUncertain) return;
+    importSession += 1; selectedFile = null; preview = null; importResult = null; importError = '';
+    importRefresh = 'idle'; fullSnapshotConfirmed = false; showAllIssues = false; showCommittedValidation = false;
+    pendingFocusId = 'file-input'; renderTab(); return;
+  }
+  if (action === 'view-import-chart') {
+    state.tab = 'overview'; save(); renderMain(); if (workspaceView !== 'overview') void loadWorkspace(); return;
+  }
+  if (action === 'refresh-import-dashboard' && importResult) {
+    void refreshImportedWorkspace(importResult, importPreviousVersion); return;
+  }
   if (action === 'copy-cell') { void copyInvestigationValue('cell'); return; }
   if (action === 'copy-value') { void copyInvestigationValue('value'); return; }
   if (action === 'open-exact-audit') {
@@ -2101,23 +2410,22 @@ app.addEventListener('click', event => {
   }
   if (action === 'toggle-issues') { showAllIssues = !showAllIssues; pendingFocusId = 'validation-heading'; renderTab(); return; }
   if (action === 'download-validation') { downloadValidationReport(); return; }
-  if (action === 'show-validation') { showAllIssues = true; pendingFocusId = 'committed-validation'; renderTab(); return; }
+  if (action === 'show-validation') { showCommittedValidation = true; pendingFocusId = 'committed-validation'; renderTab(); return; }
   if (action === 'view-revision') {
-    state.tab = 'history'; save(); renderMain();
-    void refreshHistory().then(() => { pendingFocusId = 'latest-import-row'; renderTab(); }); return;
+    openImportHistory(importResult?.outcome.attempt_id, true); return;
   }
   if (action === 'audit-import') {
     state.tab = 'audit'; state.auditOffset = 0; save();
     const runId = importResult?.outcome.run_id ?? importResult?.outcome.duplicate_of_run_id;
     message = runId ? 'Mục Đối chiếu dữ liệu hiển thị các điểm dữ liệu hiện hành sau lần nhập; đây không phải danh sách thay đổi riêng của lần đó.' : 'Mục Đối chiếu dữ liệu hiển thị các điểm dữ liệu hiện hành, không phải danh sách thay đổi riêng của lần nhập.';
-    pendingFocusId = 'tab-body'; renderMain(); return;
+    pendingFocusId = 'tab-body'; renderMain(); void loadWorkspace(); return;
   }
   if (action === 'retry-import') {
-    if (lastImportAction === 'commit' && preview?.valid) void commitFile(); else if (selectedFile) void previewFile();
+    if (selectedFile && !importUncertain) void previewFile();
     return;
   }
   if (action === 'preview' && selectedFile) void previewFile();
-  if (action === 'commit' && selectedFile && preview?.valid && (importMode !== 'full_snapshot' || fullSnapshotConfirmed)) void commitFile();
+  if (action === 'commit' && !importUncertain && selectedFile && preview?.valid && (importMode !== 'full_snapshot' || fullSnapshotConfirmed)) void commitFile();
 });
 app.addEventListener('keydown', event => {
   if (event.key === 'Escape' && contextualComparison && investigationSelection()?.origin.plotKey === 'contextual-comparison') {
@@ -2138,45 +2446,77 @@ app.addEventListener('cancel', event => {
   event.preventDefault(); closeContextualComparison();
 });
 async function previewFile(): Promise<void> {
-  if (!selectedFile || importPhase !== 'idle') return;
+  if (!selectedFile || importPhase !== 'idle' || importUncertain) return;
+  const session = importSession;
   const form = new FormData(); form.append('file', selectedFile);
   lastImportAction = 'preview'; importPhase = 'previewing'; importError = ''; importResult = null;
   fullSnapshotConfirmed = false; showAllIssues = false; renderMain();
-  try { preview = await api<Preview>('/imports/preview', { method: 'POST', body: form }); }
-  catch (error) { preview = null; importError = (error as Error).message; }
-  importPhase = 'idle'; pendingFocusId = preview ? 'preview-result-heading' : '';
+  try { const result = await api<Preview>('/imports/preview', { method: 'POST', body: form }); if (session === importSession) preview = result; }
+  catch (error) { if (session === importSession) { preview = null; importError = (error as Error).message; } }
+  if (session !== importSession) return;
+  importPhase = 'idle'; pendingFocusId = state.tab === 'import' && preview ? 'preview-result-heading' : '';
   renderMain();
 }
-async function commitFile(): Promise<void> {
-  if (!selectedFile || !preview?.valid || importPhase !== 'idle') return;
-  if (importMode === 'full_snapshot' && !fullSnapshotConfirmed) return;
-  const committedFile = selectedFile;
-  const committedPreview = preview;
-  const committedMode = importMode;
-  const form = new FormData(); form.append('file', selectedFile); form.append('mode', importMode); form.append('expected_hash', preview.manifest.source_hash);
-  lastImportAction = 'commit'; importPhase = 'committing'; importError = ''; renderMain();
-  try {
-    const result = await api<ImportOutcome>('/imports', { method: 'POST', body: form });
-    importResult = { outcome: result, preview: committedPreview, fileName: committedFile.name, fileSize: committedFile.size, mode: committedMode, committedAt: new Date().toISOString() };
-    preview = null; selectedFile = null;
-    if (result.status === 'committed') invalidateAIAnalysis();
-    await bootstrap(result.status === 'committed'); await refreshHistory();
-    importPhase = 'idle'; fullSnapshotConfirmed = false; showAllIssues = false; pendingFocusId = 'import-result'; renderMain();
-  } catch (error) {
-    importPhase = 'idle'; importError = (error as Error).message; pendingFocusId = 'preview-result-heading'; renderMain();
+async function refreshImportedWorkspace(result: ImportResult, previousVersion: string): Promise<void> {
+  importRefresh = 'loading'; if (state.tab === 'import') renderTab();
+  try { await bootstrap(true); }
+  catch {
+    if (importResult === result) { importRefresh = 'error'; if (state.tab === 'import') renderTab(); }
+    return;
   }
+  if (importResult !== result) return;
+  importRefresh = bootstrapError || workspaceError ? 'error' : !workspace?.dataVersion || !currentProject()
+    ? 'unavailable' : dataVersionKey(workspace.dataVersion) === previousVersion ? 'error' : 'ready';
+  if (state.tab === 'import') renderTab();
 }
+async function commitFile(): Promise<void> {
+  if (!selectedFile || !preview?.valid || importPhase !== 'idle' || importUncertain) return;
+  if (importMode === 'full_snapshot' && !fullSnapshotConfirmed) return;
+  const committedFile = selectedFile, committedPreview = preview, committedMode = importMode;
+  const previousVersion = dataVersionKey(workspace?.dataVersion ?? null);
+  const form = new FormData(); form.append('file', committedFile); form.append('mode', committedMode); form.append('expected_hash', committedPreview.manifest.source_hash);
+  lastImportAction = 'commit'; importPhase = 'committing'; importError = ''; renderMain();
+  let outcome: ImportOutcome;
+  try {
+    outcome = await api<ImportOutcome>('/imports', { method: 'POST', body: form });
+    if (!outcome || !Number.isInteger(outcome.attempt_id) || typeof outcome.status !== 'string') throw new Error('Máy chủ chưa trả kết quả nhập có thể xác minh.');
+  }
+  catch (error) {
+    importPhase = 'idle'; importError = (error as Error).message;
+    importUncertain = !(error instanceof ApiError && [409, 413, 422].includes(error.status));
+    if (!importUncertain) { preview = null; fullSnapshotConfirmed = false; }
+    pendingFocusId = state.tab === 'import' ? 'import-error-heading' : ''; renderMain(); return;
+  }
+  const receipt: ImportResult = { outcome, preview: committedPreview, fileName: committedFile.name, fileSize: committedFile.size, mode: committedMode, committedAt: new Date().toISOString() };
+  importPreviousVersion = previousVersion;
+  importResult = receipt; preview = null; selectedFile = null; importPhase = 'idle'; importUncertain = false;
+  fullSnapshotConfirmed = false; showAllIssues = false; showCommittedValidation = false;
+  if (outcome.status === 'committed') { importRefresh = 'loading'; invalidateAIAnalysis(); }
+  else importRefresh = 'idle';
+  pendingFocusId = state.tab === 'import' ? 'import-result' : ''; renderMain();
+  // Refresh failures never enter the POST failure branch or discard a confirmed outcome.
+  const refreshes: Promise<unknown>[] = [refreshHistory()];
+  if (outcome.status === 'committed') refreshes.push(refreshImportedWorkspace(receipt, previousVersion));
+  await Promise.allSettled(refreshes);
+}
+
 async function bootstrap(forceWorkspace = false): Promise<void> {
   bootstrapError = '';
   void loadAIStatus();
   try {
     projects = (await api<{projects:Project[]}>('/bootstrap')).projects;
     bootstrapLoaded = true;
-    if (!projects.some(project => project.label === state.project)) state.project = projects[0]?.label || '';
+    if (!projects.some(project => project.label === state.project)) {
+      state.project = projects.find(project => project.label === DEFAULT_PROJECT)?.label || projects[0]?.label || '';
+    }
     const p = currentProject();
     if (!state.start) state.start = p?.minDate || '';
     if (!state.end) state.end = p?.maxDate || '';
     save(); await refreshProject(forceWorkspace);
   } catch (error) { bootstrapLoaded = true; bootstrapError = (error as Error).message; renderSidebar(); renderMain(); }
 }
+window.addEventListener('beforeunload', event => {
+  if (importPhase !== 'idle') { event.preventDefault(); event.returnValue = ''; }
+});
 renderShell(); renderSidebar(); renderMain(); void bootstrap();
+if (restoredHistoryTab) void refreshHistory();

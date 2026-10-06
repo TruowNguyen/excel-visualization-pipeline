@@ -1,4 +1,4 @@
-"""Automated, traceable Excel visualization pipeline."""
+"""Automated CX Report: traceable Excel reporting and KPI analysis."""
 
 from .pipeline import PipelineResult, run_pipeline
 

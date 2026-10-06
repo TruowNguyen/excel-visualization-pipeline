@@ -29,7 +29,8 @@ def reading_report(metrics: list[dict[str, Any]], candidates: list[dict[str, Any
     All statements retain period fact IDs and evidence IDs.
     """
     coverage = max((len(m["series"]) for m in metrics), default=0)
-    focus = next((m for m in metrics if m["metricCode"] == "error" and len(m["series"]) == coverage and coverage >= 2), None)
+    focus = next((m for m in metrics if m["metricCode"] == "error" and len(m["series"]) == coverage and coverage >= 2 and len({p['value'] for p in m['series']}) > 1), None)
+    focus = focus or next((m for m in metrics if len(m['series']) == coverage and coverage >= 2 and len({p['value'] for p in m['series']}) > 1), None)
     focus = focus or next((m for m in metrics if len(m["series"]) == coverage and coverage >= 2), None)
     if not focus:
         return {"policyVersion": "analytical-reading-v1", "overview": None, "phases": [], "takeaways": []}

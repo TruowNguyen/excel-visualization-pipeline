@@ -176,7 +176,7 @@ def cached_preview(
     return run_pipeline(source, config_path)
 
 
-st.set_page_config(page_title="Bảng điều khiển chất lượng Excel", layout="wide")
+st.set_page_config(page_title="Automated CX Report", layout="wide")
 st.markdown(
     """
     <style>
@@ -222,7 +222,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.title("Bảng điều khiển dữ liệu CX")
+st.title("Automated CX Report")
 
 if st.query_params.to_dict():
     st.query_params.clear()

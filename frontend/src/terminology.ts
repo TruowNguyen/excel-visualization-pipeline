@@ -70,6 +70,13 @@ export function getEntityDisplayName(entity: Pick<Entity, 'entity_label' | 'enti
   return entity.entity_level === 'section' ? normalizeSectionDisplayLabel(rawLabel) : rawLabel;
 }
 
+/** Normalize only known section names in prose; never strip numeric KPI values. */
+export function formatEntityText(text: string, entities: readonly Pick<Entity, 'entity_label' | 'entity_level'>[]): string {
+  return entities.filter(entity => entity.entity_level === 'section')
+    .sort((a, b) => b.entity_label.length - a.entity_label.length)
+    .reduce((copy, entity) => copy.replaceAll(entity.entity_label, getEntityDisplayName(entity)), text);
+}
+
 export function getEntityLevelLabel(level: EntityLevel): string {
   return level ? LEVEL_LABELS[level] || 'Nội dung theo dõi' : 'Nội dung theo dõi';
 }

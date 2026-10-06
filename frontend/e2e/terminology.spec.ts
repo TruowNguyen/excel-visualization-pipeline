@@ -12,8 +12,20 @@ import {
   normalizeSectionDisplayLabel,
   getMetricDisplayLabel,
   formatMetricText,
+  formatEntityText,
   metricPresentation,
 } from '../src/terminology';
+
+test('tên dự án thống nhất trên tab và sidebar, không bị cắt trên desktop', async ({ page }) => {
+  await installApiHarness(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await expect(page).toHaveTitle('Automated CX Report · Không gian phân tích');
+  const brand = page.locator('.brand-copy strong');
+  await expect(brand).toHaveText('Automated CX Report');
+  expect(await brand.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
+  await page.screenshot({ path: '../.impeccable/review/automated-cx-report-brand-desktop.png' });
+});
 
 test('uses the three public metric labels without mutating keys, numbers or provenance', () => {
   expect(['Tổng số', 'Báo sai/Lỗi', '% báo sai', '%báo sai'].map(getMetricDisplayLabel)).toEqual([
@@ -110,6 +122,10 @@ test('normalizes structural numbering only for section display labels', () => {
   expect(getEntityDisplayName({ entity_label: '5G mất kết nối', entity_level: 'item' })).toBe('5G mất kết nối');
   expect(getEntityDisplayName({ entity_label: '24/7 Monitoring', entity_level: 'item' })).toBe('24/7 Monitoring');
   expect(getEntityDisplayName({ entity_label: 'Camera số 2', entity_level: 'item' })).toBe('Camera số 2');
+  const text = `${rawLabel} · Trung bình/ngày: tăng từ 1.1 lên 3, chênh lệch 1.9 (38.36%).`;
+  expect(formatEntityText(text, [section])).toBe('Chất lượng cảnh báo - ghi nhận trên hệ thống · Trung bình/ngày: tăng từ 1.1 lên 3, chênh lệch 1.9 (38.36%).');
+  expect(formatEntityText('1.1. Camera số 2', [{ entity_label: '1.1. Camera số 2', entity_level: 'item' }])).toBe('1.1. Camera số 2');
+  expect(section.entity_label).toBe(rawLabel);
 });
 
 test('uses comparison and eligibility wording for the actual level without exposing codes', () => {

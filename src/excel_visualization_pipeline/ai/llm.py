@@ -106,7 +106,7 @@ class NineRouterLLMAdapter:
         body = {
             "model": self.model,
             "temperature": 0,
-            "max_tokens": self.report_max_output_tokens if payload.get("schemaVersion") == "ai-insight-provider-input-v5" else self.max_output_tokens,
+            "max_tokens": self.report_max_output_tokens if payload.get("schemaVersion") in {"ai-insight-provider-input-v5", "ai-context-provider-input-v1"} else self.max_output_tokens,
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system_prompt},

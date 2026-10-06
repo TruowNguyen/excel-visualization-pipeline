@@ -1,5 +1,7 @@
 # Dashboard behavior
 
+04/10/2026 extension: AI Insight chart action opens one issue without changing global filters; children scope offers selected/all direct children with search and counts. Statistics uses its own chart period/calculation/range controls. Reading order is shared overview/relationships before native issue/source disclosures; stale/late-response handling and provider-budget coverage are explicit. Desktop-first, no mobile redesign. [Behavior and constraints](../ai-data/10-context-insight-as-built.md), [verification](../ai-data/evidence/2026-10-04-context-insight-evaluation.md).
+
 AI narrative v4: preserve engine overview/shared phases; show accepted AI prose in “Điều cần chú ý” with its own label and anchors from accepted candidate IDs. Partial rejection keeps survivors; failure copy distinguishes malformed output, source grounding, numbers/dates and semantic verification. Source disclosure remains closed. See [runtime/evaluation](../ai-data/evidence/2026-10-02-semantic-validator-and-live-evaluation.md). Desktop scope unchanged.
 
 - Trạng thái: **As-built, có gap được ghi rõ**
@@ -45,6 +47,18 @@ Biến thể `%báo sai` cũng hiển thị là **Tỷ lệ báo sai**. Đây ch
 - `DASH-007`: `% báo sai` theo kỳ là tỷ lệ có trọng số `SUM(error)/SUM(total)×100`.
 - `DASH-008`: Missing MUST không hiển thị như zero.
 
+### Nhãn tuần trên biểu đồ — cập nhật 05/10/2026
+
+- Trục thời gian của biểu đồ tuần hiển thị khoảng ngày thứ Hai–Chủ nhật theo tuần ISO, ví dụ **07/09 - 13/09**, thay cho `T37`. Dùng chung renderer ở Tổng quan, Thống kê và so sánh theo ngữ cảnh, không giới hạn riêng dự án VSO.
+- Tuần qua năm mới ghi năm ở hai đầu; biểu đồ có nhiều năm cũng ghi năm để phân biệt các khoảng trùng ngày/tháng. Ví dụ **29/12/2025 - 04/01/2026**.
+- Nhãn là khoảng tuần lịch, không khẳng định mọi ngày đều có dữ liệu hoặc được dùng để tính. Kỳ chưa đầy đủ, ngày thiếu, SUM/AVG/ngày và khoảng nguồn thực tế giữ nguyên; xem tooltip/nguồn để kiểm tra boundary đã clip.
+- Chỉ đổi trình bày trục và khoảng ngày khi rê chuột, không đổi category key `Tuần 37/2026`, `trace.x`, số liệu, thứ tự trace, customdata hoặc aggregate refs. Tuần không hợp lệ giữ nhãn nguồn, không đoán ngày; ngày/tháng/quý không bị đổi.
+- Nhãn luôn nằm ngang. Chart đủ rộng giữ khoảng ngày một dòng; chart hẹp dùng hai dòng, ví dụ `07/09` trên và `- 13/09` dưới. Mật độ dựa trên chiều rộng container, không chỉ chiều rộng màn hình.
+- Nếu vẫn thiếu chỗ, giảm số nhãn trên trục theo khoảng cách đều, giữ nhãn đầu/cuối; không bỏ điểm hoặc thay phép tính. Khi rê chuột vẫn có đủ khoảng ngày của mọi điểm. Không rút về mã `T37`, không xoay dọc hoặc cắt chữ.
+- Khi thay đổi kích thước container, tính lại mật độ nhãn mà không fetch workspace, thay trace hoặc xóa selection. Observer được hủy khi chart rời workspace.
+- [Bằng chứng và giới hạn kiểm thử](../quality/chart-week-labels-evidence.md).
+- [Rà soát mật độ nhãn ở các vấn đề trong nhóm](../quality/chart-week-labels-readable-evidence.md).
+
 ## Các workspace
 
 ### Tổng quan
@@ -81,10 +95,16 @@ Biến thể `%báo sai` cũng hiển thị là **Tỷ lệ báo sai**. Đây ch
 
 ### Import và lịch sử
 
+- Một tab **Nhập Excel**, ưu tiên chọn tệp và xem trước; **Lịch sử nhập gần đây** ở dưới, mặc định thu gọn. Chuyển session `history` cũ sang `import` và mở lịch sử có chủ đích.
+- Mở/thu gọn/chi tiết/làm mới lịch sử chỉ cập nhật vùng phụ, không làm mất File, preview, mode hoặc xác nhận bản chụp. Chi tiết lấy đúng trường đã trả; null là `—`, không phải `0`.
+- Lịch sử tối đa 100 attempt của nguồn dữ liệu, không lọc theo project/dashboard; không suy đoán public `importRef` từ `run_id` số.
 - Preview luôn trước commit.
 - Full snapshot cần xác nhận bổ sung.
 - Sau committed import, UI gọi lại bootstrap, **force-fetch workspace** và history. Workspace mới MUST được áp dụng ngay cả khi project, view và filter không đổi; không reload toàn trang.
-- Khi kết quả commit không rõ do network, UI hướng người dùng kiểm tra lịch sử trước khi thử lại.
+- Biên nhận ghi và trạng thái GET tải lại độc lập. GET lỗi không biến committed thành failed, không POST lại. `duplicate` chỉ tải lại lịch sử, không giả tạo phiên dữ liệu mới. “Xem lần nhập này” mở/focus bằng `attempt_id`.
+- Khi kết quả commit không rõ do network, UI khóa ghi/đổi tệp, mở hành động kiểm tra lịch sử; không tự retry hoặc tự mở khóa theo tên/hash hay danh sách rỗng. Chưa có endpoint đối soát request, cần xác minh thủ công trước khi bắt đầu lại sau reload.
+- Kho rỗng hoặc workspace phân tích lỗi không được chặn vùng chọn tệp/xem trước; trạng thái thật của từng POST quyết định kết quả nhập.
+- [Đặc tả đã triển khai](unified-import-workspace.md), [bằng chứng và giới hạn](../quality/unified-import-workspace-evidence.md).
 
 ## Lineage interaction
 
@@ -118,6 +138,12 @@ Gap same-key refresh được đóng ngày 2026-09-25. `frontend/e2e/workspace-f
 
 ## AI reporting status
 
+Tab **Báo cáo** đã triển khai ngày 05/10/2026: preview năm phần, phạm vi riêng không đổi theo sidebar, chuẩn bị/lưu facts trước rồi yêu cầu AI bằng thao tác riêng, chọn/bỏ điểm đề xuất ↔ chart, chỉnh lời diễn giải có kiểm chứng, lịch sử revision, local check và PDF/DOCX exact revision. Không hiển thị thẻ KPI dashboard phía trên tài liệu báo cáo. Bản cũ chỉ đọc/xuất; nội dung chưa lưu không mang nhãn AI đã kiểm chứng. Desktop-first và dùng hệ thống thiết kế hiện có. Hành vi/giới hạn: [Report workspace as-built](../ai-data/12-report-workspace-as-built.md).
+
+Desktop reading refinement (04/10/2026): mọi diễn giải AI dùng chung formatter presentation-only, escape toàn bộ model text rồi chỉ thêm `strong` cho tên KPI/vấn đề, một cụm diễn biến được nhận diện và tối đa hai chênh lệch tuyệt đối. Tối đa ba cụm nhấn trong phần thân đoạn; tên vấn đề/cách tính ở đầu đoạn là một nhãn riêng. Không tô đậm mọi giá trị/ngày/%, không đổi số hoặc suy ra tốt/xấu bằng màu. Formatter không hỗ trợ thực thi HTML/Markdown từ model. Overview, phase, relationship và fallback cùng cách hiển thị.
+
+Đoạn diễn giải, insight evidence và lựa chọn vấn đề dùng chiều rộng vùng làm việc thay vì giới hạn 75ch; giữ lề desktop và thứ tự đọc. Tên dài xuống dòng, không line-clamp/ellipsis. Bảng AI bỏ quy tắc cắt ô của bảng chung, vẫn cuộn trong vùng bảng khi cần. Font đọc chính 16px (executive 17px), line-height 1.75; executive không còn đậm toàn đoạn. Không sửa API, prompt, validator, snapshot, source lookup hoặc thiết kế mobile.
+
 Short-window refinement: dưới bốn kỳ hợp lệ, không render chronology/extrema hoặc ba period disclosures lặp template. Dùng một bảng KPI × kỳ, nhãn `Kỳ 1 (07–13/09) → Kỳ 2 (14–16/09)`; năm/phạm vi đầy đủ trong receipt, khoảng khác năm ghi đầy đủ. Panel title “Phân tích KPI tự động”. Liên hệ ba KPI nằm trong synthesis cùng anchors và kiểm tra nguồn; không có bảng hệ số hoặc cảnh báo thiếu sáu kỳ. Không significance/quality/causal judgement. Các nguồn captured vẫn mở được; mobile infrastructure giữ nguyên.
 
 Grounded synthesis (02/10/2026) là desktop-first; không thêm tối ưu mobile. Giữ panel sau chart, compact controls và snapshot scope bất biến. Luồng mặc định: tối đa hai nhận định → anchors tối thiểu → limitation đã gom → kiểm tra theo insight → chi tiết thu gọn. Chỉ `insufficient_data` đưa limitation lên trước summary. Độ phủ theo từng metric, không dùng max period count khẳng định cả ba đầy đủ. Direction trung tính; rate delta là điểm phần trăm. Source check mở captured logical evidence, không tìm theo giá trị/ngày. Responsive CSS cũ không là cam kết mobile support mới.
@@ -133,3 +159,7 @@ UI MUST gắn nhãn nội dung AI, chỉ gọi model sau thao tác chủ động
 AI Insight ưu tiên whole-window synthesis; không dùng endpoint change đại diện chuỗi dao động. Toàn bộ giai đoạn, extrema, cả lần tăng/giảm lớn nhất, turning points và lịch sử nằm trong “Xem chi tiết diễn biến”, mặc định đóng, dữ liệu không bị cắt. Đầu–cuối ở “Thông tin bổ sung: so sánh đầu–cuối”, mặc định đóng. Numerical anchors giữ đúng ngày/đơn vị và source routing. Giữ captured scope và desktop-first; không bổ sung tối ưu mobile.
 
 Analytical reading refinement: nội dung mở sẵn gồm “Tổng quan trong thời gian đã chọn” → “Các chỉ số thay đổi như thế nào?” (hai kỳ: “So sánh hai kỳ”) → “Điều cần chú ý” khi có nhận định riêng. Giai đoạn hiển thị chung các KPI và giải thích liên hệ có căn cứ. Trạng thái giữ nguyên suốt thời gian của metric phụ chỉ nêu một lần. Căn cứ, kiểm tra nguồn, bảng KPI và lịch sử nằm trong một mục mặc định đóng “Xem số liệu và nguồn”; cảnh báo missing vẫn cạnh kết quả. Trên bốn giai đoạn, phần tiếp theo được mở theo yêu cầu, không bỏ dữ liệu. Không bổ sung tối ưu mobile.
+
+# Bổ sung DASH-OV-KPI — Tổng quan theo nguồn (05/10/2026)
+
+Tổng quan và Thống kê thay bốn metadata card bằng Vấn đề có dữ liệu / Ghi nhận cao nhất / Ghi nhận thấp nhất / Thay đổi lớn nhất. Count có phạm vi toàn dự án trong khoảng/kỳ của tab; ba thẻ diễn biến dùng Tổng số ghi nhận từ một nguồn có tên/phạm vi rõ trong Cách đọc các chỉ số, mặc định đóng. Bỏ khối heading/thời gian/source mở sẵn phía trên thẻ. Nguồn riêng không được gọi là tổng toàn dự án. Đổi source không đổi chart entity/scope. Thống kê dùng SUM/AVG/ngày và danh sách kỳ hiện có; mode both dùng SUM với nhãn rõ. Loading/error không gán số cũ vào tab/cách tính/phạm vi mới; Refresh/import/request ordering dùng lifecycle workspace hiện có. Contract và acceptance: [Overview summary](overview-summary-metrics.md).

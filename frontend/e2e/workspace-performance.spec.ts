@@ -181,10 +181,15 @@ test('rapid numeric filter changes are batched before request dispatch', async (
   await page.locator('[data-field="mode"]').selectOption('week');
   await expect(page.locator('#workspace-loading')).toBeHidden();
   const before = harness.calls.filter(call => call.pathname.endsWith('/workspace')).length;
-  for (const count of ['7', '6', '5']) {
-    await page.locator('[data-field="count"]').fill(count);
-    await page.locator('[data-field="count"]').press('Tab');
-  }
+  // Dispatch one genuine rapid change burst; separate automation round trips
+  // can exceed the debounce interval on a busy machine.
+  await page.evaluate(() => {
+    for (const count of ['7', '6', '5']) {
+      const input = document.querySelector<HTMLInputElement>('[data-field="count"]')!;
+      input.value = count;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
   await expect(page.locator('#workspace-loading')).toBeHidden();
   await expect.poll(() => harness.calls.filter(call => call.pathname.endsWith('/workspace')).length).toBe(before + 1);
   expect(harness.calls.filter(call => call.pathname.endsWith('/workspace')).at(-1)?.search).toContain('count=5');

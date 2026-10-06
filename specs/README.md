@@ -25,11 +25,19 @@ specs/
 | Core | [database-design.md](core/database-design.md) | SQLite schema, ERD, khóa, revision và transaction được thiết kế ra sao? |
 | API | [api-contract.md](api/api-contract.md) | Frontend và client được phép dựa vào endpoint, tham số và lỗi nào? |
 | Frontend | [dashboard-behavior.md](frontend/dashboard-behavior.md) | Dashboard phải phản ứng thế nào với bộ lọc, dữ liệu thiếu và lỗi? |
+| Frontend | [overview-summary-metrics.md](frontend/overview-summary-metrics.md) | Bốn thẻ Tổng quan/Thống kê dùng Tổng số ghi nhận; nguồn và cách đọc trong mục thu gọn. |
+| Frontend | [overview-summary-metrics-plan.md](frontend/overview-summary-metrics-plan.md) | Lưu đề xuất cũ và các điểm dừng trước khi duyệt mapping nguồn. |
+| Quality | [overview-summary-gate-0.md](quality/overview-summary-gate-0.md) | Inventory nguồn, quyết định đổi metric và lịch sử Gate 0. |
+| Quality | [overview-summary-metrics-evidence.md](quality/overview-summary-metrics-evidence.md) | Bằng chứng implementation, backend/frontend regression và kiểm chứng cả sáu dự án. |
+| Quality | [overview-statistics-summary-evidence.md](quality/overview-statistics-summary-evidence.md) | Bổ sung thẻ Thống kê theo calculation hiện có và bỏ khối thông tin Tổng quan mở sẵn. |
+| Frontend | [unified-import-workspace.md](frontend/unified-import-workspace.md) | Nhập Excel hợp nhất: ưu tiên nhập mới, lịch sử phụ mở tại chỗ; đặc tả và giới hạn đã triển khai. |
 | Frontend | [contextual-comparison.md](frontend/contextual-comparison.md) | Shape và contract nào đã khóa cho Contextual Comparison? |
 | Frontend | [contextual-comparison-phase-2.md](frontend/contextual-comparison-phase-2.md) | Phase 2 Thống kê đa nội dung đang hoạt động thế nào và được triển khai theo lát dọc nào? |
 | Quality | [contextual-comparison-vs1-evidence.md](quality/contextual-comparison-vs1-evidence.md) | Bằng chứng source/API/UI/test cho Vertical Slice 1? |
 | Quality | [contextual-comparison-phase-2-evidence.md](quality/contextual-comparison-phase-2-evidence.md) | Bằng chứng hoàn thành Gate 2.0 và các lát Phase 2? |
 | AI/Data | [README.md](ai-data/README.md) | AI trend, comparison, reporting, data/evidence contract và acceptance được quản trị thế nào? |
+| AI/Data | [11-report-workspace-plan.md](ai-data/11-report-workspace-plan.md) | Kế hoạch gốc tab Báo cáo; v1 đã được triển khai, các mục ngoài v1 vẫn là proposal. |
+| AI/Data | [12-report-workspace-as-built.md](ai-data/12-report-workspace-as-built.md) | Bản nháp năm phần, snapshot/revision, điểm đề xuất và xuất PDF/DOCX; không có official approval. |
 | Quality | [acceptance-criteria.md](quality/acceptance-criteria.md) | Điều kiện nào chứng minh từng chức năng hoạt động? |
 | Quality | [traceability-matrix.md](quality/traceability-matrix.md) | Requirement nào được nối tới contract, code và test nào? |
 | Quality | [documentation-drift-report.md](quality/documentation-drift-report.md) | Những điểm drift nào đã được phát hiện, sửa hoặc còn mở? |

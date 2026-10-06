@@ -107,7 +107,8 @@ API commit trả `ImportOutcome` với các trường:
 
 ## Vận hành
 
-- UI: tab **Import Excel** → preview → xác nhận → xem **Lịch sử nhập**.
+- UI: tab **Nhập Excel** → xem trước → xác nhận → biên nhận tại chỗ; **Lịch sử nhập gần đây** là vùng phụ mở/thu gọn trong cùng tab. Bộ lọc báo cáo không xác định dự án nhập; dự án đích lấy từ preview.
+- Thành công ghi độc lập với tải lại bootstrap/workspace/lịch sử. Lỗi GET sau committed chỉ cho tải lại GET, không gửi lại POST. Duplicate không tạo phiên dữ liệu mới. Mất phản hồi POST phải kiểm tra thủ công, không tự kết luận từ 100 dòng lịch sử hoặc retry ghi.
 - CLI: `scripts/import_workbook.py`.
 - Integrity: `scripts/verify_database.py`.
 - Backup trước replay/phục hồi: `scripts/backup_database.py`.

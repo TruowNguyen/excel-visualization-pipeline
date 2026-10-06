@@ -5,6 +5,16 @@
 
 ## P0 — Import, storage và identity
 
+Phần bổ sung 05/10/2026 — không thay trạng thái các gap storage bên dưới:
+
+| Requirement ID | Specification ID | Implementation | Test evidence | Status |
+|---|---|---|---|---|
+| REQ-IMPORT-UI-01 Nhập ưu tiên, lịch sử tại chỗ, giữ phiên nhập và session history cũ | `ACC-IMP-017`, `ACC-IMP-018` | `frontend/src/main.ts`, `import-history.ts` | `frontend/e2e/unified-import-workspace.spec.ts` | Covered trên API mô phỏng |
+| REQ-IMPORT-UI-02 Kết quả ghi/tải lại độc lập, một POST, không đoán kết quả chưa rõ hoặc version mới | `ACC-IMP-019`, `ACC-IMP-020` | `commitFile`, `refreshImportedWorkspace`, `refreshHistory` | cùng file và `workspace-freshness.spec.ts` | Covered trên API mô phỏng |
+| REQ-IMPORT-UI-03 Quality gate, reload/rời tab, responsive và báo cáo giới hạn | `ACC-IMP-021`, `ACC-IMP-022` | `renderImport`, CSS nhập | cùng file, 4 viewport | Covered trên API mô phỏng |
+
+Kết quả chạy thật, ảnh và giới hạn: [báo cáo Nhập Excel hợp nhất](unified-import-workspace-evidence.md).
+
 | Requirement ID | Specification ID | Implementation | Test evidence | Status |
 |---|---|---|---|---|
 | REQ-FS-01 Incremental không xóa key vắng mặt | `IMP-008`, `DB-010` | [`storage/importer.py`](../../src/excel_visualization_pipeline/storage/importer.py): `_validate_mode_and_scopes`, `_apply_tombstones` | [`test_storage.py`](../../tests/test_storage.py): `test_incremental_updates_history_and_preserves_missing_dates` | Covered |
@@ -59,14 +69,14 @@
 | REQ-AI-04 Prompt safety và failure isolation | `AI-SCP-016`–`AI-SCP-017`, `AI-CON-021`–`AI-CON-035`, `AI-PLAN-003`–`AI-PLAN-005` | Payload allowlist/token giả danh, output escaping, deterministic fallback; core workspace không phụ thuộc AI | `test_output_validator_*`, provider failure tests, Playwright success/failure/stale/retry/evidence | Covered |
 | REQ-AI-05 Privacy/retention/cost/evaluation/API approval | `AI-DEC-004`–`AI-DEC-008`, `AI-DEC-011`–`AI-DEC-013`, `AI-ACC-CON-007` | Safe baseline đã cài: no raw, in-memory, explicit user action, external gate off | CI không dùng secret; real smoke opt-in chưa chạy | Partial: production region/retention/cost/gold sign-off vẫn Decision needed |
 | REQ-AI-06 Comparative analysis | `AI-SCP-002`, `AI-CMP-*`, `AI-PLAN-120`, `AI-ACC-CMP-*` | Chưa vào product scope đã duyệt | Không có | Proposed |
-| REQ-AI-07 Template-driven report | `AI-SCP-003`–`AI-SCP-005`, `AI-RPT-*`, `AI-PLAN-130`, `AI-PLAN-140`, `AI-ACC-RPT-*` | Chưa có schema/auth/persistence/export | Không có | Proposed |
+| REQ-AI-07 Template-driven report | `AI-SCP-003`–`AI-SCP-005`, `AI-RPT-*`, `AI-PLAN-130`, `AI-PLAN-140`, `AI-ACC-RPT-*` | `reporting/*`, migration 007, report API/workspace/chart; [as-built](../ai-data/12-report-workspace-as-built.md) | `tests/test_reporting.py`, `frontend/e2e/reports.spec.ts`, [LLM/exports](../ai-data/evidence/2026-10-05-reports-review.md) | Covered cho draft v1; authenticated approval/retention chưa có |
 
 ## Product scope/status
 
 | Requirement ID | Specification ID | Implementation | Test evidence | Status |
 |---|---|---|---|---|
 | REQ-SCHED-01 Scheduled daily import | `SCP-101`, `PRD-F101`, `UC-09` | Không có scheduler/watcher | Không có | Accepted, not built |
-| REQ-SCOPE-AI-01 AI trend summary | `SCP-102`, `PRD-F102`, `UC-10`, `AI-SCP-001`, `AI-TR-*`, `AI-CON-*` | Có config/spec 9Router; chưa có adapter, runtime prompt, API hoặc UI | Không có | Accepted, not built |
+| REQ-SCOPE-AI-01 AI trend summary | `SCP-102`, `PRD-F102`, `UC-10`, `AI-SCP-001`, `AI-TR-*`, `AI-CON-*` | AI service/adapter/validator, context API và UI | `test_ai*`, context e2e và [live evidence](../ai-data/README.md) | As-built trong phạm vi nội bộ; không phải production sign-off |
 | REQ-DUE-01 Due-date reminder | `SCP-201`, `PRD-F201`, `UC-11` | Không có issue model | Không có | Decision needed |
 | REQ-REC-01 Recurrence detection | `SCP-202`, `PRD-F202`, `UC-11` | Không có issue lifecycle | Không có | Decision needed |
 | REQ-ID-03 Alias administration policy | `SCP-203`, `DATA-010` | Schema capability only | Không có | Decision needed |
@@ -83,3 +93,7 @@ Các requirement đã xác nhận về hành vi nhưng chưa đủ acceptance co
 - CSV payload/header/filter semantics;
 
 Không test nào được ghi **Covered** chỉ vì nằm trong cùng file; status dựa trên assertion thực tế đã đọc.
+
+# Bổ sung traceability — Overview summary
+
+`UC-OV-KPI` → `DASH-OV-KPI` / `ACC-OV-KPI` → `overview_summary.py` (Overview/Statistics), API workspace/read snapshot, `overview-summary.ts`/main.ts → `test_overview_summary.py`, `test_overview_summary_api.py`, `overview-summary.spec.ts`. Bằng chứng ban đầu: [overview-summary-metrics-evidence.md](overview-summary-metrics-evidence.md); mở rộng Thống kê/thu gọn: [overview-statistics-summary-evidence.md](overview-statistics-summary-evidence.md).

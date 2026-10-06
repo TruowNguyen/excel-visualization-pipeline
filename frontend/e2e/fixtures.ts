@@ -4,6 +4,9 @@ import currentInsightFixture from './current-insight.json' with { type: 'json' }
 import twoPointInsightFixture from './two-point-insight.json' with { type: 'json' };
 
 type HarnessOptions = {
+  weeklyCharts?: boolean;
+  overviewSummaryByRequest?: Record<string, unknown>[];
+  statisticsSummaryByRequest?: Record<string, unknown>[];
   provenanceFailures?: number;
   provenanceDelayMs?: number;
   workspaceDelayMs?: number;
@@ -21,6 +24,16 @@ type HarnessOptions = {
   aiWholeSeries?: boolean;
   aiCurrentDataset?: boolean;
   aiFixture?: unknown;
+  historyDelaysMs?: number[];
+  historyFailureRequests?: number[];
+  historyItemsByRequest?: Record<string, unknown>[][];
+  commitDelayMs?: number;
+  commitFailureStatus?: number;
+  commitNetworkFailure?: boolean;
+  importOutcome?: Record<string, unknown>;
+  previewFixture?: unknown;
+  bootstrapEmpty?: boolean;
+  bootstrapFailure?: boolean;
 };
 export type ApiCall = { pathname: string; search: string; method: string; body?: unknown };
 
@@ -80,11 +93,26 @@ function workspace(url: URL, options: HarnessOptions, requestNumber: number) {
   const valueOffset = viewMode === 'week' ? 1 : viewMode === 'month' ? 2 : 0;
   const requestValues = options.workspaceValuesByRequest?.[requestNumber - 1] ?? [10, 14];
   const committedImportRef = options.workspaceVersionsByRequest?.[requestNumber - 1] ?? 'imp_1';
-  const viewFigure = (prefix: string, name?: string, values = requestValues) => figure(prefix, name, values.map(value => value + valueOffset));
-  const childStatistics = (prefix: string) => ({
-    data: [exactTrace('Tổng · Tổng số', `${prefix}_total`, requestValues), exactTrace('Tổng · Báo sai/Lỗi', `${prefix}_error`, [2, 3]), helperTrace()],
+  const weeklyFigure = (prefix: string, name = 'Tổng số', values = requestValues) => ({
+    data: [aggregateTrace(name, prefix, prefix, 'Tổng số', values)],
     layout: { hovermode: 'closest', xaxis: { type: 'category' }, yaxis: { rangemode: 'tozero' }, showlegend: true },
   });
+  const viewFigure = (prefix: string, name?: string, values = requestValues) => options.weeklyCharts && viewMode === 'week'
+    ? weeklyFigure(prefix, name, values.map(value => value + valueOffset))
+    : figure(prefix, name, values.map(value => value + valueOffset));
+  const childStatistics = (prefix: string) => ({
+    data: options.weeklyCharts
+      ? [aggregateTrace('Tổng · Tổng số', `${prefix}_total`, prefix, 'Tổng số', requestValues), aggregateTrace('Tổng · Báo sai/Lỗi', `${prefix}_error`, prefix, 'Báo sai/Lỗi', [2, 3])]
+      : [exactTrace('Tổng · Tổng số', `${prefix}_total`, requestValues), exactTrace('Tổng · Báo sai/Lỗi', `${prefix}_error`, [2, 3]), helperTrace()],
+    layout: { hovermode: 'closest', xaxis: { type: 'category' }, yaxis: { rangemode: 'tozero' }, showlegend: true },
+  });
+  const statisticsSummary = options.statisticsSummaryByRequest?.[requestNumber - 1] ?? options.statisticsSummaryByRequest?.at(-1);
+  const summaryPoint = statisticsSummary?.largestChange as { from: { value: number; period: { start: string; label: string } }; to: { value: number; period: { start: string; label: string } } } | undefined;
+  const summaryStatisticsFigure = summaryPoint ? {
+    data: [aggregateTrace(statisticsSummary?.calculation === 'average_per_day' ? 'Trung bình/ngày · Tổng số' : 'Tổng · Tổng số', 'statistics', 'root', 'Tổng số',
+      [summaryPoint.from.value, summaryPoint.to.value], String(statisticsSummary?.calculation || 'sum'))],
+    layout: { hovermode: 'closest', xaxis: { type: 'category' }, yaxis: { rangemode: 'tozero' }, showlegend: true },
+  } : undefined;
   const contextualCandidates = contextualAnchor
     ? entities.filter(item => item.parent_entity_id === 'root' && item.entity_id !== contextualAnchor).map(item => ({
         entity_id: item.entity_id, entity_label: item.entity_label, effective_unit: item.effective_unit,
@@ -102,6 +130,8 @@ function workspace(url: URL, options: HarnessOptions, requestNumber: number) {
     ? compared.filter(id => id !== contextualAnchor && !eligibleIds.has(id)).map(entityId => ({ entityId, reason: contextualCandidates?.find(item => item.entity_id === entityId)?.reason || 'NOT_SIBLING' }))
     : [];
   return {
+    overviewSummary: options.overviewSummaryByRequest?.[requestNumber - 1] ?? options.overviewSummaryByRequest?.at(-1),
+    statisticsSummary,
     dataVersion: { committedImportRef, committedAt: committedImportRef === 'imp_1' ? '2026-09-17T08:00:00Z' : '2026-09-18T08:00:00Z' },
     window: { start: viewMode === 'month' ? '2026-09-01' : viewMode === 'week' ? '2026-09-10' : '2026-09-16', end: '2026-09-17' }, selectedEntity: 'root',
     scopeIds: children ? ['child-a', 'child-b'] : ['root'],
@@ -122,8 +152,8 @@ function workspace(url: URL, options: HarnessOptions, requestNumber: number) {
           { entityId: 'child-a', title: 'Camera 360 lỗi kết nối', figure: childStatistics('statistics_child_a') },
           { entityId: 'child-b', title: '5G mất kết nối', figure: childStatistics('statistics_child_b') },
         ]
-      : [{ entityId: 'root', title: '1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống', figure: viewFigure('statistics', 'Tổng · Tổng số') }],
-    statisticsPeriods: [{ start: '2026-09-16', label: '16/09/2026', complete: true }],
+      : [{ entityId: 'root', title: '1.1. Chất lượng cảnh báo - ghi nhận trên hệ thống', figure: summaryStatisticsFigure || (options.weeklyCharts ? weeklyFigure('statistics', 'Tổng · Tổng số') : viewFigure('statistics', 'Tổng · Tổng số')) }],
+    statisticsPeriods: summaryPoint ? [summaryPoint.from, summaryPoint.to].map(point => ({ start: point.period.start, label: point.period.label, complete: true })) : [{ start: '2026-09-16', label: '16/09/2026', complete: true }],
     comparisonCandidates: contextualCandidates || [
       { entity_id: 'child-a', entity_label: 'Camera 360 lỗi kết nối', effective_unit: 'ticket' },
       { entity_id: 'child-b', entity_label: '5G mất kết nối', effective_unit: 'ticket' },
@@ -346,13 +376,38 @@ export async function installApiHarness(page: Page, options: HarnessOptions = {}
   let failuresLeft = options.provenanceFailures ?? 0;
   let workspaceRequestCount = 0;
   let aiRequestCount = 0;
+  let historyRequestCount = 0;
+  let committedVersion = 'imp_1';
   await page.route('**/api/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
-    const body = url.pathname.endsWith('/ai/trend-summary') && request.method() === 'POST' ? request.postDataJSON() : undefined;
+    const body = (url.pathname.endsWith('/ai/trend-summary') || url.pathname.endsWith('/ai/context-insight')) && request.method() === 'POST' ? request.postDataJSON() : undefined;
     calls.push({ pathname: url.pathname, search: url.search, method: request.method(), body });
-    if (url.pathname === '/api/bootstrap') return fulfillJson(route, { projects: [{ label: 'VSO', records: 12, chartable: 12, entities: 4, units: 1, minDate: '2026-09-16', maxDate: '2026-09-17' }] });
+    if (url.pathname === '/api/bootstrap') {
+      if (options.bootstrapFailure) return fulfillJson(route, { detail: 'Không tải được danh sách dự án thử nghiệm' }, 503);
+      return fulfillJson(route, { projects: options.bootstrapEmpty ? [] : [{ label: 'VSO', records: 12, chartable: 12, entities: 4, units: 1, minDate: '2026-09-16', maxDate: '2026-09-17' }] });
+    }
     if (url.pathname === '/api/ai/status') return fulfillJson(route, { enabled: true, configured: true, externalAllowed: true, provider: '9router', model: 'fake-gemini', availability: 'not_checked', privacyMode: 'normalized_facts_only' });
+    if (url.pathname === '/api/projects/VSO/ai/context-insight' && request.method() === 'POST') {
+      aiRequestCount += 1;
+      if (options.aiDelayMs) await new Promise(resolve => setTimeout(resolve, options.aiDelayMs));
+      if (options.aiFailureRequests?.includes(aiRequestCount)) return fulfillJson(route, { detail: 'Provider thử nghiệm chưa phản hồi.' }, 503);
+      const input = request.postDataJSON();
+      const ids: string[] = input.selection === 'node' ? [input.parentEntityRef] : input.selection === 'selected' ? input.entityRefs : ['child-a', 'child-b'];
+      const paragraph = { text: 'Số lỗi giảm ở kỳ sau. Hai kỳ chỉ đủ để so sánh, chưa xác định xu hướng dài hạn.', source: 'ai', factIds: ['fact_test'] };
+      const calculations = input.calculation === 'both' ? ['sum', 'average_per_day'] : [input.calculation];
+      return fulfillJson(route, { schemaVersion: 'ai-context-v1', analysisId: 'ana_context_fixture', status: 'ready',
+        window: { start: input.view === 'overview' ? input.start : '2026-09-07', end: input.view === 'overview' ? input.end : '2026-09-20', groupBy: input.groupBy },
+        dataAsOf: { committedImportRef: 'imp_1', stale: false }, context: { ...input, requestedCount: ids.length, analyzedCount: ids.length, requestedEntityRefs: ids, excluded: [] },
+        provider: { generatedCandidateCount: 2, engineOnlyCandidateCount: 3 }, validation: { status: 'accepted', errors: [] },
+        evidence: [{ evidenceId: 'ev_context', observedDate: '2026-09-13', target: { kind: 'aggregate', aggregateRef: 'agg_context_1' } }],
+        report: { overview: [{ ...paragraph, text: 'Các vấn đề diễn biến khác nhau. Mức giảm chung không mô tả được từng vấn đề.' }],
+          relationships: [{ ...paragraph, text: 'Camera 360 lỗi kết nối giảm, trong khi 5G mất kết nối tăng ở cùng hai kỳ. Chưa có căn cứ kết luận hai vấn đề tác động đến nhau.' }], relationshipDetails: [], limitations: ['Không cộng các vấn đề thành tổng nhóm.'],
+          issues: ids.flatMap(id => calculations.map((calculation: string) => ({ entityRef: id, entityLabel: entities.find(e => e.entity_id === id)?.entity_label || id, calculation,
+            metrics: [{ metricCode: 'error', metricDisplayName: 'Báo sai/Lỗi', unit: calculation === 'sum' ? 'ticket' : 'ticket/ngày', quality: { limitations: [] },
+              series: [{ periodLabel: '07–13/09/2026', displayValue: '8', evidenceId: 'ev_context' }, { periodLabel: '14–20/09/2026', displayValue: '6', evidenceId: 'ev_context' }] }],
+            report: { overview: [], phases: [paragraph], relationships: [] } }))) } });
+    }
     if (url.pathname === '/api/projects/VSO/ai/trend-summary' && request.method() === 'POST') {
       aiRequestCount += 1;
       if (options.aiDelayMs) await new Promise(resolve => setTimeout(resolve, options.aiDelayMs));
@@ -360,13 +415,17 @@ export async function installApiHarness(page: Page, options: HarnessOptions = {}
       return fulfillJson(route, options.aiFixture || aiAnalysis(request.postDataJSON() as Record<string, string>, options.aiResponseStatus, options.aiLimitedComparison, options.aiWholeSeries, options.aiCurrentDataset));
     }
     if (url.pathname === '/api/ai/analyses/ana_e2e') return fulfillJson(route, aiAnalysis({ entityRef: 'root', metricCode: 'error', start: '2026-09-16', end: '2026-09-17' }, options.aiResponseStatus));
-    if (url.pathname === '/api/projects/VSO/entities') return fulfillJson(route, { entities });
+    if (url.pathname === '/api/projects/VSO/entities') {
+      const source = options.overviewSummaryByRequest?.[0]?.source as { entityRef?: string; effectiveUnit?: string } | undefined;
+      return fulfillJson(route, { entities: entities.map(item => item.entity_id === source?.entityRef ? { ...item, effective_unit: source.effectiveUnit } : item) });
+    }
     if (url.pathname === '/api/projects/VSO/workspace') {
       workspaceRequestCount += 1;
-      const delay = options.workspaceDelaysMs?.[workspaceRequestCount - 1] ?? options.workspaceDelayMs ?? 0;
+      const requestNumber = workspaceRequestCount;
+      const delay = options.workspaceDelaysMs?.[requestNumber - 1] ?? options.workspaceDelayMs ?? 0;
       if (delay) await new Promise(resolve => setTimeout(resolve, delay));
-      if (options.workspaceFailureRequests?.includes(workspaceRequestCount)) return fulfillJson(route, { detail: 'Mất kết nối workspace thử nghiệm' }, 503);
-      return fulfillJson(route, workspace(url, options, workspaceRequestCount));
+      if (options.workspaceFailureRequests?.includes(requestNumber)) return fulfillJson(route, { detail: 'Mất kết nối workspace thử nghiệm' }, 503);
+      return fulfillJson(route, workspace(url, { ...options, workspaceVersionsByRequest: options.workspaceVersionsByRequest || Array(requestNumber).fill(committedVersion) }, requestNumber));
     }
     if (/\/observations\/[^/]+\/provenance$/.test(url.pathname)) {
       if (options.provenanceDelayMs) await new Promise(resolve => setTimeout(resolve, options.provenanceDelayMs));
@@ -402,9 +461,22 @@ export async function installApiHarness(page: Page, options: HarnessOptions = {}
       return fulfillJson(route, { contractVersion: 2, observationRef, items: [{ revisionRef: 'rev_old', lineageRef: `lin_${observationRef.replace('obs_', '')}`, changeType: 'inserted', recordedAt: '2026-09-17T08:00:00Z', displayValue: '14', chartValue: 14, validationStatus: 'valid', state: 'superseded', importRef: 'imp_1', attemptRef: 'attempt_1' }] });
     }
     if (url.pathname === '/api/projects/VSO/imports/imp_1') return fulfillJson(route, { contractVersion: 2, importRef: 'imp_1', attemptRef: 'attempt_1', status: 'committed', workbookName: 'vso.xlsx', workbookHash: 'a'.repeat(64), mode: 'incremental', committedAt: '2026-09-17T08:00:00Z', dataRange: { start: '2026-09-16', end: '2026-09-17' }, outcome: { inserted: 12, updated: 0, unchanged: 0, restored: 0, deleted: 0 } });
-    if (url.pathname === '/api/imports/preview' && request.method() === 'POST') return fulfillJson(route, { manifest: { source_file: 'snapshot.xlsx', source_hash: 'b'.repeat(64), record_count: 12, date_count: 2, observed_date_min: '2026-09-16', observed_date_max: '2026-09-17', projects: ['VSO'] }, valid: true, errorCount: 0, warningCount: 0, issues: [] });
-    if (url.pathname === '/api/imports' && request.method() === 'POST') return fulfillJson(route, { attempt_id: 2, status: 'committed', run_id: 2, duplicate_of_run_id: null, inserted_count: 0, updated_count: 2, unchanged_count: 10, restored_count: 0, deleted_count: 0, lineage_changed_count: 0, message: null });
-    if (url.pathname === '/api/imports') return fulfillJson(route, { items: [{ attempt_id: 2, attempt_status: 'committed', submitted_file_name: 'update.xlsx', requested_mode: 'incremental', input_record_count: 12, inserted_count: 0, updated_count: 2, unchanged_count: 10, started_at: '2026-09-17T09:00:00Z' }] });
+    if (url.pathname === '/api/imports/preview' && request.method() === 'POST') return fulfillJson(route, options.previewFixture || { manifest: { source_file: 'snapshot.xlsx', source_hash: 'b'.repeat(64), record_count: 12, date_count: 2, observed_date_min: '2026-09-16', observed_date_max: '2026-09-17', projects: ['VSO'] }, valid: true, errorCount: 0, warningCount: 0, issues: [] });
+    if (url.pathname === '/api/imports' && request.method() === 'POST') {
+      if (options.commitDelayMs) await new Promise(resolve => setTimeout(resolve, options.commitDelayMs));
+      if (options.commitNetworkFailure) return route.abort('failed');
+      if (options.commitFailureStatus) return fulfillJson(route, { detail: options.commitFailureStatus === 409 ? 'Tệp đã thay đổi sau khi xem trước; hãy kiểm tra lại' : 'Dữ liệu không đạt kiểm tra chất lượng; chưa thể nhập tệp' }, options.commitFailureStatus);
+      const outcome = options.importOutcome || { attempt_id: 2, status: 'committed', run_id: 2, duplicate_of_run_id: null, inserted_count: 0, updated_count: 2, unchanged_count: 10, restored_count: 0, deleted_count: 0, lineage_changed_count: 0, message: null };
+      if (outcome.status === 'committed') committedVersion = 'imp_2';
+      return fulfillJson(route, outcome);
+    }
+    if (url.pathname === '/api/imports') {
+      historyRequestCount += 1;
+      const requestIndex = historyRequestCount - 1;
+      if (options.historyDelaysMs?.[requestIndex]) await new Promise(resolve => setTimeout(resolve, options.historyDelaysMs![requestIndex]));
+      if (options.historyFailureRequests?.includes(requestIndex + 1)) return fulfillJson(route, { detail: 'Lịch sử thử nghiệm chưa phản hồi' }, 503);
+      return fulfillJson(route, { items: options.historyItemsByRequest?.[requestIndex] ?? options.historyItemsByRequest?.at(-1) ?? [{ attempt_id: 2, attempt_status: 'committed', submitted_file_name: 'update.xlsx', requested_mode: 'incremental', input_record_count: 12, inserted_count: 0, updated_count: 2, unchanged_count: 10, started_at: '2026-09-17T09:00:00Z' }] });
+    }
     return fulfillJson(route, { detail: `Unhandled test route: ${url.pathname}` }, 404);
   });
   return { calls, workspaceRequestCount: () => workspaceRequestCount };

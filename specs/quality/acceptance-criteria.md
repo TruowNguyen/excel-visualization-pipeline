@@ -67,6 +67,19 @@ Bundle-size warning hiện là non-blocking; lỗi build/typecheck là blocking.
 | ACC-IMP-015 | Given replayed value không đổi/đã deleted/mới, then lần lượt giữ revision current + presence mới/tạo restore/tạo insert | `_upsert_observations()` | Gap cho replay-specific cases |
 | ACC-IMP-016 | Given concurrent exact imports, when đến commit boundary, then chỉ một run commit và lần còn lại duplicate | duplicate recheck trong `_commit_result()` | Gap: không có concurrency test |
 
+## Nghiệm thu Nhập Excel hợp nhất — 05/10/2026
+
+Các ca giao diện dùng API mô phỏng; không thay bằng chứng backend của `ACC-IMP-001..016`. Log chạy và giới hạn ở [báo cáo riêng](unified-import-workspace-evidence.md).
+
+| ID | Điều kiện đạt | Test chính | Phạm vi |
+|---|---|---|---|
+| ACC-IMP-017 | Nhập ưu tiên, lịch sử mặc định đóng; mở/thu gọn/chi tiết không mất File, preview, xác nhận | `unified-import-workspace.spec.ts`: import first; legacy history | Giao diện mô phỏng |
+| ACC-IMP-018 | Kho rỗng hoặc lỗi phân tích vẫn xem trước; history lỗi giữ list gần nhất; null không thành 0; escape dữ liệu nguồn | cùng file: can preview; history refresh failure; history detail | Giao diện mô phỏng |
+| ACC-IMP-019 | Một POST đúng File/mode/hash; committed giữ khi GET lỗi; retry GET-only; duplicate không phiên mới; phiên chưa đổi không báo cập nhật | cùng file: single POST; duplicate; unchanged workspace version | Giao diện mô phỏng + `workspace-freshness.spec.ts` |
+| ACC-IMP-020 | History response cũ không đè mới; POST mất phản hồi khóa ghi; 409 yêu cầu preview lại | cùng file: late old history; unknown POST; 409 invalidates | Giao diện mô phỏng |
+| ACC-IMP-021 | Invalid không ghi; báo giới hạn 100 issue; rời/quay lại tab không ghi thêm; reload phải chọn lại File | cùng file: invalid preview; navigation during commit | Giao diện mô phỏng |
+| ACC-IMP-022 | 1440/1366/1200/390: nút xác nhận trong luồng cuộn tự nhiên, không tràn ngang document, chi tiết tại chỗ | cùng file: responsive idle, preview and inline history | 4 viewport; ảnh trong báo cáo |
+
 ## Parsing và data acceptance
 
 | ID | Điều kiện pass | Bằng chứng chính | Mức bằng chứng |
@@ -177,3 +190,13 @@ Mỗi lần bàn giao nên ghi:
 - danh sách known limitations;
 - các mục `Decision needed` và người chịu trách nhiệm chốt;
 - chữ ký/xác nhận của người nghiệm thu hoặc link tới ticket phê duyệt.
+
+# Bổ sung AI-RPT — Báo cáo bản nháp v1 (05/10/2026)
+
+Nghiệm thu phần draft của `AI-RPT-001`–`AI-RPT-006`, `AI-RPT-010`–`AI-RPT-011`, `AI-RPT-013`–`AI-RPT-015`: năm section/template version, dữ liệu committed bất biến, lời AI/manual có kiểm chứng, nguồn chính xác, revision/history/idempotency, import mới không ghi đè và file PDF/DOCX DRAFT theo exact revision. Bằng chứng: `tests/test_reporting.py`, `frontend/e2e/reports.spec.ts` và [live/output/export review](../ai-data/evidence/2026-10-05-reports-review.md). Thống kê kiểm tra parity 4 grain × 3 cách tính.
+
+Không nghiệm thu authenticated approval (`AI-RPT-012`), retention policy, schedule/send/publish hoặc pagination trong Microsoft Word thực tế. Local checked không tương đương approved. [Phạm vi đã triển khai](../ai-data/12-report-workspace-as-built.md).
+
+# Bổ sung ACC-OV-KPI — Bốn thẻ Tổng quan theo nguồn
+
+Nghiệm thu theo các lát count/contract, extrema, adjacent change, freshness/responsive tại [contract](../frontend/overview-summary-metrics.md#5-acceptance-theo-lát-dọc). Áp dụng hướng hybrid đã duyệt, không áp dụng yêu cầu nguồn project-only của đề xuất cũ. Thống kê phải khớp SUM/AVG/ngày, danh sách kỳ và bộ lọc hiện có; không mượn số Tổng quan khi đổi tab/cách tính hoặc không có kỳ. Khối thông tin phía trên thẻ không mở sẵn; nguồn vẫn xem/chọn được trong mục thu gọn. Kết quả test/inventory ban đầu: [evidence](overview-summary-metrics-evidence.md); bổ sung hiện tại: [Thống kê và thu gọn](overview-statistics-summary-evidence.md). Không coi missing là 0, source riêng là tổng project hoặc metadata bootstrap là count trong window.
